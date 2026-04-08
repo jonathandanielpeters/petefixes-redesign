@@ -77,6 +77,9 @@
         .config-section[data-show-for] { display: none; }
         .config-section[data-show-for].visible { display: block; }
         .config-divider { height: 1px; background: var(--gray-100); margin: 14px 0; }
+        .beta-banner { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 16px; display: flex; gap: 8px; align-items: flex-start; }
+        .beta-badge { background: #F59E0B; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
+        .beta-text { font-size: 11px; color: #92400E; line-height: 1.45; margin: 0; }
 
         /* Fence Style Switcher */
         .style-switcher { display: flex; gap: 5px; align-items: center; margin-bottom: 14px; }
@@ -324,7 +327,7 @@
             <ul class="nav-links">
                 <li><span class="nav-dropdown-trigger">Fences</span><ul class="nav-dropdown"><li><a href="fencing.html">View All Fences</a></li><li><a href="fence-build-price.html">Fence Build & Price</a></li></ul></li>
                 <li><span class="nav-dropdown-trigger">Gates</span><ul class="nav-dropdown"><li><a href="automatic-gates.html#slide-gates">Slide Gates</a></li><li><a href="automatic-gates.html#swing-gates">Swing Gates</a></li><li><a href="automatic-gates.html#folding-gates">Folding Gates</a></li><li><a href="automatic-gates.html#barrier-gates">Barrier Gates</a></li><li class="dropdown-divider"></li><li><a href="automatic-gates.html">Automatic Gate Operators</a></li></ul></li>
-                <li><span class="nav-dropdown-trigger">Automations</span><ul class="nav-dropdown"><li><a href="access-control.html">Access Controls</a></li><li><a href="access-control.html#vehicle-detection">Vehicle Detection Sensors</a></li><li><a href="access-control.html#ai-surveillance">AI Surveillance Cameras</a></li></ul></li>
+                <li><span class="nav-dropdown-trigger">Smart Access</span><ul class="nav-dropdown"><li><a href="access-control.html">Access Controls</a></li><li><a href="vehicle-detection.html">Vehicle Detection</a></li><li><a href="ai-surveillance.html">AI Surveillance</a></li></ul></li>
                 <li><a href="../index.html#gallery">Gallery</a></li>
                 <li><a href="../index.html#contact">Contact</a></li>
             </ul>
@@ -338,7 +341,7 @@
         <ul>
             <li><span class="mobile-section-title">Fences</span><ul class="mobile-submenu"><li><a href="fencing.html">View All Fences</a></li><li><a href="fence-build-price.html">Fence Build & Price</a></li></ul></li>
             <li><span class="mobile-section-title">Gates</span><ul class="mobile-submenu"><li><a href="automatic-gates.html#slide-gates">Slide Gates</a></li><li><a href="automatic-gates.html#swing-gates">Swing Gates</a></li><li><a href="automatic-gates.html#folding-gates">Folding Gates</a></li><li><a href="automatic-gates.html#barrier-gates">Barrier Gates</a></li><li><a href="automatic-gates.html">Automatic Gate Operators</a></li></ul></li>
-            <li><span class="mobile-section-title">Automations</span><ul class="mobile-submenu"><li><a href="access-control.html">Access Controls</a></li><li><a href="access-control.html#vehicle-detection">Vehicle Detection Sensors</a></li><li><a href="access-control.html#ai-surveillance">AI Surveillance Cameras</a></li></ul></li>
+            <li><span class="mobile-section-title">Smart Access</span><ul class="mobile-submenu"><li><a href="access-control.html">Access Controls</a></li><li><a href="vehicle-detection.html">Vehicle Detection</a></li><li><a href="ai-surveillance.html">AI Surveillance</a></li></ul></li>
             <li><a href="../index.html#gallery">Gallery</a></li><li><a href="../index.html#contact">Contact</a></li><li><a href="tel:2048949071">204-894-9071</a></li>
         </ul>
     </div>
@@ -348,6 +351,11 @@
         <aside class="config-panel">
             <h1 class="config-panel-title">Build & Price</h1>
             <p class="config-panel-subtitle">Design your fence and get an instant estimate.</p>
+
+            <div class="beta-banner">
+                <span class="beta-badge">BETA</span>
+                <p class="beta-text">This tool is in beta. Pricing shown is an estimate and may not be fully accurate. For a confirmed quote, submit your layout and selections and we'll reach out to verify accuracy.</p>
+            </div>
 
             <div id="styleSwitcher" class="style-switcher" style="display:none"></div>
 
@@ -4272,7 +4280,7 @@
                 title: 'Options',
                 sections: ['chainlinkOptions', 'buildTypeSection', 'woodTypeSection', 'postTypeSection', 'postSpacingSection',
                     'boardSizeSection', 'boardSpanSection', 'railSection', 'railTopSizeSection', 'railBottomSizeSection',
-                    'topCapSection', 'hzDoubleCoverSection',
+                    'topCapSection', 'hzDoubleCoverSection', 'postInstallSection', 'mudRemovalSection',
                     'ornamentalColorSection', 'privacyInsertSection', 'privacyInstallSection', 'privacyColorSection']
             },
             lines: {
