@@ -1,0 +1,237 @@
+/* ========================================
+   SERVICE SUBPAGE STYLES
+   Extends styles.css for individual service pages
+   ======================================== */
+
+/* Page Hero */
+.page-hero {
+    padding: 120px 0 60px;
+    background: var(--white);
+}
+
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: var(--gray-400);
+}
+
+.breadcrumb a {
+    color: var(--gray-400);
+    transition: color var(--transition);
+}
+
+.breadcrumb a:hover {
+    color: var(--accent);
+}
+
+.breadcrumb span {
+    color: var(--gray-300);
+}
+
+.breadcrumb span:last-child {
+    color: var(--gray-600);
+    font-weight: 500;
+}
+
+.page-hero-title {
+    font-size: clamp(48px, 6vw, 72px);
+    font-weight: 700;
+    line-height: 1.04;
+    letter-spacing: -0.04em;
+    color: var(--black);
+    margin-bottom: 20px;
+}
+
+.page-hero-subtitle {
+    font-size: 19px;
+    color: var(--gray-500);
+    line-height: 1.5;
+    max-width: 640px;
+}
+
+/* Intro Stats Strip */
+.service-intro-strip {
+    padding: 40px 0;
+    background: var(--black);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.intro-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+}
+
+.intro-stat {
+    text-align: center;
+    padding: 16px 8px;
+}
+
+.stat-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin-bottom: 6px;
+}
+
+.stat-value {
+    display: block;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--white);
+}
+
+/* Service Detail Blocks */
+.service-detail {
+    padding: 100px 0;
+}
+
+.service-detail-dark {
+    background: var(--black);
+    color: var(--white);
+}
+
+.service-detail-light {
+    background: var(--gray-50);
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 80px;
+    align-items: center;
+}
+
+.detail-grid-reverse .detail-content {
+    order: 2;
+}
+
+.detail-grid-reverse .detail-image {
+    order: 1;
+}
+
+.detail-title {
+    font-size: clamp(32px, 4vw, 44px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    margin-bottom: 20px;
+}
+
+.service-detail-dark .detail-title {
+    color: var(--white);
+}
+
+.detail-desc {
+    font-size: 16px;
+    line-height: 1.6;
+    margin-bottom: 16px;
+}
+
+.service-detail-dark .detail-desc {
+    color: var(--gray-300);
+}
+
+.service-detail-light .detail-desc {
+    color: var(--gray-500);
+}
+
+.detail-features {
+    list-style: none;
+    margin-bottom: 36px;
+    margin-top: 8px;
+}
+
+.detail-features li {
+    font-size: 15px;
+    padding: 8px 0;
+    padding-left: 20px;
+    position: relative;
+}
+
+.service-detail-dark .detail-features li {
+    color: var(--gray-200);
+}
+
+.service-detail-light .detail-features li {
+    color: var(--gray-600);
+}
+
+.detail-features li::before {
+    content: '+';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Detail Images */
+.detail-img-wrapper {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+}
+
+.detail-img-wrapper img {
+    width: 100%;
+    height: auto;
+    display: block;
+    aspect-ratio: 6/5;
+    object-fit: cover;
+}
+
+
+/* Responsive */
+@media (max-width: 1024px) {
+    .detail-grid {
+        grid-template-columns: 1fr;
+        gap: 48px;
+    }
+
+    .detail-grid-reverse .detail-content {
+        order: 1;
+    }
+
+    .detail-grid-reverse .detail-image {
+        order: 2;
+    }
+
+    .intro-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-hero {
+        padding: 100px 0 40px;
+    }
+
+    .service-detail {
+        padding: 64px 0;
+    }
+
+    .intro-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+
+    .intro-stat {
+        padding: 12px 4px;
+    }
+
+    .stat-value {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 480px) {
+    .intro-grid {
+        grid-template-columns: 1fr;
+    }
+}

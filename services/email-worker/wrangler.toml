@@ -1,0 +1,15 @@
+name = "fence-estimate-email"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables set via: wrangler secret put RESEND_API_KEY
+# Non-secret config:
+[vars]
+FROM_NAME = "Pete Fixes"
+FROM_EMAIL = "noreply@petefixes.ca"
+ALLOWED_ORIGIN = "*"
+
+# Per-client deployments override these vars:
+# wrangler secret put RESEND_API_KEY
+# wrangler secret put FROM_EMAIL  (if using a secret for this)
+# Or set in wrangler.toml [vars] for non-secrets

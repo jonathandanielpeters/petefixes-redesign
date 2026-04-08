@@ -1,0 +1,421 @@
+{
+  "configVersion": 1,
+  "deploymentId": "pete-fixes-wpg",
+  "lastModified": "2026-04-06T00:00:00Z",
+  "modifiedBy": "system",
+
+  "fenceTypeVisibility": {
+    "chainlink": true,
+    "wood": true,
+    "ornamental": true,
+    "weldedWire": false,
+    "vinyl": false
+  },
+
+  "branding": {
+    "businessName": "Pete Fixes",
+    "phone": "204-894-9071",
+    "email": "info@petefixes.ca",
+    "internalEmail": "jonathandanielpeters@gmail.com",
+    "location": "Winnipeg, MB",
+    "accentColor": "#C8A55A",
+    "emailjsPublicKey": "lK5F4nScoQoj5Hc5I",
+    "emailjsServiceId": "service_tqeymm6",
+    "emailjsCustomerTemplate": "template_8mj2ajt",
+    "emailjsInternalTemplate": "template_8mj2ajt",
+    "emailApiUrl": "https://fence-estimate-email.jonathandanielpeters.workers.dev"
+  },
+
+  "pricingMode": "material",
+
+  "materialPricing": {
+    "lumber": {
+      "pt": {
+        "1x4": { "widthIn": 3.5, "boards": { "6": 3.68, "8": 4.98, "16": 9.96, "20": 12.46 } },
+        "1x6": { "widthIn": 5.5, "boards": { "4": 3.72, "5": 4.64, "6": 5.56, "8": 7.12, "16": 14.24, "20": 17.80 } },
+        "2x4": { "widthIn": 3.5, "boards": { "8": 5.98, "10": 7.48, "12": 5.64, "16": 9.58, "20": 10.98 } },
+        "2x6": { "widthIn": 5.5, "boards": { "8": 12.41, "10": 15.51, "12": 9.32, "16": 19.18, "20": 21.98 } }
+      },
+      "cedar": {
+        "1x4": { "widthIn": 3.5, "boards": { "6": 7.50, "8": 10.00, "16": 20.00, "20": 25.00 } },
+        "1x6": { "widthIn": 5.5, "boards": { "4": 7.50, "5": 9.30, "6": 11.00, "8": 14.50, "16": 29.00, "20": 36.00 } },
+        "2x4": { "widthIn": 3.5, "boards": { "8": 12.00, "10": 15.00, "12": 11.00, "16": 20.00, "20": 25.00 } },
+        "2x6": { "widthIn": 5.5, "boards": { "8": 25.00, "10": 31.00, "12": 19.00, "16": 40.00, "20": 50.00 } }
+      }
+    },
+    "postHardware": {
+      "postmaster": 49.99,
+      "metal-2x2": 67.00
+    },
+    "postLengths": {
+      "available": [7, 8, 9, 10, 12],
+      "heightDefaults": { "4": 7, "5": 8, "6": 9 },
+      "prices": {
+        "postmaster":  { "7": 44.99, "8": 49.99, "9": 54.99, "10": 59.99, "12": 69.99 },
+        "metal-2x2":   { "7": 60.00, "8": 67.00, "9": 74.00, "10": 80.00, "12": 95.00 },
+        "chainlink":   { "7": 20.00, "8": 25.00, "9": 28.00, "10": 32.00, "12": 40.00 },
+        "ornamental":  { "7": 33.00, "8": 38.89, "9": 43.00, "10": 48.00, "12": 58.00 },
+        "weldedWire":  { "7": 33.00, "8": 38.89, "9": 43.00, "10": 48.00, "12": 58.00 },
+        "vinyl":       { "7": 33.00, "8": 38.89, "9": 43.00, "10": 48.00, "12": 58.00 }
+      },
+      "postInfo": {
+        "postmaster":  { "color": "Green",      "outsideDiameter": "2.375\"" },
+        "metal-2x2":   { "color": "Black",      "outsideDiameter": "2\" × 2\"" },
+        "chainlink":   { "color": "Galvanized", "outsideDiameter": "2-3/8\"" },
+        "ornamental":  { "color": "Black",      "outsideDiameter": "2\" × 2\"" },
+        "weldedWire":  { "color": "Galvanized", "outsideDiameter": "2\" × 2\"" },
+        "vinyl":       { "color": "White",      "outsideDiameter": "5\" × 5\"" }
+      },
+      "allowUserUpgrade": false
+    },
+    "postSpacing": {
+      "options": [6, 7, 8],
+      "default": 8
+    },
+    "chainlink": {
+      "base": { "4": 10.00, "5": 12.22, "6": 14.44 },
+      "colorMod": { "galvanized": 0, "black": 1.67 },
+      "privacyMod": 2.22,
+      "privacyInserts": {
+        "bagLength": 10,
+        "bagCost": 22.00,
+        "bagPrice": 35.00,
+        "installPerFt": 3.50
+      },
+      "postCost": 25.00,
+      "topRail": { "galvanized": 0, "black": 0 },
+      "posts": {
+        "2-3/8": { "end": { "galvanized": 0, "black": 0 }, "corner": { "galvanized": 0, "black": 0 }, "line": { "galvanized": 0, "black": 0 } },
+        "1-7/8": { "end": { "galvanized": 0, "black": 0 }, "corner": { "galvanized": 0, "black": 0 }, "line": { "galvanized": 0, "black": 0 } }
+      },
+      "hookupHardware": {
+        "2-3/8": {
+          "tensionBand": { "galvanized": 0, "black": 0 },
+          "tensionBar": { "galvanized": 0, "black": 0 },
+          "nutsBolts": { "galvanized": 0, "black": 0 },
+          "railEnd": { "galvanized": 0, "black": 0 },
+          "centerBand": { "galvanized": 0, "black": 0 }
+        },
+        "1-7/8": {
+          "tensionBand": { "galvanized": 0, "black": 0 },
+          "tensionBar": { "galvanized": 0, "black": 0 },
+          "nutsBolts": { "galvanized": 0, "black": 0 },
+          "railEnd": { "galvanized": 0, "black": 0 },
+          "centerBand": { "galvanized": 0, "black": 0 }
+        }
+      },
+      "tensionBandsPerHookup": { "4": 3, "5": 4, "6": 4 },
+      "tensionBandByHeight": {
+        "4": { "label": "36 in", "galvanized": 0, "black": 0 },
+        "5": { "label": "48 in", "galvanized": 0, "black": 0 },
+        "6": { "label": "60 in", "galvanized": 0, "black": 0 }
+      },
+      "fenceTies": {
+        "galvanized": 0,
+        "black": 0,
+        "perFoot": 1,
+        "perPost": { "4": 3, "5": 4, "6": 4 }
+      }
+    },
+    "ornamental": {
+      "base": { "4": 25.00, "5": 30.56, "6": 36.11 },
+      "colorMod": { "black": 0, "bronze": 2.22 },
+      "postCost": 38.89,
+      "panel": { "4": 0, "5": 0, "6": 0 },
+      "panelColorMod": { "black": 0, "bronze": 0 },
+      "panelWidth": 8,
+      "lineBracket": { "black": 0, "bronze": 0 },
+      "endBracket": { "black": 0, "bronze": 0 }
+    },
+    "weldedWire": {
+      "base": { "4": 20.00, "5": 25.00, "6": 30.00 },
+      "colorMod": { "galvanized": 0, "black": 3.00, "green": 2.00 },
+      "postCost": 38.89,
+      "panel": { "4": 0, "5": 0, "6": 0 },
+      "panelColorMod": { "galvanized": 0, "black": 0, "green": 0 },
+      "panelWidth": 8,
+      "lineBracket": { "galvanized": 0, "black": 0, "green": 0 },
+      "endBracket": { "galvanized": 0, "black": 0, "green": 0 }
+    },
+    "vinyl": {
+      "base": { "4": 30.00, "5": 36.00, "6": 42.00 },
+      "colorMod": { "white": 0, "tan": 2.00, "gray": 3.00 },
+      "postCost": 45.00,
+      "panel": { "4": 0, "5": 0, "6": 0 },
+      "panelColorMod": { "white": 0, "tan": 0, "gray": 0 },
+      "panelWidth": 8,
+      "lineBracket": { "white": 0, "tan": 0, "gray": 0 },
+      "endBracket": { "white": 0, "tan": 0, "gray": 0 }
+    },
+    "gateMaterial": {
+      "single-swing":          { "base": 71,   "perFt": 8 },
+      "single-swing-header":   { "base": 125,  "perFt": 12.5 },
+      "single-swing-wheel":    { "base": 175,  "perFt": 12.5 },
+      "double-swing":          { "base": 122,  "perFt": 13 },
+      "double-swing-header":   { "base": 207,  "perFt": 13 },
+      "double-swing-wheel":    { "base": 257,  "perFt": 13 },
+      "overhead-track-slide":  { "base": 667,  "perFt": 67 },
+      "double-overhead-track": { "base": 1111, "perFt": 89 }
+    }
+  },
+
+  "woodBuild": {
+    "configVersion": 3,
+
+    "vertical": {
+      "frame": {
+        "attachmentMethods": ["oneFace", "insideToInside"],
+        "default": "oneFace",
+        "bracketCostPer": 3.50,
+        "userCanChooseAttachment": true,
+        "spanOptions": [1, 2],
+        "defaultSpan": 2,
+        "userCanChooseSpan": false
+      },
+      "infillStyle": {
+        "available": ["standard", "friendlyNeighbor", "picketGap"],
+        "default": "standard",
+        "picketGap": {
+          "options": [0.5, 1.0, 1.5, 2.0],
+          "default": 1.0
+        },
+        "userCanChooseStyle": true
+      },
+      "rails": {
+        "top":    { "dimension": "2x6", "dimensionOptions": ["2x4", "2x6", "2x8"] },
+        "middle": { "dimension": "2x4", "dimensionOptions": ["2x4", "2x6", "2x8"] },
+        "bottom": { "dimension": "2x4", "dimensionOptions": ["2x4", "2x6", "2x8"] },
+        "defaultRailCount": 3,
+        "allow2Rail": true,
+        "userCanChangeRailDimension": true
+      },
+      "pickets": {
+        "dimension": "1x6",
+        "dimensionOptions": ["1x4", "1x6"],
+        "userCanChangeDimension": true
+      },
+      "trimBoards": {
+        "top":    { "enabled": false, "dimension": "1x4", "dimensionOptions": ["1x4", "1x6", "5/4x6"] },
+        "bottom": { "enabled": false, "dimension": "1x4", "dimensionOptions": ["1x4", "1x6", "5/4x6"] },
+        "userCanSelect": true
+      },
+      "topCap": {
+        "enabled": true,
+        "dimension": "2x4",
+        "dimensionOptions": ["2x4", "2x6"],
+        "spanSections": 2,
+        "userCanToggle": true,
+        "userCanChangeDimension": false
+      },
+      "designerCuts": []
+    },
+
+    "horizontal": {
+      "boardMaterial": {
+        "dimensionOptions": ["1x4", "1x6"],
+        "defaultDimension": "1x6",
+        "userCanChangeDimension": true
+      },
+      "designOptions": {
+        "available": ["gapless", "gapSpacing", "boardOnBoard", "mixedSizing"],
+        "default": "gapless",
+        "gapSpacing": {
+          "options": [0.25, 0.5, 0.75, 1.0],
+          "default": 0.5
+        },
+        "boardOnBoard": {
+          "overlapInches": 1.5
+        },
+        "mixedSizing": {
+          "configs": [
+            { "id": "alt-6-4", "label": "Alternating 6/4", "sequence": ["1x6", "1x4"] }
+          ]
+        }
+      },
+      "staggerJoints": true,
+      "userCanToggleStagger": true,
+      "spanSections": 2,
+      "spanOptions": [1, 2],
+      "userCanChangeSpan": false,
+      "centerSupport": {
+        "enabled": true,
+        "dimension": "2x4",
+        "dimensionOptions": ["2x4", "2x6"],
+        "conditionMinWidth": 4,
+        "userCanChangeDimension": false
+      },
+      "topCap": {
+        "enabled": true,
+        "dimension": "2x4",
+        "dimensionOptions": ["2x4", "2x6"],
+        "spanSections": 2,
+        "userCanToggle": true,
+        "userCanChangeDimension": false
+      },
+      "designerCuts": []
+    },
+
+    "bundles": [],
+    "bundleMode": "customOnly",
+    "postMaterials": {
+      "postmaster": {
+        "hardware": 49.99,
+        "items": [
+          { "id": "coverBoardV", "label": "Cover Boards (both faces)", "dimension": "1x6", "length": 6, "quantity": 2, "orientations": ["vertical"], "required": true, "userCanToggle": false },
+          { "id": "nailingStrip", "label": "Nailing Strip", "dimension": "2x4", "length": 6, "quantity": 1, "orientations": ["horizontal"], "required": true, "userCanToggle": false },
+          { "id": "coverInside", "label": "Inside Cover Board", "dimension": "1x6", "length": 6, "quantity": 1, "orientations": ["horizontal"], "required": true, "userCanToggle": false },
+          { "id": "coverOutside", "label": "Outside Cover Board", "dimension": "1x6", "length": 6, "quantity": 1, "orientations": ["horizontal"], "required": false, "userCanToggle": true, "toggleDefault": false, "toggleLabel": "Both Faces" }
+        ]
+      },
+      "metal-2x2": {
+        "hardware": 67.00,
+        "items": [
+          { "id": "wrapBoard", "label": "Wrap Board", "dimension": "2x6", "length": 6, "quantity": 1, "orientations": ["vertical", "horizontal"], "required": true, "userCanToggle": false }
+        ]
+      }
+    },
+    "gatePostMaterials": [
+      { "id": "gateReinforcement", "label": "Gate Post Reinforcement", "dimension": "2x6", "length": 8, "quantity": 1, "required": true }
+    ],
+    "postInstallation": {
+      "wood": {
+        "methods": {
+          "gravel": { "enabled": true, "costPerPost": 15.00, "label": "Gravel" },
+          "expansionFoam": { "enabled": true, "costPerPost": 25.00, "label": "Expansion Foam" }
+        },
+        "default": "gravel",
+        "userCanChoose": true
+      },
+      "chainlink": {
+        "methods": {
+          "concrete": { "enabled": true, "costPerPost": 20.00, "label": "Concrete" },
+          "expansionFoam": { "enabled": true, "costPerPost": 25.00, "label": "Expansion Foam" }
+        },
+        "default": "concrete",
+        "userCanChoose": true
+      },
+      "mudRemoval": {
+        "enabled": false,
+        "costPerPost": 10.00,
+        "userCanToggle": true
+      }
+    }
+  },
+
+  "markupTiers": [
+    { "maxValue": 300,  "multiplier": 2.4, "label": "Very small job" },
+    { "maxValue": 600,  "multiplier": 2.2, "label": "Small job" },
+    { "maxValue": 1200, "multiplier": 2.0, "label": "Medium job" },
+    { "maxValue": 2500, "multiplier": 1.9, "label": "Medium-large" },
+    { "maxValue": 5000, "multiplier": 1.8, "label": "Large job" },
+    { "maxValue": null, "multiplier": 1.7, "label": "Very large job" }
+  ],
+  "markupBasis": "material",
+
+  "minimumJobCharge": 350,
+
+  "labour": {
+    "perPost": { "enabled": false, "postmaster": 0, "metal-2x2": 0, "chainlink": 0, "ornamental": 0, "weldedWire": 0, "vinyl": 0 },
+    "perSection": { "enabled": false, "wood-vertical": 0, "wood-horizontal": 0, "chainlink": 0, "ornamental": 0, "weldedWire": 0, "vinyl": 0 },
+    "perFoot": { "enabled": false, "wood-vertical": 0, "wood-horizontal": 0, "chainlink": 0, "ornamental": 0, "weldedWire": 0, "vinyl": 0 },
+    "perGate": { "enabled": false, "single-swing": 0, "single-swing-header": 0, "single-swing-wheel": 0, "double-swing": 0, "double-swing-header": 0, "double-swing-wheel": 0, "overhead-track-slide": 0, "double-overhead-track": 0 },
+    "perPanel": { "enabled": false, "ornamental": 0, "weldedWire": 0, "vinyl": 0 },
+    "perHookup": { "enabled": false, "chainlink": 0 }
+  },
+
+  "addOnCharges": {
+    "topCap": { "enabled": false, "perFoot": 0 },
+    "trimBoards": { "enabled": false, "perFoot": 0 },
+    "thirdRail": { "enabled": false, "perFoot": 0 },
+    "cedar": { "enabled": false, "perFoot": 0 },
+    "horizontal": { "enabled": false, "perFoot": 0 },
+    "privacyInserts": { "enabled": false, "perFoot": 0 },
+    "designerCut": { "enabled": false, "perFoot": 0 },
+    "doubleCover": { "enabled": false, "perFoot": 0 }
+  },
+
+  "hourlyPricing": {
+    "ratePerHour": 85,
+    "hoursPerFoot": {
+      "chainlink": 0.15,
+      "wood-vertical": 0.25,
+      "wood-horizontal": 0.30,
+      "ornamental": 0.20,
+      "weldedWire": 0.20,
+      "vinyl": 0.20
+    },
+    "gateHours": {
+      "single-swing": 2,
+      "single-swing-header": 3,
+      "single-swing-wheel": 3.5,
+      "double-swing": 3,
+      "double-swing-header": 4,
+      "double-swing-wheel": 4.5,
+      "overhead-track-slide": 8,
+      "double-overhead-track": 12
+    },
+    "includesMaterial": false
+  },
+
+  "perFootPricing": {
+    "wood": {
+      "4": { "pt-1x6-vertical": 34, "pt-1x4-vertical": 40, "pt-1x6-horizontal": 36, "pt-2x6-horizontal": 42, "cedar-1x6-vertical": 48, "cedar-1x4-vertical": 54, "cedar-1x6-horizontal": 50, "cedar-2x6-horizontal": 58 },
+      "5": { "pt-1x6-vertical": 39, "pt-1x4-vertical": 46, "pt-1x6-horizontal": 41, "pt-2x6-horizontal": 48, "cedar-1x6-vertical": 55, "cedar-1x4-vertical": 62, "cedar-1x6-horizontal": 57, "cedar-2x6-horizontal": 66 },
+      "6": { "pt-1x6-vertical": 44, "pt-1x4-vertical": 52, "pt-1x6-horizontal": 46, "pt-2x6-horizontal": 54, "cedar-1x6-vertical": 62, "cedar-1x4-vertical": 70, "cedar-1x6-horizontal": 64, "cedar-2x6-horizontal": 74 }
+    },
+    "chainlink": {
+      "4": { "galvanized": 28, "black": 33 },
+      "5": { "galvanized": 33, "black": 39 },
+      "6": { "galvanized": 38, "black": 44 }
+    },
+    "ornamental": {
+      "4": { "black": 62, "bronze": 68 },
+      "5": { "black": 72, "bronze": 80 },
+      "6": { "black": 82, "bronze": 92 }
+    },
+    "weldedWire": {
+      "4": { "galvanized": 40, "black": 46, "green": 44 },
+      "5": { "galvanized": 48, "black": 55, "green": 52 },
+      "6": { "galvanized": 56, "black": 64, "green": 60 }
+    },
+    "vinyl": {
+      "4": { "white": 55, "tan": 60, "gray": 62 },
+      "5": { "white": 65, "tan": 72, "gray": 74 },
+      "6": { "white": 75, "tan": 82, "gray": 85 }
+    },
+    "postCost": {
+      "postmaster": 110,
+      "metal-2x2": 137,
+      "chainlink": 45,
+      "ornamental": 70,
+      "weldedWire": 70,
+      "vinyl": 80
+    },
+    "gateFlat": {
+      "single-swing": 200,
+      "single-swing-header": 350,
+      "single-swing-wheel": 500,
+      "double-swing": 400,
+      "double-swing-header": 600,
+      "double-swing-wheel": 800,
+      "overhead-track-slide": 2500,
+      "double-overhead-track": 4000
+    },
+    "privacyInsertAddon": 4
+  },
+
+  "fenceTypeSurcharges": {
+    "chainlink": 0,
+    "wood": 0,
+    "ornamental": 0,
+    "weldedWire": 0,
+    "vinyl": 0
+  },
+
+  "optionExtras": {
+    "privacyInserts": 0,
+    "topCap": 0,
+    "cedar": 0,
+    "horizontalOrientation": 0
+  }
+}
