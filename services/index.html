@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en-CA">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- SEO Meta Tags -->
+    <title>Pete Fixes Services | Fencing, Gates & Security in Winnipeg</title>
+    <meta name="description" content="Pete Fixes offers professional fencing, automatic gates, access control and AI security solutions in Winnipeg, MB. Residential & commercial. Call 204-894-9071.">
+    <meta name="keywords" content="fence installation Winnipeg, automatic gates Winnipeg, access control Manitoba, security cameras Winnipeg, chain link fence, wood fence, gate automation, AI surveillance">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="Pete Fixes">
+    <link rel="canonical" href="https://www.petefixes.ca/services">
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Pete Fixes Services | Fencing, Gates & Security in Winnipeg">
+    <meta property="og:description" content="Professional fencing, automatic gates, access control and AI security solutions in Winnipeg, MB.">
+    <meta property="og:url" content="https://www.petefixes.ca/services">
+    <meta property="og:site_name" content="Pete Fixes">
+    <meta property="og:locale" content="en_CA">
+
+    <!-- Geo Tags for Local SEO -->
+    <meta name="geo.region" content="CA-MB">
+    <meta name="geo.placename" content="Winnipeg">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": "Pete Fixes",
+        "description": "Professional fencing, automatic gates, access control and security solutions in Winnipeg, Manitoba.",
+        "url": "https://www.petefixes.ca/services",
+        "telephone": "+1-204-894-9071",
+        "email": "info@petefixes.ca",
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": "Winnipeg",
+            "addressRegion": "MB",
+            "addressCountry": "CA"
+        },
+        "areaServed": {
+            "@type": "City",
+            "name": "Winnipeg"
+        },
+        "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "Services",
+            "itemListElement": [
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Residential Fencing" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Commercial Fencing" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Automatic Gate Installation" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "Access Control Systems" } },
+                { "@type": "Offer", "itemOffered": { "@type": "Service", "name": "AI Surveillance" } }
+            ]
+        }
+    }
+    </script>
+
+    <link rel="stylesheet" href="../styles.css?v=4">
+    <style>
+        /* Landing Page Specific Styles */
+        .lp-hero {
+            padding: 100px 0 48px;
+            background: var(--black);
+            text-align: center;
+        }
+
+        .lp-hero-eyebrow {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 16px;
+        }
+
+        .lp-hero-title {
+            font-size: clamp(36px, 5vw, 56px);
+            font-weight: 700;
+            line-height: 1.08;
+            letter-spacing: -0.04em;
+            color: var(--white);
+            margin-bottom: 16px;
+        }
+
+        .lp-hero-subtitle {
+            font-size: 18px;
+            color: var(--gray-300);
+            line-height: 1.5;
+            max-width: 560px;
+            margin: 0 auto 32px;
+        }
+
+        .lp-hero-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .lp-trust {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin-top: 36px;
+            flex-wrap: wrap;
+        }
+
+        .lp-trust-item {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--gray-400);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .lp-trust-item svg {
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+
+        /* Service Categories */
+        .lp-services {
+            padding: 64px 0;
+            background: var(--white);
+        }
+
+        .lp-services .container {
+            text-align: center;
+        }
+
+        .lp-category {
+            margin-bottom: 48px;
+        }
+
+        .lp-category:last-child {
+            margin-bottom: 0;
+        }
+
+        .lp-cat-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .lp-cat-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--accent-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+
+        .lp-cat-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--black);
+        }
+
+        .lp-cat-desc {
+            font-size: 15px;
+            color: var(--gray-500);
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .lp-service-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px;
+        }
+
+        .lp-service-link {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 16px;
+            background: var(--gray-50);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--gray-700);
+            transition: all var(--transition);
+            text-align: left;
+        }
+
+        .lp-service-link:hover {
+            background: var(--accent-light);
+            color: var(--accent-hover);
+        }
+
+        .lp-service-link .link-arrow {
+            margin-left: auto;
+            color: var(--gray-300);
+            transition: all var(--transition);
+            flex-shrink: 0;
+        }
+
+        .lp-service-link:hover .link-arrow {
+            color: var(--accent);
+            transform: translateX(2px);
+        }
+
+        .lp-service-link .link-price {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--gray-400);
+        }
+
+        /* Gallery Strip */
+        .lp-gallery {
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .lp-gallery-strip {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+        }
+
+        .lp-gallery-strip img {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* CTA Banner */
+        .lp-cta {
+            padding: 64px 0;
+            background: var(--gray-50);
+            text-align: center;
+        }
+
+        .lp-cta-title {
+            font-size: clamp(28px, 4vw, 40px);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: var(--black);
+            margin-bottom: 12px;
+        }
+
+        .lp-cta-subtitle {
+            font-size: 17px;
+            color: var(--gray-500);
+            margin-bottom: 28px;
+            max-width: 480px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .lp-cta-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .lp-cta-note {
+            font-size: 13px;
+            color: var(--gray-400);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .lp-hero {
+                padding: 88px 0 40px;
+            }
+
+            .lp-services {
+                padding: 48px 0;
+            }
+
+            .lp-trust {
+                gap: 16px;
+            }
+
+            .lp-trust-item {
+                font-size: 12px;
+            }
+
+            .lp-service-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .lp-gallery-strip {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .lp-gallery-strip img:nth-child(n+4) {
+                display: none;
+            }
+
+            .lp-cta {
+                padding: 48px 0;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .lp-service-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <header class="nav-header" id="navbar">
+        <nav class="nav-container">
+            <a href="../index.html" class="nav-logo">
+                <span class="logo-pete">pete</span>
+                <span class="logo-fixes">FIXES</span>
+            </a>
+            <ul class="nav-links">
+                <li>
+                    <span class="nav-dropdown-trigger">Fences</span>
+                    <ul class="nav-dropdown">
+                        <li><a href="fencing.html">View All Fences</a></li>
+                        <li class="dropdown-divider"></li>
+                        <li class="dropdown-label">Residential</li>
+                        <li><a href="residential-chain-link.html">Chain Link</a></li>
+                        <li><a href="residential-wood.html">Wood (Hybrid)</a></li>
+                        <li><a href="residential-ornamental.html">Ornamental</a></li>
+                        <li><a href="residential-vinyl.html">Vinyl</a></li>
+                        <li><a href="residential-welded-wire.html">Welded Wire</a></li>
+                        <li class="dropdown-divider"></li>
+                        <li class="dropdown-label">Commercial</li>
+                        <li><a href="commercial-chain-link.html">Commercial Chain Link</a></li>
+                        <li><a href="commercial-cell-tower.html">Cell Tower Fencing</a></li>
+                        <li><a href="commercial-bollards.html">Bollards</a></li>
+                        <li><a href="commercial-garbage-enclosures.html">Garbage Enclosures</a></li>
+                        <li><a href="commercial-parking.html">Parking Fencing</a></li>
+                        <li class="dropdown-divider"></li>
+                        <li><a href="fence-build-price.html">Fence Build &amp; Price <span class="nav-new-badge">NEW</span></a></li>
+                    </ul>
+                </li>
+                <li>
+                    <span class="nav-dropdown-trigger">Gates</span>
+                    <ul class="nav-dropdown">
+                        <li><a href="automatic-gates.html#slide-gates">Slide Gates</a></li>
+                        <li><a href="automatic-gates.html#swing-gates">Swing Gates</a></li>
+                        <li><a href="automatic-gates.html#folding-gates">Folding Gates</a></li>
+                        <li><a href="automatic-gates.html#barrier-gates">Barrier Gates</a></li>
+                        <li class="dropdown-divider"></li>
+                        <li><a href="automatic-gates.html">Gate Operators</a></li>
+                    </ul>
+                </li>
+                <li>
+                    <span class="nav-dropdown-trigger">Smart Access</span>
+                    <ul class="nav-dropdown">
+                        <li><a href="access-control.html">Access Controls</a></li>
+                        <li><a href="vehicle-detection.html">Vehicle Detection</a></li>
+                        <li><a href="ai-surveillance.html">AI Surveillance</a></li>
+                    </ul>
+                </li>
+                <li><a href="../index.html#gallery">Gallery</a></li>
+                <li><a href="../blog/">Blog</a></li>
+                <li><a href="../index.html#contact">Contact</a></li>
+            </ul>
+            <a href="tel:2048949071" class="nav-phone">204-894-9071</a>
+            <button class="nav-toggle" aria-label="Toggle navigation menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <ul>
+            <li>
+                <span class="mobile-section-title">Fences</span>
+                <ul class="mobile-submenu">
+                    <li><a href="fencing.html">View All Fences</a></li>
+                    <li class="mobile-submenu-label">Residential</li>
+                    <li><a href="residential-chain-link.html">Chain Link</a></li>
+                    <li><a href="residential-wood.html">Wood (Hybrid)</a></li>
+                    <li><a href="residential-ornamental.html">Ornamental</a></li>
+                    <li><a href="residential-vinyl.html">Vinyl</a></li>
+                    <li><a href="residential-welded-wire.html">Welded Wire</a></li>
+                    <li class="mobile-submenu-label">Commercial</li>
+                    <li><a href="commercial-chain-link.html">Commercial Chain Link</a></li>
+                    <li><a href="commercial-cell-tower.html">Cell Tower Fencing</a></li>
+                    <li><a href="commercial-bollards.html">Bollards</a></li>
+                    <li><a href="commercial-garbage-enclosures.html">Garbage Enclosures</a></li>
+                    <li><a href="commercial-parking.html">Parking Fencing</a></li>
+                    <li><a href="fence-build-price.html">Fence Build &amp; Price <span class="nav-new-badge">NEW</span></a></li>
+                </ul>
+            </li>
+            <li>
+                <span class="mobile-section-title">Gates</span>
+                <ul class="mobile-submenu">
+                    <li><a href="automatic-gates.html#slide-gates">Slide Gates</a></li>
+                    <li><a href="automatic-gates.html#swing-gates">Swing Gates</a></li>
+                    <li><a href="automatic-gates.html#folding-gates">Folding Gates</a></li>
+                    <li><a href="automatic-gates.html#barrier-gates">Barrier Gates</a></li>
+                    <li><a href="automatic-gates.html">Gate Operators</a></li>
+                </ul>
+            </li>
+            <li>
+                <span class="mobile-section-title">Smart Access</span>
+                <ul class="mobile-submenu">
+                    <li><a href="access-control.html">Access Controls</a></li>
+                    <li><a href="vehicle-detection.html">Vehicle Detection</a></li>
+                    <li><a href="ai-surveillance.html">AI Surveillance</a></li>
+                </ul>
+            </li>
+            <li><a href="../index.html#gallery">Gallery</a></li>
+            <li><a href="../blog/">Blog</a></li>
+            <li><a href="../index.html#contact">Contact</a></li>
+            <li><a href="tel:2048949071">204-894-9071</a></li>
+        </ul>
+    </div>
+
+    <!-- Hero -->
+    <section class="lp-hero">
+        <div class="container">
+            <p class="lp-hero-eyebrow">Winnipeg's Fencing & Security Experts</p>
+            <h1 class="lp-hero-title">Fences. Gates. Security.<br>All in one call.</h1>
+            <p class="lp-hero-subtitle">From residential fencing to automated gate systems and AI-powered security — Pete Fixes handles it all.</p>
+            <div class="lp-hero-actions">
+                <a href="../index.html#contact" class="btn btn-primary">Get a Free Quote</a>
+                <a href="tel:2048949071" class="btn btn-ghost">Call 204-894-9071</a>
+            </div>
+            <div class="lp-trust">
+                <span class="lp-trust-item">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Licensed & Insured
+                </span>
+                <span class="lp-trust-item">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    Free On-Site Estimates
+                </span>
+                <span class="lp-trust-item">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    24/7 Emergency Repairs
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <!-- All Services -->
+    <section class="lp-services">
+        <div class="container">
+
+            <!-- Residential Fencing -->
+            <div class="lp-category">
+                <div class="lp-cat-header">
+                    <div class="lp-cat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="4" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="20" y1="4" x2="20" y2="20"/><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/></svg>
+                    </div>
+                    <h2 class="lp-cat-title">Residential Fencing</h2>
+                </div>
+                <p class="lp-cat-desc">Custom fencing built for Winnipeg's climate. Metal posts, premium materials, and expert installation on every project.</p>
+                <div class="lp-service-grid">
+                    <a href="residential-chain-link.html" class="lp-service-link">
+                        Chain Link
+                        <span class="link-price">from $26/ft</span>
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="residential-wood.html" class="lp-service-link">
+                        Wood (Hybrid)
+                        <span class="link-price">from $28/ft</span>
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="residential-ornamental.html" class="lp-service-link">
+                        Ornamental
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="residential-vinyl.html" class="lp-service-link">
+                        Vinyl
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="residential-welded-wire.html" class="lp-service-link">
+                        Welded Wire
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Commercial Fencing -->
+            <div class="lp-category">
+                <div class="lp-cat-header">
+                    <div class="lp-cat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                    </div>
+                    <h2 class="lp-cat-title">Commercial Fencing</h2>
+                </div>
+                <p class="lp-cat-desc">Heavy-duty perimeter security for industrial sites, parking facilities, and critical infrastructure.</p>
+                <div class="lp-service-grid">
+                    <a href="commercial-chain-link.html" class="lp-service-link">
+                        Commercial Chain Link
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="commercial-cell-tower.html" class="lp-service-link">
+                        Cell Tower Fencing
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="commercial-bollards.html" class="lp-service-link">
+                        Bollards
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="commercial-garbage-enclosures.html" class="lp-service-link">
+                        Garbage Enclosures
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="commercial-parking.html" class="lp-service-link">
+                        Parking Fencing
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Automatic Gates -->
+            <div class="lp-category">
+                <div class="lp-cat-header">
+                    <div class="lp-cat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="6" width="7" height="12" rx="1"/><rect x="14" y="6" width="7" height="12" rx="1"/><path d="M10 12h4"/></svg>
+                    </div>
+                    <h2 class="lp-cat-title">Automatic Gates</h2>
+                </div>
+                <p class="lp-cat-desc">Slide, swing, folding, and barrier gates with smart operators, phone integration, and 24/7 emergency repair.</p>
+                <div class="lp-service-grid">
+                    <a href="automatic-gates.html#slide-gates" class="lp-service-link">
+                        Slide Gates
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="automatic-gates.html#swing-gates" class="lp-service-link">
+                        Swing Gates
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="automatic-gates.html#folding-gates" class="lp-service-link">
+                        Folding Gates
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="automatic-gates.html#barrier-gates" class="lp-service-link">
+                        Barrier Gates
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="automatic-gates.html" class="lp-service-link">
+                        Gate Operators
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Smart Access & Security -->
+            <div class="lp-category">
+                <div class="lp-cat-header">
+                    <div class="lp-cat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><circle cx="12" cy="16" r="1.5"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></svg>
+                    </div>
+                    <h2 class="lp-cat-title">Smart Access & Security</h2>
+                </div>
+                <p class="lp-cat-desc">Keypads, intercoms, license plate recognition, and AI-powered cameras for complete property control.</p>
+                <div class="lp-service-grid">
+                    <a href="access-control.html" class="lp-service-link">
+                        Access Control Systems
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="vehicle-detection.html" class="lp-service-link">
+                        Vehicle Detection (LPR)
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                    <a href="ai-surveillance.html" class="lp-service-link">
+                        AI Surveillance Cameras
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Tools -->
+            <div class="lp-category">
+                <div class="lp-cat-header">
+                    <div class="lp-cat-icon">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+                    </div>
+                    <h2 class="lp-cat-title">Online Tools</h2>
+                </div>
+                <p class="lp-cat-desc">Design your fence and get an instant price estimate before you call.</p>
+                <div class="lp-service-grid">
+                    <a href="fence-build-price.html" class="lp-service-link">
+                        Fence Build & Price Calculator
+                        <svg class="link-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </a>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Gallery Strip -->
+    <section class="lp-gallery">
+        <div class="lp-gallery-strip">
+            <img src="../images/fence-waterfront-dramatic-sky.jpg" alt="Fencing along waterfront" loading="lazy">
+            <img src="../images/pergola-black-modern-backyard.jpg" alt="Modern black pergola and horizontal fence" loading="lazy">
+            <img src="../images/celltower-compound-wide.jpg" alt="Cell tower compound with chain link perimeter" loading="lazy">
+            <img src="../images/wood-hybrid-horizontal-plank.jpg" alt="Horizontal plank hybrid wood fence" loading="lazy">
+            <img src="../images/gate-ornamental-liftmaster-la500.jpg" alt="Ornamental gate with LiftMaster LA500 operator" loading="lazy">
+            <img src="../images/garbage-enclosure-dumpsters.jpg" alt="Commercial garbage enclosure with dumpsters" loading="lazy">
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="lp-cta">
+        <div class="container">
+            <h2 class="lp-cta-title">Ready to get started?</h2>
+            <p class="lp-cta-subtitle">Free on-site estimates for any project. Residential or commercial — we'll come to you.</p>
+            <div class="lp-cta-actions">
+                <a href="../index.html#contact" class="btn btn-primary btn-lg">Request a Free Quote</a>
+                <a href="tel:2048949071" class="btn btn-dark btn-lg">Call 204-894-9071</a>
+            </div>
+            <p class="lp-cta-note">Serving Winnipeg, MB & surrounding areas</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container footer-grid">
+            <div class="footer-brand">
+                <a href="../index.html" class="nav-logo">
+                    <span class="logo-pete">pete</span>
+                    <span class="logo-fixes">FIXES</span>
+                </a>
+                <p class="footer-tagline">build. secure. fixes.</p>
+            </div>
+            <div class="footer-col">
+                <h5>Services</h5>
+                <ul>
+                    <li><a href="fencing.html">Fencing</a></li>
+                    <li><a href="automatic-gates.html">Automatic Gates</a></li>
+                    <li><a href="access-control.html">Smart Access & Security</a></li>
+                    <li><a href="vehicle-detection.html">Vehicle Detection</a></li>
+                    <li><a href="ai-surveillance.html">AI Surveillance</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h5>Company</h5>
+                <ul>
+                    <li><a href="../blog/">Blog</a></li>
+                    <li><a href="../index.html#gallery">Gallery</a></li>
+                    <li><a href="../index.html#contact">Contact Us</a></li>
+                    <li><a href="https://www.instagram.com/petefixes/" target="_blank" rel="noopener noreferrer">Instagram</a></li>
+                </ul>
+            </div>
+            <div class="footer-col">
+                <h5>Contact</h5>
+                <ul>
+                    <li><a href="tel:2048949071">204-894-9071</a></li>
+                    <li><a href="mailto:info@petefixes.ca">info@petefixes.ca</a></li>
+                    <li>Winnipeg, MB, Canada</li>
+                </ul>
+            </div>
+        </div>
+        <div class="container footer-bottom">
+            <p>&copy; 2026 Pete Fixes. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Sticky nav
+        const navbar = document.getElementById('navbar');
+        window.addEventListener('scroll', () => {
+            navbar.classList.toggle('scrolled', window.scrollY > 50);
+        });
+
+        // Mobile menu
+        const toggle = document.querySelector('.nav-toggle');
+        const mobileMenu = document.getElementById('mobileMenu');
+        toggle.addEventListener('click', () => {
+            toggle.classList.toggle('active');
+            mobileMenu.classList.toggle('open');
+            document.body.classList.toggle('menu-open');
+        });
+
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                toggle.classList.remove('active');
+                mobileMenu.classList.remove('open');
+                document.body.classList.remove('menu-open');
+            });
+        });
+    </script>
+
+</body>
+</html>
