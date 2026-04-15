@@ -186,6 +186,21 @@
     object-fit: cover;
 }
 
+/* Product photos (UniFi hardware shots etc.) -- contain so the full
+   product is visible, with a soft branded background. */
+.detail-img-wrapper--product {
+    background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+}
+
+.service-detail-dark .detail-img-wrapper--product {
+    background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+}
+
+.detail-img-wrapper--product img {
+    object-fit: contain;
+    padding: 32px;
+}
+
 
 /* Responsive */
 @media (max-width: 1024px) {
