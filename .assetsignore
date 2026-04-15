@@ -1,0 +1,5 @@
+wrangler.toml
+.assetsignore
+WIX-IMPLEMENTATION-GUIDE.md
+services/email-worker/**
+**/.DS_Store
