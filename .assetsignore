@@ -1,5 +1,10 @@
 wrangler.toml
 .assetsignore
+.gitignore
+.git/**
+.github/**
+.claude/**
+node_modules/**
 WIX-IMPLEMENTATION-GUIDE.md
 services/email-worker/**
 **/.DS_Store
