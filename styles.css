@@ -320,10 +320,14 @@ a {
     display: flex;
     align-items: flex-start;
     justify-content: center;
-    padding-top: 60px;
+    padding-top: 40px;
+    padding-bottom: 40px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 .mobile-menu.open {
@@ -1808,5 +1812,68 @@ a.contact-value:hover {
         width: 260px;
         min-width: 260px;
         padding: 22px 20px;
+    }
+}
+
+/* ========================================
+   Mobile Build & Price Sticky Bar
+   ======================================== */
+.mobile-bp-bar {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .mobile-bp-bar {
+        display: block;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        background: var(--black);
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+        border-top: 1px solid rgba(200, 165, 90, 0.3);
+    }
+
+    .mobile-bp-link {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        text-decoration: none;
+        gap: 12px;
+    }
+
+    .mobile-bp-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .mobile-bp-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        letter-spacing: -0.01em;
+    }
+
+    .mobile-bp-sub {
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    .mobile-bp-action {
+        background: var(--accent);
+        color: var(--black);
+        padding: 8px 18px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .site-footer .footer-bottom {
+        padding-bottom: 80px;
     }
 }
