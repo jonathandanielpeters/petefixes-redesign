@@ -229,29 +229,26 @@
             position: absolute; left: 0; top: 0; bottom: 0; z-index: 15;
             flex-direction: row; pointer-events: none;
         }
-        .msb-icons {
-            width: 48px; background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
-            border-right: 1px solid var(--gray-100); display: flex; flex-direction: column;
-            padding: 8px 4px; gap: 2px; pointer-events: auto; flex-shrink: 0;
+        .msb-toggle {
+            position: absolute; top: 52px; left: 8px; z-index: 16;
+            width: 40px; height: 40px; border-radius: 10px; border: none;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.12); cursor: pointer;
+            color: var(--gray-500); display: flex; align-items: center;
+            justify-content: center; pointer-events: auto; transition: all 0.15s ease;
         }
-        .msb-icon {
-            width: 40px; padding: 6px 0; border-radius: 8px; border: none;
-            background: transparent; cursor: pointer; color: var(--gray-400);
-            display: flex; flex-direction: column; align-items: center; gap: 2px;
-            transition: all 0.15s ease; font-family: inherit;
-        }
-        .msb-icon:hover { background: var(--gray-50); color: var(--gray-600); }
-        .msb-icon.msb-active { background: var(--accent-light); color: var(--accent); }
-        .msb-label { font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1; }
+        .msb-toggle:hover { background: var(--white); color: var(--black); }
+        .msb-toggle.msb-active { background: var(--accent); color: var(--white); }
         .msb-panel {
-            width: 250px; background: rgba(255,255,255,0.97); backdrop-filter: blur(12px);
+            width: 280px; background: rgba(255,255,255,0.97); backdrop-filter: blur(12px);
             border-right: 1px solid var(--gray-100); box-shadow: 4px 0 24px rgba(0,0,0,0.08);
-            display: none; flex-direction: column; pointer-events: auto; max-height: 100%;
+            display: none; flex-direction: column; pointer-events: auto;
+            position: absolute; top: 0; bottom: 0; left: 0;
         }
         .msb-panel.msb-panel-open { display: flex; }
         .msb-panel-header {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 14px 8px; border-bottom: 1px solid var(--gray-100); flex-shrink: 0;
+            padding: 10px 14px 6px; border-bottom: 1px solid var(--gray-100); flex-shrink: 0;
         }
         .msb-panel-title { font-size: 13px; font-weight: 700; color: var(--black); }
         .msb-panel-close {
@@ -260,33 +257,33 @@
             display: flex; align-items: center; justify-content: center; transition: all 0.15s;
         }
         .msb-panel-close:hover { background: var(--gray-100); color: var(--black); }
-        .msb-panel-body { flex: 1; overflow-y: auto; padding: 10px 14px 14px; }
-        .msb-panel-body .config-section { margin-bottom: 12px; }
-        .msb-panel-body .config-label { font-size: 10px; margin-bottom: 5px; }
-        .msb-panel-body .config-tiles { gap: 4px; }
-        .msb-panel-body .config-tile { padding: 6px 4px 5px; font-size: 10px; border-width: 1.5px; }
-        .msb-panel-body .config-tile-icon { font-size: 14px; margin-bottom: 2px; }
+        .msb-panel-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 12px 80px; overscroll-behavior: contain; }
+        .msb-panel-body .config-section { margin-bottom: 10px; }
+        .msb-panel-body .config-label { font-size: 10px; margin-bottom: 4px; }
+        .msb-panel-body .config-tiles { gap: 4px; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+        .msb-panel-body .config-tile { padding: 5px 4px 4px; font-size: 10px; border-width: 1.5px; }
+        .msb-panel-body .config-tile-icon { font-size: 13px; margin-bottom: 1px; }
         .msb-panel-body .config-pill { padding: 4px 10px; font-size: 10px; }
         .msb-panel-body .config-pills { gap: 3px; }
-        .msb-panel-body .config-toggle-btn { padding: 5px; font-size: 10px; }
-        .msb-panel-body .config-divider { margin: 8px 0; }
-        .msb-panel-body .style-switcher { margin-bottom: 10px; gap: 3px; }
-        .msb-panel-body .style-tab { padding: 5px 6px; }
+        .msb-panel-body .config-toggle-btn { padding: 4px; font-size: 10px; }
+        .msb-panel-body .config-divider { margin: 6px 0; }
+        .msb-panel-body .style-switcher { margin-bottom: 8px; gap: 3px; }
+        .msb-panel-body .style-tab { padding: 4px 6px; }
         .msb-panel-body .style-tab .style-tab-label { font-size: 10px; }
         .msb-panel-body .style-tab .style-tab-type { font-size: 8px; }
-        .msb-panel-body .style-add-btn { width: 26px; height: 32px; font-size: 14px; }
+        .msb-panel-body .style-add-btn { width: 24px; height: 28px; font-size: 14px; }
         .msb-panel-body .fence-lines-list { gap: 3px; }
-        .msb-panel-body .fence-line-item { padding: 5px 7px; gap: 5px; }
-        .msb-panel-body .fence-line-color { height: 18px; width: 2px; }
+        .msb-panel-body .fence-line-item { padding: 4px 6px; gap: 5px; }
+        .msb-panel-body .fence-line-color { height: 16px; width: 2px; }
         .msb-panel-body .fence-line-name { font-size: 10px; }
         .msb-panel-body .fence-line-meta { font-size: 9px; }
         .msb-panel-body .fence-line-input { width: 50px; padding: 3px 5px; font-size: 11px; }
         .msb-panel-body .fence-line-unit { font-size: 10px; }
         .msb-panel-body .fence-line-delete { width: 20px; height: 20px; }
-        .msb-panel-body .fence-lines-empty { font-size: 10px; padding: 8px 6px; }
-        .msb-panel-body .add-line-btn, .msb-panel-body .add-gate-btn { padding: 6px; font-size: 10px; gap: 3px; }
+        .msb-panel-body .fence-lines-empty { font-size: 10px; padding: 6px 6px; }
+        .msb-panel-body .add-line-btn, .msb-panel-body .add-gate-btn { padding: 5px; font-size: 10px; gap: 3px; }
         .msb-panel-body .add-line-btn svg, .msb-panel-body .add-gate-btn svg { width: 12px; height: 12px; }
-        .msb-panel-body .sidebar-btn-row { margin-top: 5px; gap: 3px; }
+        .msb-panel-body .sidebar-btn-row { margin-top: 4px; gap: 3px; }
         .msb-panel-body .gate-type-select { font-size: 10px; padding: 4px 6px; }
         .msb-panel-body .gate-post-badge { font-size: 8px; padding: 1px 4px; }
         .msb-backdrop {
@@ -304,7 +301,7 @@
             .config-panel { display: none !important; }
             .mobile-sidebar { display: flex; }
             .config-canvas-area { min-height: calc(100vh - 84px); }
-            .canvas-toolbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; padding-left: 56px; }
+            .canvas-toolbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
             .pricing-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 10px; }
             .pricing-summary { gap: 16px; flex-wrap: wrap; }
             .pricing-item-value { font-size: 15px; }
@@ -630,30 +627,15 @@
         <div class="config-canvas-area">
             <!-- Mobile floating sidebar -->
             <div class="mobile-sidebar" id="mobileSidebar">
-                <div class="msb-icons" id="msbIcons">
-                    <button class="msb-icon msb-active" data-panel="style" title="Style & Type">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                        <span class="msb-label">Type</span>
-                    </button>
-                    <button class="msb-icon" data-panel="options" title="Options">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-                        <span class="msb-label">Options</span>
-                    </button>
-                    <button class="msb-icon" data-panel="lines" title="Lines & Gates">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
-                        <span class="msb-label">Lines</span>
-                    </button>
-                </div>
+                <button class="msb-toggle" id="msbToggle" title="Build & Price options">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                </button>
                 <div class="msb-panel" id="msbPanel">
                     <div class="msb-panel-header">
-                        <span class="msb-panel-title" id="msbPanelTitle">Style & Type</span>
+                        <span class="msb-panel-title">Build &amp; Price</span>
                         <button class="msb-panel-close" id="msbPanelClose">&times;</button>
                     </div>
-                    <div class="msb-panel-body" id="msbPanelBody">
-                        <div class="msb-panel-content" id="msbStylePanel"></div>
-                        <div class="msb-panel-content" id="msbOptionsPanel" style="display:none"></div>
-                        <div class="msb-panel-content" id="msbLinesPanel" style="display:none"></div>
-                    </div>
+                    <div class="msb-panel-body" id="msbPanelBody"></div>
                 </div>
             </div>
             <div class="msb-backdrop" id="msbBackdrop"></div>
@@ -4350,53 +4332,39 @@
         let mobileInited = false;
         let msbActivePanel = 'style';
 
-        const MSB_PANELS = {
-            style: {
-                title: 'Style & Type',
-                sections: ['styleSwitcher', 'fenceTypeSection', 'heightSection']
-            },
-            options: {
-                title: 'Options',
-                sections: ['chainlinkOptions', 'buildTypeSection', 'woodTypeSection', 'postTypeSection', 'postSpacingSection',
-                    'boardSizeSection', 'boardSpanSection', 'railSection', 'railTopSizeSection', 'railBottomSizeSection',
-                    'trimBoardSection', 'topCapSection', 'frameAttachSection', 'frameSpanSection',
-                    'infillStyleSection', 'picketGapSection',
-                    'hzBoardDimSection', 'hzDesignOptionSection', 'hzGapSpacingSection', 'hzMixedConfigSection', 'hzStaggerSection',
-                    'designerCutSection', 'bundleSection',
-                    'postInstallSection', 'mudRemovalSection',
-                    'ornamentalColorSection', 'privacyInsertSection', 'privacyInstallSection', 'privacyColorSection']
-            },
-            lines: {
-                title: 'Lines & Gates',
-                sections: ['fenceLinesSection']
-            }
-        };
+        const MSB_ALL_SECTIONS = [
+            'styleSwitcher', 'fenceTypeSection', 'heightSection',
+            'chainlinkOptions', 'buildTypeSection', 'woodTypeSection', 'postTypeSection', 'postSpacingSection',
+            'boardSizeSection', 'boardSpanSection', 'railSection', 'railTopSizeSection', 'railBottomSizeSection',
+            'trimBoardSection', 'topCapSection', 'frameAttachSection', 'frameSpanSection',
+            'infillStyleSection', 'picketGapSection',
+            'hzBoardDimSection', 'hzDesignOptionSection', 'hzGapSpacingSection', 'hzMixedConfigSection', 'hzStaggerSection',
+            'designerCutSection', 'bundleSection',
+            'postInstallSection', 'mudRemovalSection',
+            'ornamentalColorSection', 'privacyInsertSection', 'privacyInstallSection', 'privacyColorSection',
+            'fenceLinesSection'
+        ];
 
         function setupMobileLayout() {
             if (mobileInited) return;
             mobileInited = true;
-            for (const [key, cfg] of Object.entries(MSB_PANELS)) {
-                const panelEl = document.getElementById('msb' + key.charAt(0).toUpperCase() + key.slice(1) + 'Panel');
-                for (const id of cfg.sections) {
-                    const el = document.getElementById(id);
-                    if (!el) continue;
-                    // Insert marker so we can restore position later
-                    const marker = document.createElement('span');
-                    marker.className = 'msb-marker';
-                    marker.dataset.for = id;
-                    marker.style.display = 'none';
-                    el.parentNode.insertBefore(marker, el);
-                    panelEl.appendChild(el);
-                }
+            const body = document.getElementById('msbPanelBody');
+            for (const id of MSB_ALL_SECTIONS) {
+                const el = document.getElementById(id);
+                if (!el) continue;
+                const marker = document.createElement('span');
+                marker.className = 'msb-marker';
+                marker.dataset.for = id;
+                marker.style.display = 'none';
+                el.parentNode.insertBefore(marker, el);
+                body.appendChild(el);
             }
-            // Start with panel closed so user sees full canvas
             msbClosePanel();
         }
 
         function restoreDesktopLayout() {
             if (!mobileInited) return;
             mobileInited = false;
-            // Move sections back to their original positions
             document.querySelectorAll('.msb-marker').forEach(marker => {
                 const el = document.getElementById(marker.dataset.for);
                 if (el) marker.parentNode.insertBefore(el, marker);
@@ -4405,41 +4373,27 @@
             msbClosePanel();
         }
 
-        function msbShowPanel(key) {
+        function msbTogglePanel() {
             const panel = document.getElementById('msbPanel');
+            const toggle = document.getElementById('msbToggle');
             const backdrop = document.getElementById('msbBackdrop');
-            // Toggle panel contents
-            document.querySelectorAll('.msb-panel-content').forEach(el => el.style.display = 'none');
-            const target = document.getElementById('msb' + key.charAt(0).toUpperCase() + key.slice(1) + 'Panel');
-            if (target) target.style.display = 'block';
-            // Update title
-            document.getElementById('msbPanelTitle').textContent = MSB_PANELS[key].title;
-            // Update active icon
-            document.querySelectorAll('.msb-icon').forEach(btn => btn.classList.toggle('msb-active', btn.dataset.panel === key));
-            // Open panel
-            panel.classList.add('msb-panel-open');
-            backdrop.style.display = 'block';
-            msbActivePanel = key;
+            if (panel.classList.contains('msb-panel-open')) {
+                msbClosePanel();
+            } else {
+                panel.classList.add('msb-panel-open');
+                toggle.classList.add('msb-active');
+                backdrop.style.display = 'block';
+            }
         }
 
         function msbClosePanel() {
             document.getElementById('msbPanel').classList.remove('msb-panel-open');
+            document.getElementById('msbToggle').classList.remove('msb-active');
             document.getElementById('msbBackdrop').style.display = 'none';
-            document.querySelectorAll('.msb-icon').forEach(btn => btn.classList.remove('msb-active'));
         }
 
-        // Icon clicks
-        document.getElementById('msbIcons').addEventListener('click', (e) => {
-            const btn = e.target.closest('.msb-icon');
-            if (!btn) return;
-            const key = btn.dataset.panel;
-            const panel = document.getElementById('msbPanel');
-            if (panel.classList.contains('msb-panel-open') && msbActivePanel === key) {
-                msbClosePanel();
-            } else {
-                msbShowPanel(key);
-            }
-        });
+        // Toggle button
+        document.getElementById('msbToggle').addEventListener('click', msbTogglePanel);
 
         // Close button
         document.getElementById('msbPanelClose').addEventListener('click', msbClosePanel);
