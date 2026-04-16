@@ -19,15 +19,15 @@
   --radius:14px;--radius-sm:8px;--radius-lg:20px;
   --transition:0.3s cubic-bezier(0.25,0.1,0.25,1);
   --shadow-sm:0 2px 8px rgba(0,0,0,0.04);--shadow-md:0 4px 20px rgba(0,0,0,0.08);--shadow-lg:0 8px 40px rgba(0,0,0,0.12);
-  --sidebar-w:240px;
+  --sidebar-w:170px;
 }
-html{font-size:14px}
+html{font-size:11px}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--black);background:var(--gray-50);line-height:1.5;min-height:100vh}
 input,select,textarea,button{font-family:inherit}
 a{color:var(--accent);text-decoration:none}
 
 /* ───── Top Header ───── */
-.admin-header{position:fixed;top:0;left:0;right:0;height:56px;background:var(--black);display:flex;align-items:center;justify-content:space-between;padding:0 24px;z-index:100;color:var(--white)}
+.admin-header{position:fixed;top:0;left:0;right:0;height:40px;background:var(--black);display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:100;color:var(--white)}
 .admin-header-left{display:flex;align-items:center;gap:14px}
 .admin-header-left .logo{font-size:15px;font-weight:700;letter-spacing:-0.02em;color:var(--white)}
 .admin-header-left .logo span{color:var(--accent)}
@@ -42,14 +42,14 @@ a{color:var(--accent);text-decoration:none}
 .header-btn.primary:hover{background:var(--accent-hover)}
 
 /* ───── Layout ───── */
-.admin-layout{display:flex;margin-top:56px;min-height:calc(100vh - 56px)}
+.admin-layout{display:flex;margin-top:40px;min-height:calc(100vh - 40px)}
 
 /* ───── Sidebar ───── */
-.admin-sidebar{width:var(--sidebar-w);background:var(--white);border-right:1px solid var(--gray-100);position:fixed;top:56px;bottom:0;left:0;overflow-y:auto;z-index:50;padding:16px 0}
+.admin-sidebar{width:var(--sidebar-w);background:var(--white);border-right:1px solid var(--gray-100);position:fixed;top:40px;bottom:0;left:0;overflow-y:auto;z-index:50;padding:8px 0}
 .admin-sidebar::-webkit-scrollbar{width:4px}
 .admin-sidebar::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px}
 .sidebar-section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:var(--gray-300);padding:12px 20px 6px}
-.sidebar-nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;font-size:13px;font-weight:500;color:var(--gray-500);cursor:pointer;transition:all var(--transition);border-left:3px solid transparent;user-select:none}
+.sidebar-nav-item{display:flex;align-items:center;gap:8px;padding:5px 14px;font-size:11px;font-weight:500;color:var(--gray-500);cursor:pointer;transition:all var(--transition);border-left:3px solid transparent;user-select:none}
 .sidebar-nav-item:hover{background:var(--gray-50);color:var(--black)}
 .sidebar-nav-item.active{background:var(--accent-light);color:var(--black);border-left-color:var(--accent);font-weight:600}
 .sidebar-nav-item .nav-icon{width:20px;text-align:center;font-size:14px;flex-shrink:0}
@@ -57,51 +57,51 @@ a{color:var(--accent);text-decoration:none}
 .sidebar-nav-item.mode-dependent.visible{display:flex}
 
 /* ───── Main Content ───── */
-.admin-main{flex:1;margin-left:var(--sidebar-w);padding:32px 40px 80px}
+.admin-main{flex:1;margin-left:var(--sidebar-w);padding:12px 20px 40px}
 .admin-main .section{display:none}
 .admin-main .section.active{display:block}
-.section-title{font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:4px}
-.section-subtitle{font-size:13px;color:var(--gray-400);margin-bottom:24px}
+.section-title{font-size:16px;font-weight:700;letter-spacing:-0.02em;margin-bottom:2px}
+.section-subtitle{font-size:11px;color:var(--gray-400);margin-bottom:10px}
 
 /* ───── Cards ───── */
-.card{background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius);padding:24px;margin-bottom:20px;box-shadow:var(--shadow-sm)}
-.card-title{font-size:15px;font-weight:700;letter-spacing:-0.01em;margin-bottom:4px}
-.card-desc{font-size:12px;color:var(--gray-400);margin-bottom:16px;line-height:1.5}
-.card-row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
+.card{background:var(--white);border:1px solid var(--gray-100);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:8px;box-shadow:var(--shadow-sm)}
+.card-title{font-size:12px;font-weight:700;letter-spacing:-0.01em;margin-bottom:2px}
+.card-desc{font-size:10px;color:var(--gray-400);margin-bottom:6px;line-height:1.4}
+.card-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
 .card-row .field{flex:1;min-width:180px}
 
 /* ───── Form Fields ───── */
-.field{margin-bottom:16px}
-.field label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--gray-400);margin-bottom:6px}
-.field input,.field select,.field textarea{width:100%;padding:9px 12px;font-size:13px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--black);background:var(--white);transition:border-color var(--transition)}
+.field{margin-bottom:6px}
+.field label{display:block;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--gray-400);margin-bottom:3px}
+.field input,.field select,.field textarea{width:100%;padding:5px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--black);background:var(--white);transition:border-color var(--transition)}
 .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
-.field input[type="color"]{padding:4px;height:40px;cursor:pointer}
+.field input[type="color"]{padding:2px;height:28px;cursor:pointer}
 .field .hint{font-size:11px;color:var(--gray-300);margin-top:3px}
 .field-inline{display:flex;align-items:center;gap:8px}
 .field-inline label{margin-bottom:0;white-space:nowrap}
 .field-inline input{width:120px}
-.field-sm input,.field-sm select{padding:7px 10px;font-size:12px}
+.field-sm input,.field-sm select{padding:4px 8px;font-size:11px}
 
 /* ───── Radio Cards ───── */
-.radio-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.radio-card{border:2px solid var(--gray-100);border-radius:var(--radius);padding:18px 16px;cursor:pointer;transition:all var(--transition);position:relative}
+.radio-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.radio-card{border:2px solid var(--gray-100);border-radius:var(--radius-sm);padding:10px 10px;cursor:pointer;transition:all var(--transition);position:relative}
 .radio-card:hover{border-color:var(--gray-200);background:var(--gray-50)}
 .radio-card.active{border-color:var(--accent);background:var(--accent-light)}
 .radio-card input[type="radio"]{position:absolute;opacity:0;pointer-events:none}
-.radio-card-title{font-size:14px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+.radio-card-title{font-size:11px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:6px}
 .radio-card-title .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--gray-300);transition:all var(--transition);flex-shrink:0}
 .radio-card.active .dot{border-color:var(--accent);background:var(--accent);box-shadow:inset 0 0 0 2px var(--white)}
-.radio-card-desc{font-size:12px;color:var(--gray-400);line-height:1.5;padding-left:18px}
+.radio-card-desc{font-size:10px;color:var(--gray-400);line-height:1.3;padding-left:16px}
 
 /* ───── Info Cards ───── */
-.info-card{display:flex;gap:10px;background:rgba(200,165,90,0.06);border:1px solid rgba(200,165,90,0.15);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--gray-600);line-height:1.5}
+.info-card{display:flex;gap:8px;background:rgba(200,165,90,0.06);border:1px solid rgba(200,165,90,0.15);border-radius:var(--radius-sm);padding:6px 10px;margin-bottom:6px;font-size:10px;color:var(--gray-600);line-height:1.4}
 .info-card .info-icon{flex-shrink:0;font-size:16px}
 
 /* ───── Tables ───── */
 .data-table{width:100%;border-collapse:collapse;font-size:12px}
-.data-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--gray-400);padding:8px 10px;border-bottom:2px solid var(--gray-100);white-space:nowrap}
-.data-table td{padding:6px 10px;border-bottom:1px solid var(--gray-50)}
-.data-table td input{width:100%;padding:6px 8px;font-size:12px;border:1.5px solid var(--gray-100);border-radius:6px;color:var(--black);background:var(--white);transition:border-color var(--transition);text-align:right}
+.data-table th{text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--gray-400);padding:4px 6px;border-bottom:2px solid var(--gray-100);white-space:nowrap}
+.data-table td{padding:3px 6px;border-bottom:1px solid var(--gray-50)}
+.data-table td input{width:100%;padding:3px 6px;font-size:11px;border:1.5px solid var(--gray-100);border-radius:4px;color:var(--black);background:var(--white);transition:border-color var(--transition);text-align:right}
 .data-table td input:focus{outline:none;border-color:var(--accent)}
 .data-table td .cell-label{font-weight:600;color:var(--gray-600);text-align:left}
 .data-table td .cell-dim{color:var(--gray-400);font-size:11px}
@@ -110,7 +110,7 @@ a{color:var(--accent);text-decoration:none}
 .table-scroll{overflow-x:auto}
 
 /* ───── Toggle Switch ───── */
-.toggle-row{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.toggle-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .toggle-label{font-size:13px;font-weight:500;color:var(--gray-600)}
 .toggle-switch{position:relative;width:44px;height:24px;cursor:pointer;flex-shrink:0}
 .toggle-switch input{opacity:0;width:0;height:0;position:absolute}
@@ -120,31 +120,31 @@ a{color:var(--accent);text-decoration:none}
 .toggle-switch input:checked~.toggle-thumb{transform:translateX(20px)}
 
 /* ───── Pill Tabs ───── */
-.pill-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
-.pill-tab{padding:7px 16px;font-size:12px;font-weight:600;border-radius:980px;cursor:pointer;transition:all var(--transition);border:1.5px solid var(--gray-200);background:var(--white);color:var(--gray-500)}
+.pill-tabs{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.pill-tab{padding:4px 10px;font-size:10px;font-weight:600;border-radius:980px;cursor:pointer;transition:all var(--transition);border:1.5px solid var(--gray-200);background:var(--white);color:var(--gray-500)}
 .pill-tab:hover{border-color:var(--gray-300);color:var(--black)}
 .pill-tab.active{border-color:var(--accent);background:var(--accent-light);color:var(--black)}
 
 /* ───── Buttons ───── */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;font-size:13px;font-weight:600;border-radius:980px;cursor:pointer;transition:all var(--transition);border:1.5px solid transparent}
+.btn{display:inline-flex;align-items:center;gap:4px;padding:5px 12px;font-size:11px;font-weight:600;border-radius:980px;cursor:pointer;transition:all var(--transition);border:1.5px solid transparent}
 .btn-accent{background:var(--accent);color:var(--white);border-color:var(--accent)}
 .btn-accent:hover{background:var(--accent-hover)}
 .btn-outline{background:var(--white);color:var(--gray-600);border-color:var(--gray-200)}
 .btn-outline:hover{border-color:var(--gray-300);background:var(--gray-50)}
 .btn-danger{background:#fff0f0;color:#d44;border-color:#fcc}
 .btn-danger:hover{background:#ffe0e0}
-.btn-sm{padding:6px 12px;font-size:11px}
-.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.btn-sm{padding:3px 8px;font-size:10px}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 
 /* ───── Remove / Add row buttons ───── */
-.icon-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;border:none;cursor:pointer;transition:all var(--transition);font-size:14px;background:transparent;color:var(--gray-400)}
+.icon-btn{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px;border:none;cursor:pointer;transition:all var(--transition);font-size:12px;background:transparent;color:var(--gray-400)}
 .icon-btn:hover{background:var(--gray-100);color:var(--black)}
 .icon-btn.remove:hover{background:#fee;color:#d44}
 
 /* ───── Pricing Preview Widget ───── */
-.pricing-preview{background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:var(--radius-sm);padding:14px 18px;margin-top:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.pricing-preview{background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:var(--radius-sm);padding:8px 12px;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
 .pricing-preview .preview-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400)}
-.pricing-preview .preview-value{font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
+.pricing-preview .preview-value{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
 .pricing-preview .preview-detail{font-size:11px;color:var(--gray-400)}
 
 /* ───── Toast ───── */
@@ -157,15 +157,15 @@ a{color:var(--accent);text-decoration:none}
 
 /* ───── Responsive ───── */
 @media(max-width:1024px){
-  :root{--sidebar-w:200px}
-  .admin-main{padding:24px 20px 80px}
+  :root{--sidebar-w:150px}
+  .admin-main{padding:10px 12px 40px}
   .radio-cards{grid-template-columns:1fr}
 }
 @media(max-width:768px){
   .admin-sidebar{transform:translateX(-100%);transition:transform var(--transition)}
   .admin-sidebar.open{transform:translateX(0);box-shadow:var(--shadow-lg)}
   .sidebar-toggle{display:flex!important}
-  .admin-main{margin-left:0;padding:20px 16px 80px}
+  .admin-main{margin-left:0;padding:10px 10px 40px}
   .radio-cards{grid-template-columns:1fr}
   .card-row{flex-direction:column}
   .card-row .field{min-width:0}
@@ -965,7 +965,18 @@ a{color:var(--accent);text-decoration:none}
     <div class="card-desc">Costs for post installation methods. Enable which methods are available and set per-post costs. Toggle customer visibility per option.</div>
 
     <div style="margin-bottom:20px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Wood Posts</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Wood Posts (Postmaster / Metal 2x2)</div>
+      <div class="card-row">
+        <div class="field" style="min-width:120px;flex:0 0 auto">
+          <label>Direct Driven</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="cfg-pi-wood-driven-enabled" onchange="markDirty()"><span class="toggle-slider"></span></label>
+            <span style="font-size:12px;color:var(--gray-400)">Enabled</span>
+          </div>
+        </div>
+        <div class="field"><label>Cost per Post ($)</label><input type="number" id="cfg-pi-wood-driven-cost" min="0" step="0.01" oninput="markDirty()"></div>
+        <div class="field"><label>Label</label><input type="text" id="cfg-pi-wood-driven-label" oninput="markDirty()" placeholder="Direct Driven"></div>
+      </div>
       <div class="card-row">
         <div class="field" style="min-width:120px;flex:0 0 auto">
           <label>Gravel</label>
@@ -991,6 +1002,7 @@ a{color:var(--accent);text-decoration:none}
       <div class="card-row">
         <div class="field"><label>Default Method</label>
           <select id="cfg-pi-wood-default" onchange="markDirty()">
+            <option value="directDriven">Direct Driven</option>
             <option value="gravel">Gravel</option>
             <option value="expansionFoam">Expansion Foam</option>
           </select>
@@ -1008,6 +1020,17 @@ a{color:var(--accent);text-decoration:none}
 
     <div style="margin-bottom:20px">
       <div style="font-size:13px;font-weight:600;margin-bottom:10px">Chainlink Posts</div>
+      <div class="card-row">
+        <div class="field" style="min-width:120px;flex:0 0 auto">
+          <label>Direct Driven</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="cfg-pi-cl-driven-enabled" onchange="markDirty()"><span class="toggle-slider"></span></label>
+            <span style="font-size:12px;color:var(--gray-400)">Enabled</span>
+          </div>
+        </div>
+        <div class="field"><label>Cost per Post ($)</label><input type="number" id="cfg-pi-cl-driven-cost" min="0" step="0.01" oninput="markDirty()"></div>
+        <div class="field"><label>Label</label><input type="text" id="cfg-pi-cl-driven-label" oninput="markDirty()" placeholder="Direct Driven"></div>
+      </div>
       <div class="card-row">
         <div class="field" style="min-width:120px;flex:0 0 auto">
           <label>Concrete</label>
@@ -1033,6 +1056,7 @@ a{color:var(--accent);text-decoration:none}
       <div class="card-row">
         <div class="field"><label>Default Method</label>
           <select id="cfg-pi-cl-default" onchange="markDirty()">
+            <option value="directDriven">Direct Driven</option>
             <option value="concrete">Concrete</option>
             <option value="expansionFoam">Expansion Foam</option>
           </select>
@@ -1041,6 +1065,60 @@ a{color:var(--accent);text-decoration:none}
           <label>Customer Can Choose</label>
           <div style="display:flex;align-items:center;gap:8px">
             <label class="toggle"><input type="checkbox" id="cfg-pi-cl-userCanChoose" onchange="markDirty()"><span class="toggle-slider"></span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:1px;background:var(--gray-100);margin:16px 0"></div>
+
+    <div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px">Welded Wire Posts</div>
+      <div class="card-row">
+        <div class="field" style="min-width:120px;flex:0 0 auto">
+          <label>Direct Driven</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="cfg-pi-ww-driven-enabled" onchange="markDirty()"><span class="toggle-slider"></span></label>
+            <span style="font-size:12px;color:var(--gray-400)">Enabled</span>
+          </div>
+        </div>
+        <div class="field"><label>Cost per Post ($)</label><input type="number" id="cfg-pi-ww-driven-cost" min="0" step="0.01" oninput="markDirty()"></div>
+        <div class="field"><label>Label</label><input type="text" id="cfg-pi-ww-driven-label" oninput="markDirty()" placeholder="Direct Driven"></div>
+      </div>
+      <div class="card-row">
+        <div class="field" style="min-width:120px;flex:0 0 auto">
+          <label>Concrete</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="cfg-pi-ww-concrete-enabled" onchange="markDirty()"><span class="toggle-slider"></span></label>
+            <span style="font-size:12px;color:var(--gray-400)">Enabled</span>
+          </div>
+        </div>
+        <div class="field"><label>Cost per Post ($)</label><input type="number" id="cfg-pi-ww-concrete-cost" min="0" step="0.01" oninput="markDirty()"></div>
+        <div class="field"><label>Label</label><input type="text" id="cfg-pi-ww-concrete-label" oninput="markDirty()" placeholder="Concrete"></div>
+      </div>
+      <div class="card-row">
+        <div class="field" style="min-width:120px;flex:0 0 auto">
+          <label>Expansion Foam</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="cfg-pi-ww-foam-enabled" onchange="markDirty()"><span class="toggle-slider"></span></label>
+            <span style="font-size:12px;color:var(--gray-400)">Enabled</span>
+          </div>
+        </div>
+        <div class="field"><label>Cost per Post ($)</label><input type="number" id="cfg-pi-ww-foam-cost" min="0" step="0.01" oninput="markDirty()"></div>
+        <div class="field"><label>Label</label><input type="text" id="cfg-pi-ww-foam-label" oninput="markDirty()" placeholder="Expansion Foam"></div>
+      </div>
+      <div class="card-row">
+        <div class="field"><label>Default Method</label>
+          <select id="cfg-pi-ww-default" onchange="markDirty()">
+            <option value="directDriven">Direct Driven</option>
+            <option value="concrete">Concrete</option>
+            <option value="expansionFoam">Expansion Foam</option>
+          </select>
+        </div>
+        <div class="field" style="min-width:140px;flex:0 0 auto">
+          <label>Customer Can Choose</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <label class="toggle"><input type="checkbox" id="cfg-pi-ww-userCanChoose" onchange="markDirty()"><span class="toggle-slider"></span></label>
           </div>
         </div>
       </div>
@@ -1307,18 +1385,30 @@ const DEFAULT_CONFIG = {
     }
   },
   woodBuild: {
-    configVersion: 2,
+    configVersion: 3,
     vertical: {
+      frame: {
+        attachmentMethods: ["oneFace", "insideToInside"],
+        default: "oneFace",
+        bracketCostPer: 3.50,
+        userCanChooseAttachment: true,
+        spanOptions: [1, 2],
+        defaultSpan: 2,
+        userCanChooseSpan: false
+      },
+      infillStyle: {
+        available: ["standard", "friendlyNeighbor", "picketGap"],
+        default: "standard",
+        picketGap: { options: [0.5, 1.0, 1.5, 2.0], default: 1.0 },
+        userCanChooseStyle: true
+      },
       rails: {
         top:    { dimension: "2x6", dimensionOptions: ["2x4", "2x6", "2x8"] },
         middle: { dimension: "2x4", dimensionOptions: ["2x4", "2x6", "2x8"] },
         bottom: { dimension: "2x4", dimensionOptions: ["2x4", "2x6", "2x8"] },
         defaultRailCount: 3,
         allow2Rail: true,
-        spanSections: 2,
-        spanOptions: [1, 2],
-        userCanChangeRailDimension: true,
-        userCanChangeSpan: false
+        userCanChangeRailDimension: true
       },
       pickets: {
         dimension: "1x6",
@@ -1341,29 +1431,18 @@ const DEFAULT_CONFIG = {
       designerCuts: []
     },
     horizontal: {
-      picketTypes: [
-        { id: "hz-1x6", dimension: "1x6", label: "1x6 Board" },
-        { id: "hz-1x4", dimension: "1x4", label: "1x4 Board" }
-      ],
-      patterns: [
-        {
-          id: "standard-1x6",
-          label: "Standard 1x6",
-          isDefault: true,
-          rows: [{ picketTypeId: "hz-1x6", repeat: true }]
-        },
-        {
-          id: "mixed-6-4",
-          label: "Mixed 1x6 / 1x4",
-          rows: [
-            { picketTypeId: "hz-1x6", count: 2 },
-            { picketTypeId: "hz-1x4", count: 2 },
-            { picketTypeId: "hz-1x6", repeat: true }
-          ]
-        }
-      ],
-      defaultPatternId: "standard-1x6",
-      userCanChangePattern: true,
+      boardMaterial: {
+        dimensionOptions: ["1x4", "1x6"],
+        defaultDimension: "1x6",
+        userCanChangeDimension: true
+      },
+      designOptions: {
+        available: ["gapless", "gapSpacing", "boardOnBoard", "mixedSizing"],
+        default: "gapless",
+        gapSpacing: { options: [0.25, 0.5, 0.75, 1.0], default: 0.5 },
+        boardOnBoard: { overlapInches: 1.5 },
+        mixedSizing: { configs: [{ id: "alt-6-4", label: "Alternating 6/4", sequence: ["1x6", "1x4"] }] }
+      },
       staggerJoints: true,
       userCanToggleStagger: true,
       spanSections: 2,
@@ -1383,7 +1462,8 @@ const DEFAULT_CONFIG = {
         spanSections: 2,
         userCanToggle: true,
         userCanChangeDimension: false
-      }
+      },
+      designerCuts: []
     },
     bundles: [],
     bundleMode: "customOnly",
@@ -1408,8 +1488,9 @@ const DEFAULT_CONFIG = {
       { id: "gateReinforcement", label: "Gate Post Reinforcement", dimension: "2x6", length: 8, quantity: 1, required: true }
     ],
     postInstallation: {
-      wood: { methods: { gravel: { enabled: true, costPerPost: 15, label: "Gravel" }, expansionFoam: { enabled: true, costPerPost: 25, label: "Expansion Foam" } }, default: "gravel", userCanChoose: true },
-      chainlink: { methods: { concrete: { enabled: true, costPerPost: 20, label: "Concrete" }, expansionFoam: { enabled: true, costPerPost: 25, label: "Expansion Foam" } }, default: "concrete", userCanChoose: true },
+      wood: { methods: { directDriven: { enabled: true, costPerPost: 0, label: "Direct Driven" }, gravel: { enabled: true, costPerPost: 15, label: "Gravel" }, expansionFoam: { enabled: true, costPerPost: 25, label: "Expansion Foam" } }, default: "directDriven", userCanChoose: true },
+      chainlink: { methods: { directDriven: { enabled: true, costPerPost: 0, label: "Direct Driven" }, concrete: { enabled: true, costPerPost: 20, label: "Concrete" }, expansionFoam: { enabled: true, costPerPost: 25, label: "Expansion Foam" } }, default: "directDriven", userCanChoose: true },
+      weldedWire: { methods: { directDriven: { enabled: true, costPerPost: 0, label: "Direct Driven" }, concrete: { enabled: true, costPerPost: 20, label: "Concrete" }, expansionFoam: { enabled: true, costPerPost: 25, label: "Expansion Foam" } }, default: "directDriven", userCanChoose: true },
       mudRemoval: { enabled: false, costPerPost: 10, userCanToggle: true }
     }
   },
@@ -1699,29 +1780,54 @@ function populateAll() {
   const pi = (config.woodBuild && config.woodBuild.postInstallation) || {};
   const piW = pi.wood || {};
   const piWm = piW.methods || {};
+  const piWDriven = piWm.directDriven || {};
   const piWGravel = piWm.gravel || {};
   const piWFoam = piWm.expansionFoam || {};
+  document.getElementById('cfg-pi-wood-driven-enabled').checked = piWDriven.enabled !== false;
+  setVal('cfg-pi-wood-driven-cost', piWDriven.costPerPost || 0);
+  setVal('cfg-pi-wood-driven-label', piWDriven.label || 'Direct Driven');
   document.getElementById('cfg-pi-wood-gravel-enabled').checked = piWGravel.enabled !== false;
   setVal('cfg-pi-wood-gravel-cost', piWGravel.costPerPost || 0);
   setVal('cfg-pi-wood-gravel-label', piWGravel.label || 'Gravel');
   document.getElementById('cfg-pi-wood-foam-enabled').checked = piWFoam.enabled !== false;
   setVal('cfg-pi-wood-foam-cost', piWFoam.costPerPost || 0);
   setVal('cfg-pi-wood-foam-label', piWFoam.label || 'Expansion Foam');
-  document.getElementById('cfg-pi-wood-default').value = piW.default || 'gravel';
+  document.getElementById('cfg-pi-wood-default').value = piW.default || 'directDriven';
   document.getElementById('cfg-pi-wood-userCanChoose').checked = piW.userCanChoose !== false;
 
   const piCL = pi.chainlink || {};
   const piCLm = piCL.methods || {};
+  const piCLDriven = piCLm.directDriven || {};
   const piCLConcrete = piCLm.concrete || {};
   const piCLFoam = piCLm.expansionFoam || {};
+  document.getElementById('cfg-pi-cl-driven-enabled').checked = piCLDriven.enabled !== false;
+  setVal('cfg-pi-cl-driven-cost', piCLDriven.costPerPost || 0);
+  setVal('cfg-pi-cl-driven-label', piCLDriven.label || 'Direct Driven');
   document.getElementById('cfg-pi-cl-concrete-enabled').checked = piCLConcrete.enabled !== false;
   setVal('cfg-pi-cl-concrete-cost', piCLConcrete.costPerPost || 0);
   setVal('cfg-pi-cl-concrete-label', piCLConcrete.label || 'Concrete');
   document.getElementById('cfg-pi-cl-foam-enabled').checked = piCLFoam.enabled !== false;
   setVal('cfg-pi-cl-foam-cost', piCLFoam.costPerPost || 0);
   setVal('cfg-pi-cl-foam-label', piCLFoam.label || 'Expansion Foam');
-  document.getElementById('cfg-pi-cl-default').value = piCL.default || 'concrete';
+  document.getElementById('cfg-pi-cl-default').value = piCL.default || 'directDriven';
   document.getElementById('cfg-pi-cl-userCanChoose').checked = piCL.userCanChoose !== false;
+
+  const piWW = pi.weldedWire || {};
+  const piWWm = piWW.methods || {};
+  const piWWDriven = piWWm.directDriven || {};
+  const piWWConcrete = piWWm.concrete || {};
+  const piWWFoam = piWWm.expansionFoam || {};
+  document.getElementById('cfg-pi-ww-driven-enabled').checked = piWWDriven.enabled !== false;
+  setVal('cfg-pi-ww-driven-cost', piWWDriven.costPerPost || 0);
+  setVal('cfg-pi-ww-driven-label', piWWDriven.label || 'Direct Driven');
+  document.getElementById('cfg-pi-ww-concrete-enabled').checked = piWWConcrete.enabled !== false;
+  setVal('cfg-pi-ww-concrete-cost', piWWConcrete.costPerPost || 0);
+  setVal('cfg-pi-ww-concrete-label', piWWConcrete.label || 'Concrete');
+  document.getElementById('cfg-pi-ww-foam-enabled').checked = piWWFoam.enabled !== false;
+  setVal('cfg-pi-ww-foam-cost', piWWFoam.costPerPost || 0);
+  setVal('cfg-pi-ww-foam-label', piWWFoam.label || 'Expansion Foam');
+  document.getElementById('cfg-pi-ww-default').value = piWW.default || 'directDriven';
+  document.getElementById('cfg-pi-ww-userCanChoose').checked = piWW.userCanChoose !== false;
 
   const piMud = pi.mudRemoval || {};
   document.getElementById('cfg-pi-mud-enabled').checked = !!piMud.enabled;
@@ -1922,6 +2028,11 @@ function collectAll() {
   config.woodBuild.postInstallation = {
     wood: {
       methods: {
+        directDriven: {
+          enabled: document.getElementById('cfg-pi-wood-driven-enabled').checked,
+          costPerPost: getNum('cfg-pi-wood-driven-cost'),
+          label: getVal('cfg-pi-wood-driven-label') || 'Direct Driven'
+        },
         gravel: {
           enabled: document.getElementById('cfg-pi-wood-gravel-enabled').checked,
           costPerPost: getNum('cfg-pi-wood-gravel-cost'),
@@ -1938,6 +2049,11 @@ function collectAll() {
     },
     chainlink: {
       methods: {
+        directDriven: {
+          enabled: document.getElementById('cfg-pi-cl-driven-enabled').checked,
+          costPerPost: getNum('cfg-pi-cl-driven-cost'),
+          label: getVal('cfg-pi-cl-driven-label') || 'Direct Driven'
+        },
         concrete: {
           enabled: document.getElementById('cfg-pi-cl-concrete-enabled').checked,
           costPerPost: getNum('cfg-pi-cl-concrete-cost'),
@@ -1951,6 +2067,27 @@ function collectAll() {
       },
       default: document.getElementById('cfg-pi-cl-default').value,
       userCanChoose: document.getElementById('cfg-pi-cl-userCanChoose').checked
+    },
+    weldedWire: {
+      methods: {
+        directDriven: {
+          enabled: document.getElementById('cfg-pi-ww-driven-enabled').checked,
+          costPerPost: getNum('cfg-pi-ww-driven-cost'),
+          label: getVal('cfg-pi-ww-driven-label') || 'Direct Driven'
+        },
+        concrete: {
+          enabled: document.getElementById('cfg-pi-ww-concrete-enabled').checked,
+          costPerPost: getNum('cfg-pi-ww-concrete-cost'),
+          label: getVal('cfg-pi-ww-concrete-label') || 'Concrete'
+        },
+        expansionFoam: {
+          enabled: document.getElementById('cfg-pi-ww-foam-enabled').checked,
+          costPerPost: getNum('cfg-pi-ww-foam-cost'),
+          label: getVal('cfg-pi-ww-foam-label') || 'Expansion Foam'
+        }
+      },
+      default: document.getElementById('cfg-pi-ww-default').value,
+      userCanChoose: document.getElementById('cfg-pi-ww-userCanChoose').checked
     },
     mudRemoval: {
       enabled: document.getElementById('cfg-pi-mud-enabled').checked,
@@ -2238,22 +2375,30 @@ function showWoodBuildTab(tab) {
 function getWoodBuild() {
   if (!config.woodBuild) {
     config.woodBuild = {
-      configVersion: 2,
+      configVersion: 3,
       vertical: {
-        rails: { top: { dimension: "2x6", dimensionOptions: ["2x4","2x6","2x8"] }, middle: { dimension: "2x4", dimensionOptions: ["2x4","2x6","2x8"] }, bottom: { dimension: "2x4", dimensionOptions: ["2x4","2x6","2x8"] }, defaultRailCount: 3, allow2Rail: true, spanSections: 2, spanOptions: [1,2], userCanChangeRailDimension: true, userCanChangeSpan: false },
+        frame: { attachmentMethods: ["oneFace", "insideToInside"], default: "oneFace", bracketCostPer: 3.50, userCanChooseAttachment: true, spanOptions: [1,2], defaultSpan: 2, userCanChooseSpan: false },
+        infillStyle: { available: ["standard", "friendlyNeighbor", "picketGap"], default: "standard", picketGap: { options: [0.5, 1.0, 1.5, 2.0], default: 1.0 }, userCanChooseStyle: true },
+        rails: { top: { dimension: "2x6", dimensionOptions: ["2x4","2x6","2x8"] }, middle: { dimension: "2x4", dimensionOptions: ["2x4","2x6","2x8"] }, bottom: { dimension: "2x4", dimensionOptions: ["2x4","2x6","2x8"] }, defaultRailCount: 3, allow2Rail: true, userCanChangeRailDimension: true },
         pickets: { dimension: "1x6", dimensionOptions: ["1x4","1x6"], userCanChangeDimension: true },
         trimBoards: { top: { enabled: false, dimension: "1x4", dimensionOptions: ["1x4","1x6","5/4x6"] }, bottom: { enabled: false, dimension: "1x4", dimensionOptions: ["1x4","1x6","5/4x6"] }, userCanSelect: true },
         topCap: { enabled: true, dimension: "2x4", dimensionOptions: ["2x4","2x6"], spanSections: 2, userCanToggle: true, userCanChangeDimension: false },
         designerCuts: []
       },
       horizontal: {
-        picketTypes: [{ id: "hz-1x6", dimension: "1x6", label: "1x6 Board" }],
-        patterns: [{ id: "standard-1x6", label: "Standard 1x6", isDefault: true, rows: [{ picketTypeId: "hz-1x6", repeat: true }] }],
-        defaultPatternId: "standard-1x6", userCanChangePattern: true,
+        boardMaterial: { dimensionOptions: ["1x4","1x6"], defaultDimension: "1x6", userCanChangeDimension: true },
+        designOptions: {
+          available: ["gapless", "gapSpacing", "boardOnBoard", "mixedSizing"],
+          default: "gapless",
+          gapSpacing: { options: [0.25, 0.5, 0.75, 1.0], default: 0.5 },
+          boardOnBoard: { overlapInches: 1.5 },
+          mixedSizing: { configs: [{ id: "alt-6-4", label: "Alternating 6/4", sequence: ["1x6", "1x4"] }] }
+        },
         staggerJoints: true, userCanToggleStagger: true,
         spanSections: 2, spanOptions: [1,2], userCanChangeSpan: false,
         centerSupport: { enabled: true, dimension: "2x4", dimensionOptions: ["2x4","2x6"], conditionMinWidth: 4, userCanChangeDimension: false },
-        topCap: { enabled: true, dimension: "2x4", dimensionOptions: ["2x4","2x6"], spanSections: 2, userCanToggle: true, userCanChangeDimension: false }
+        topCap: { enabled: true, dimension: "2x4", dimensionOptions: ["2x4","2x6"], spanSections: 2, userCanToggle: true, userCanChangeDimension: false },
+        designerCuts: []
       },
       bundles: [],
       bundleMode: "customOnly",
@@ -2261,18 +2406,28 @@ function getWoodBuild() {
       gatePostMaterials: []
     };
   }
-  // Upgrade V1 configs that had sectionMaterials
-  if (!config.woodBuild.configVersion || config.woodBuild.configVersion < 2) {
-    config.woodBuild.configVersion = 2;
-    if (!config.woodBuild.vertical) config.woodBuild.vertical = getWoodBuild.__v2defaults().vertical;
-    if (!config.woodBuild.horizontal) config.woodBuild.horizontal = getWoodBuild.__v2defaults().horizontal;
+  // Upgrade legacy V1/V2 configs
+  if (!config.woodBuild.configVersion || config.woodBuild.configVersion < 3) {
+    config.woodBuild.configVersion = 3;
+    var defaults = getWoodBuild.__v3defaults();
+    if (!config.woodBuild.vertical) config.woodBuild.vertical = defaults.vertical;
+    if (!config.woodBuild.horizontal) config.woodBuild.horizontal = defaults.horizontal;
+    // Migrate vertical: add frame and infillStyle if missing
+    if (!config.woodBuild.vertical.frame) config.woodBuild.vertical.frame = defaults.vertical.frame;
+    if (!config.woodBuild.vertical.infillStyle) config.woodBuild.vertical.infillStyle = defaults.vertical.infillStyle;
+    // Migrate horizontal: remove old pattern fields, add boardMaterial/designOptions
+    var h = config.woodBuild.horizontal;
+    delete h.picketTypes; delete h.patterns; delete h.defaultPatternId; delete h.userCanChangePattern;
+    if (!h.boardMaterial) h.boardMaterial = defaults.horizontal.boardMaterial;
+    if (!h.designOptions) h.designOptions = defaults.horizontal.designOptions;
+    if (!h.designerCuts) h.designerCuts = [];
     if (!config.woodBuild.bundles) config.woodBuild.bundles = [];
     if (!config.woodBuild.bundleMode) config.woodBuild.bundleMode = "customOnly";
   }
   return config.woodBuild;
 }
-getWoodBuild.__v2defaults = function() {
-  return JSON.parse(JSON.stringify(DEFAULT_CONFIG.woodBuild));
+getWoodBuild.__v3defaults = function() {
+  return JSON.parse(JSON.stringify((DEFAULT_CONFIG && DEFAULT_CONFIG.woodBuild) || config.woodBuild));
 };
 
 // -- Dimension options helpers

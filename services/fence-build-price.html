@@ -54,38 +54,38 @@
     <link rel="stylesheet" href="../service-page.css">
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <style>
-        .configurator { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 72px); margin-top: 72px; }
-        .config-panel { background: var(--white); border-right: 1px solid var(--gray-100); padding: 24px 20px 100px; overflow-y: auto; max-height: calc(100vh - 72px); position: sticky; top: 72px; }
-        .config-panel-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: var(--black); margin-bottom: 2px; }
-        .config-panel-subtitle { font-size: 12px; color: var(--gray-400); margin-bottom: 16px; }
-        .config-section { margin-bottom: 16px; }
-        .config-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); margin-bottom: 7px; display: block; }
-        .config-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+        .configurator { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 100px); margin-top: 100px; }
+        .config-panel { background: var(--white); border-right: 1px solid var(--gray-100); padding: 14px 16px 80px; overflow-y: auto; max-height: calc(100vh - 100px); position: sticky; top: 100px; }
+        .config-panel-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: var(--black); margin-bottom: 1px; }
+        .config-panel-subtitle { font-size: 11px; color: var(--gray-400); margin-bottom: 10px; }
+        .config-section { margin-bottom: 10px; }
+        .config-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); margin-bottom: 5px; display: block; }
+        .config-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
         .config-label-row .config-label { margin-bottom: 0; }
-        .config-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(85px, 1fr)); gap: 6px; }
-        .config-tile { background: var(--gray-50); border: 2px solid transparent; border-radius: var(--radius-sm); padding: 10px 6px 8px; text-align: center; cursor: pointer; transition: all var(--transition); font-size: 12px; font-weight: 500; color: var(--gray-500); line-height: 1.3; }
+        .config-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(75px, 1fr)); gap: 4px; }
+        .config-tile { background: var(--gray-50); border: 2px solid transparent; border-radius: var(--radius-sm); padding: 6px 4px 5px; text-align: center; cursor: pointer; transition: all var(--transition); font-size: 11px; font-weight: 500; color: var(--gray-500); line-height: 1.3; }
         .config-tile:hover { border-color: var(--gray-200); background: var(--white); }
         .config-tile.active { border-color: var(--accent); background: var(--accent-light); color: var(--black); }
-        .config-tile-icon { font-size: 18px; display: block; margin-bottom: 3px; }
-        .config-pills { display: flex; flex-wrap: wrap; gap: 5px; }
-        .config-pill { background: var(--gray-50); border: 1.5px solid transparent; border-radius: 980px; padding: 6px 13px; font-size: 12px; font-weight: 500; color: var(--gray-500); cursor: pointer; transition: all var(--transition); white-space: nowrap; }
+        .config-tile-icon { font-size: 14px; display: block; margin-bottom: 2px; }
+        .config-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+        .config-pill { background: var(--gray-50); border: 1.5px solid transparent; border-radius: 980px; padding: 4px 10px; font-size: 11px; font-weight: 500; color: var(--gray-500); cursor: pointer; transition: all var(--transition); white-space: nowrap; }
         .config-pill:hover { border-color: var(--gray-200); background: var(--white); }
         .config-pill.active { border-color: var(--accent); background: var(--accent-light); color: var(--black); }
         .config-toggle { display: flex; background: var(--gray-50); border-radius: var(--radius-sm); overflow: hidden; }
-        .config-toggle-btn { flex: 1; padding: 8px; font-size: 12px; font-weight: 500; color: var(--gray-400); background: transparent; border: none; cursor: pointer; transition: all var(--transition); text-align: center; }
+        .config-toggle-btn { flex: 1; padding: 5px; font-size: 11px; font-weight: 500; color: var(--gray-400); background: transparent; border: none; cursor: pointer; transition: all var(--transition); text-align: center; }
         .config-toggle-btn.active { background: var(--accent); color: var(--white); border-radius: var(--radius-sm); }
         .config-section[data-show-for] { display: none; }
         .config-section[data-show-for].visible { display: block; }
-        .config-divider { height: 1px; background: var(--gray-100); margin: 14px 0; }
-        .beta-banner { background: #FEF3C7; border: 1px solid #F59E0B; border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 16px; display: flex; gap: 8px; align-items: flex-start; }
-        .beta-badge { background: #F59E0B; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
-        .beta-text { font-size: 11px; color: #92400E; line-height: 1.45; margin: 0; }
+        .config-divider { height: 1px; background: var(--gray-100); margin: 8px 0; }
+        .beta-banner { background: #FEF3C7; border-bottom: 1px solid #F59E0B; padding: 5px 20px; display: flex; gap: 8px; align-items: center; justify-content: center; position: fixed; top: 72px; left: 0; right: 0; z-index: 90; }
+        .beta-badge { background: #F59E0B; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; }
+        .beta-text { font-size: 11px; color: #92400E; line-height: 1.3; margin: 0; }
 
         /* Fence Style Switcher */
-        .style-switcher { display: flex; gap: 5px; align-items: center; margin-bottom: 14px; }
-        .style-tab { flex: 1; padding: 8px 10px; border: 2px solid var(--gray-100); border-radius: var(--radius-sm); background: var(--gray-50); cursor: pointer; text-align: center; transition: all var(--transition); position: relative; }
-        .style-tab .style-tab-label { font-size: 12px; font-weight: 600; color: var(--gray-400); display: block; }
-        .style-tab .style-tab-type { font-size: 10px; color: var(--gray-300); margin-top: 2px; }
+        .style-switcher { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; }
+        .style-tab { flex: 1; padding: 5px 8px; border: 2px solid var(--gray-100); border-radius: var(--radius-sm); background: var(--gray-50); cursor: pointer; text-align: center; transition: all var(--transition); position: relative; }
+        .style-tab .style-tab-label { font-size: 11px; font-weight: 600; color: var(--gray-400); display: block; }
+        .style-tab .style-tab-type { font-size: 9px; color: var(--gray-300); margin-top: 1px; }
         .style-tab.active { border-color: var(--accent); background: var(--accent-light); }
         .style-tab.active .style-tab-label { color: var(--black); }
         .style-tab.active .style-tab-type { color: var(--gray-500); }
@@ -93,24 +93,24 @@
         .style-tab .style-tab-remove { position: absolute; top: 4px; right: 6px; width: 16px; height: 16px; border: none; background: none; color: var(--gray-300); cursor: pointer; font-size: 14px; line-height: 1; padding: 0; border-radius: 50%; transition: all var(--transition); display: none; }
         .style-tab .style-tab-remove:hover { color: #d44; background: #fee; }
         .style-tab:hover .style-tab-remove { display: block; }
-        .style-add-btn { width: 34px; height: 42px; border: 2px dashed var(--gray-200); border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--gray-300); font-size: 18px; transition: all var(--transition); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+        .style-add-btn { width: 28px; height: 32px; border: 2px dashed var(--gray-200); border-radius: var(--radius-sm); background: none; cursor: pointer; color: var(--gray-300); font-size: 16px; transition: all var(--transition); flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
         .style-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
         .style-add-btn.hidden { display: none; }
 
         /* Fence/Gate Lines List */
-        .fence-lines-list { display: flex; flex-direction: column; gap: 5px; }
-        .fence-line-item { display: flex; align-items: center; gap: 7px; padding: 7px 10px; background: var(--gray-50); border-radius: var(--radius-sm); border: 1.5px solid transparent; transition: all var(--transition); cursor: pointer; }
+        .fence-lines-list { display: flex; flex-direction: column; gap: 3px; }
+        .fence-line-item { display: flex; align-items: center; gap: 5px; padding: 5px 8px; background: var(--gray-50); border-radius: var(--radius-sm); border: 1.5px solid transparent; transition: all var(--transition); cursor: pointer; }
         .fence-line-item:hover { border-color: var(--gray-200); background: var(--white); }
         .fence-line-item.selected { border-color: var(--accent); background: var(--accent-light); }
-        .fence-line-color { width: 3px; height: 24px; border-radius: 2px; background: var(--accent); flex-shrink: 0; }
+        .fence-line-color { width: 3px; height: 20px; border-radius: 2px; background: var(--accent); flex-shrink: 0; }
         .fence-line-color.gate-color { background: #4a90d9; }
         .fence-line-info { flex: 1; min-width: 0; }
-        .fence-line-name { font-size: 12px; font-weight: 600; color: var(--black); line-height: 1.2; }
-        .fence-line-meta { font-size: 11px; color: var(--gray-400); }
-        .fence-line-input { width: 68px; padding: 5px 8px; font-size: 13px; font-weight: 600; color: var(--black); background: var(--white); border: 1.5px solid var(--gray-200); border-radius: 6px; text-align: right; font-family: inherit; transition: border-color var(--transition); }
+        .fence-line-name { font-size: 11px; font-weight: 600; color: var(--black); line-height: 1.2; }
+        .fence-line-meta { font-size: 10px; color: var(--gray-400); }
+        .fence-line-input { width: 60px; padding: 3px 6px; font-size: 12px; font-weight: 600; color: var(--black); background: var(--white); border: 1.5px solid var(--gray-200); border-radius: 6px; text-align: right; font-family: inherit; transition: border-color var(--transition); }
         .fence-line-input:focus { outline: none; border-color: var(--accent); }
-        .fence-line-unit { font-size: 12px; color: var(--gray-400); font-weight: 500; flex-shrink: 0; }
-        .fence-line-delete { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--gray-300); cursor: pointer; border-radius: 4px; transition: all var(--transition); flex-shrink: 0; }
+        .fence-line-unit { font-size: 11px; color: var(--gray-400); font-weight: 500; flex-shrink: 0; }
+        .fence-line-delete { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--gray-300); cursor: pointer; border-radius: 4px; transition: all var(--transition); flex-shrink: 0; }
         .fence-line-delete:hover { color: #d44; background: #fee; }
         .fence-lines-empty { font-size: 12px; color: var(--gray-400); text-align: center; padding: 12px 8px; background: var(--gray-50); border-radius: var(--radius-sm); line-height: 1.4; }
 
@@ -187,7 +187,7 @@
         .gate-dir-badge:hover { background: rgba(74,144,217,0.15); color: #4a90d9; }
 
         /* Canvas Area */
-        .config-canvas-area { background: var(--gray-50); display: flex; flex-direction: column; position: relative; }
+        .config-canvas-area { background: var(--gray-50); display: flex; flex-direction: column; position: relative; touch-action: none; }
         .canvas-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--white); border-bottom: 1px solid var(--gray-100); flex-shrink: 0; }
         .canvas-toolbar-left { display: flex; align-items: center; gap: 12px; }
         .canvas-toolbar-right { display: flex; align-items: center; gap: 8px; }
@@ -210,7 +210,7 @@
         #fenceCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
         /* Pricing Bar */
-        .pricing-bar { position: fixed; bottom: 0; left: 320px; right: 0; background: var(--black); color: var(--white); padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; z-index: 100; border-top: 1px solid var(--gray-700); }
+        .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; border-top: 1px solid var(--gray-700); }
         .pricing-summary { display: flex; align-items: center; gap: 32px; }
         .pricing-item { text-align: center; }
         .pricing-item-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; }
@@ -294,7 +294,7 @@
             background: rgba(0,0,0,0.1); pointer-events: auto;
         }
 
-        @media (max-width: 1024px) { .configurator { grid-template-columns: 280px 1fr; } .pricing-bar { left: 280px; } }
+        @media (max-width: 1024px) { .configurator { grid-template-columns: 260px 1fr; } .pricing-bar { left: 260px; } }
 
         /* Mobile: floating icon sidebar over canvas */
         @media (max-width: 768px) {
@@ -346,16 +346,17 @@
         </ul>
     </div>
 
+    <!-- Beta Banner -->
+    <div class="beta-banner">
+        <span class="beta-badge">BETA</span>
+        <p class="beta-text">This tool is in beta. Pricing is an estimate — submit your layout for a confirmed quote.</p>
+    </div>
+
     <!-- Configurator -->
     <div class="configurator">
         <aside class="config-panel">
             <h1 class="config-panel-title">Build & Price</h1>
             <p class="config-panel-subtitle">Design your fence and get an instant estimate.</p>
-
-            <div class="beta-banner">
-                <span class="beta-badge">BETA</span>
-                <p class="beta-text">This tool is in beta. Pricing shown is an estimate and may not be fully accurate. For a confirmed quote, submit your layout and selections and we'll reach out to verify accuracy.</p>
-            </div>
 
             <div id="styleSwitcher" class="style-switcher" style="display:none"></div>
 
@@ -4282,11 +4283,60 @@
         }
         document.getElementById('undoBtn').addEventListener('click', undoLast);
 
-        // Touch
-        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); const t = e.touches[0]; canvas.dispatchEvent(new MouseEvent('click', { clientX: t.clientX, clientY: t.clientY })); }, { passive: false });
-        let lastTouchDist = null;
-        canvas.addEventListener('touchmove', (e) => { if (e.touches.length === 2) { e.preventDefault(); const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY; const d = Math.sqrt(dx*dx+dy*dy); if (lastTouchDist !== null) { const r = canvas.getBoundingClientRect(); setZoom(state.zoom * d / lastTouchDist, (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left, (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top); } lastTouchDist = d; } }, { passive: false });
-        canvas.addEventListener('touchend', () => { lastTouchDist = null; });
+        // Touch — pinch-to-zoom + single-finger tap/pan
+        let lastTouchDist = null, touchPanning = false, touchPanStartX = 0, touchPanStartY = 0;
+        let touchStartTime = 0, touchStartX = 0, touchStartY = 0, touchMoved = false, touchIsPinch = false;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 2) {
+                touchIsPinch = true; lastTouchDist = null; touchPanning = false;
+                const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastTouchDist = Math.sqrt(dx*dx+dy*dy);
+            } else if (e.touches.length === 1) {
+                touchIsPinch = false; touchMoved = false;
+                touchStartTime = Date.now();
+                touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+                touchPanStartX = e.touches[0].clientX; touchPanStartY = e.touches[0].clientY;
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 2) {
+                touchIsPinch = true;
+                const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
+                const d = Math.sqrt(dx*dx+dy*dy);
+                if (lastTouchDist !== null) {
+                    const r = canvas.getBoundingClientRect();
+                    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+                    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+                    setZoom(state.zoom * d / lastTouchDist, cx, cy);
+                }
+                lastTouchDist = d;
+            } else if (e.touches.length === 1 && !touchIsPinch) {
+                const dx = e.touches[0].clientX - touchStartX, dy = e.touches[0].clientY - touchStartY;
+                if (Math.abs(dx) > 6 || Math.abs(dy) > 6) touchMoved = true;
+                if (touchMoved) {
+                    state.panX += e.touches[0].clientX - touchPanStartX;
+                    state.panY += e.touches[0].clientY - touchPanStartY;
+                    touchPanStartX = e.touches[0].clientX; touchPanStartY = e.touches[0].clientY;
+                    drawCanvas();
+                }
+            }
+        }, { passive: false });
+        canvas.addEventListener('touchend', (e) => {
+            if (!touchIsPinch && !touchMoved && e.changedTouches.length) {
+                const t = e.changedTouches[0];
+                canvas.dispatchEvent(new MouseEvent('click', { clientX: t.clientX, clientY: t.clientY }));
+            }
+            lastTouchDist = null; touchIsPinch = false; touchMoved = false; touchPanning = false;
+        });
+        // Trackpad pinch (Safari/Chrome gesturechange) for laptops
+        canvas.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+        canvas.addEventListener('gesturechange', (e) => {
+            e.preventDefault();
+            const r = canvas.getBoundingClientRect();
+            setZoom(state.zoom * e.scale, r.width / 2, r.height / 2);
+        }, { passive: false });
 
         // ============================================
         // MOBILE SIDEBAR

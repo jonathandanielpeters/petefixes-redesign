@@ -123,19 +123,31 @@
   },
 
   "woodBuild": {
-    "configVersion": 2,
+    "configVersion": 3,
 
     "vertical": {
+      "frame": {
+        "attachmentMethods": ["oneFace", "insideToInside"],
+        "default": "oneFace",
+        "bracketCostPer": 3.50,
+        "userCanChooseAttachment": true,
+        "spanOptions": [1, 2],
+        "defaultSpan": 2,
+        "userCanChooseSpan": false
+      },
+      "infillStyle": {
+        "available": ["standard", "friendlyNeighbor", "picketGap"],
+        "default": "standard",
+        "picketGap": { "options": [0.5, 1.0, 1.5, 2.0], "default": 1.0 },
+        "userCanChooseStyle": true
+      },
       "rails": {
         "top":    { "dimension": "2x6", "dimensionOptions": ["2x4", "2x6", "2x8"] },
         "middle": { "dimension": "2x4", "dimensionOptions": ["2x4", "2x6", "2x8"] },
         "bottom": { "dimension": "2x4", "dimensionOptions": ["2x4", "2x6", "2x8"] },
         "defaultRailCount": 3,
         "allow2Rail": true,
-        "spanSections": 2,
-        "spanOptions": [1, 2],
-        "userCanChangeRailDimension": true,
-        "userCanChangeSpan": false
+        "userCanChangeRailDimension": true
       },
       "pickets": {
         "dimension": "1x6",
@@ -159,29 +171,22 @@
     },
 
     "horizontal": {
-      "picketTypes": [
-        { "id": "hz-1x6", "dimension": "1x6", "label": "1×6 Board" },
-        { "id": "hz-1x4", "dimension": "1x4", "label": "1×4 Board" }
-      ],
-      "patterns": [
-        {
-          "id": "standard-1x6",
-          "label": "Standard 1×6",
-          "isDefault": true,
-          "rows": [ { "picketTypeId": "hz-1x6", "repeat": true } ]
-        },
-        {
-          "id": "mixed-6-4",
-          "label": "Mixed 1×6 / 1×4",
-          "rows": [
-            { "picketTypeId": "hz-1x6", "count": 2 },
-            { "picketTypeId": "hz-1x4", "count": 2 },
-            { "picketTypeId": "hz-1x6", "repeat": true }
+      "boardMaterial": {
+        "dimensionOptions": ["1x4", "1x6"],
+        "defaultDimension": "1x6",
+        "userCanChangeDimension": true
+      },
+      "designOptions": {
+        "available": ["gapless", "gapSpacing", "boardOnBoard", "mixedSizing"],
+        "default": "gapless",
+        "gapSpacing": { "options": [0.25, 0.5, 0.75, 1.0], "default": 0.5 },
+        "boardOnBoard": { "overlapInches": 1.5 },
+        "mixedSizing": {
+          "configs": [
+            { "id": "alt-6-4", "label": "Alternating 6/4", "sequence": ["1x6", "1x4"] }
           ]
         }
-      ],
-      "defaultPatternId": "standard-1x6",
-      "userCanChangePattern": true,
+      },
       "staggerJoints": true,
       "userCanToggleStagger": true,
       "spanSections": 2,
@@ -201,7 +206,8 @@
         "spanSections": 2,
         "userCanToggle": true,
         "userCanChangeDimension": false
-      }
+      },
+      "designerCuts": []
     },
 
     "bundles": [],
