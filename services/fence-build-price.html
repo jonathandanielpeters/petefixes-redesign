@@ -209,6 +209,38 @@
         .canvas-wrapper { flex: 1; position: relative; overflow: hidden; }
         #fenceCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
+        /* Map Search Overlay */
+        .map-search-overlay {
+            position: absolute; inset: 0; background: rgba(250,250,253,0.92); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center; z-index: 10;
+        }
+        .map-search-overlay.visible { display: flex; }
+        .map-search-card {
+            background: var(--white); border: 1px solid var(--gray-100); border-radius: 16px;
+            padding: 32px 28px; max-width: 420px; width: 90%; text-align: center;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+        }
+        .map-search-icon { font-size: 32px; margin-bottom: 8px; }
+        .map-search-title { font-size: 17px; font-weight: 700; color: var(--black); margin-bottom: 6px; }
+        .map-search-desc { font-size: 12px; color: var(--gray-400); line-height: 1.5; margin-bottom: 16px; }
+        .map-search-row { display: flex; gap: 8px; }
+        .map-search-input {
+            flex: 1; padding: 10px 14px; font-size: 13px; border: 1.5px solid var(--gray-200);
+            border-radius: 10px; font-family: inherit; color: var(--black); background: var(--white);
+            transition: border-color 0.2s;
+        }
+        .map-search-input:focus { outline: none; border-color: var(--accent); }
+        .map-search-btn {
+            padding: 10px 20px; font-size: 13px; font-weight: 600; background: var(--accent);
+            color: var(--white); border: none; border-radius: 10px; cursor: pointer;
+            transition: background 0.2s; white-space: nowrap;
+        }
+        .map-search-btn:hover { background: var(--accent-hover); }
+        .map-search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .map-search-status { font-size: 11px; color: var(--gray-400); margin-top: 10px; min-height: 16px; }
+        .map-search-status.error { color: #d44; }
+        .map-addr-btn .map-addr-label { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         /* Pricing Bar */
         .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; border-top: 1px solid var(--gray-700); }
         .pricing-summary { display: flex; align-items: center; gap: 32px; }
@@ -646,6 +678,10 @@
                         <button class="canvas-mode-btn active" data-mode="grid">Grid</button>
                         <button class="canvas-mode-btn" data-mode="map">Map</button>
                     </div>
+                    <button class="canvas-tool-btn map-addr-btn" id="mapAddrBtn" style="display:none" title="Change address">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <span class="map-addr-label" id="mapAddrLabel">Address</span>
+                    </button>
                     <button class="canvas-tool-btn active" id="drawTool" data-tool="draw">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
                         Fence
@@ -678,6 +714,18 @@
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="fenceCanvas"></canvas>
+                <div class="map-search-overlay" id="mapSearchOverlay">
+                    <div class="map-search-card">
+                        <div class="map-search-icon">📍</div>
+                        <h3 class="map-search-title">Enter Your Address</h3>
+                        <p class="map-search-desc">Type your property address to load satellite imagery behind your fence drawing.</p>
+                        <div class="map-search-row">
+                            <input type="text" class="map-search-input" id="mapAddressInput" placeholder="123 Main St, Winnipeg, MB" autocomplete="street-address">
+                            <button class="map-search-btn" id="mapSearchBtn">Search</button>
+                        </div>
+                        <p class="map-search-status" id="mapSearchStatus"></p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -3514,7 +3562,186 @@
             }
         }
 
-        function drawCanvas() { drawGrid(); drawFenceLines(); }
+        // ============================================
+        // MAP MODE — satellite tile rendering
+        // ============================================
+        let canvasMode = 'grid'; // 'grid' or 'map'
+        const mapState = { lat: null, lng: null, address: '' };
+        const tileCache = {};
+        const TILE_SIZE = 256;
+        const ESRI_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+        // Web Mercator helpers
+        function lngToTileX(lng, z) { return ((lng + 180) / 360) * Math.pow(2, z); }
+        function latToTileY(lat, z) { const r = Math.PI / 180 * lat; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z); }
+        function metersPerPixel(lat, z) { return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z); }
+
+        // Convert 1 foot = 0.3048 metres; BASE_GRID_SPACING pixels per foot at zoom=1
+        // So at canvas zoom=1, 1 pixel = 1/BASE_GRID_SPACING ft = 0.3048/BASE_GRID_SPACING m
+        // We need tile zoom where metres-per-tile-pixel ≈ metres-per-canvas-pixel
+        function bestTileZoom(lat, canvasZoom) {
+            const canvasMetresPerPx = 0.3048 / (BASE_GRID_SPACING * canvasZoom);
+            // Find z where metersPerPixel(lat, z) is closest
+            for (let z = 21; z >= 1; z--) {
+                if (metersPerPixel(lat, z) <= canvasMetresPerPx * 1.5) return z;
+            }
+            return 1;
+        }
+
+        function getTile(z, x, y) {
+            const key = z + '/' + y + '/' + x;
+            if (tileCache[key]) return tileCache[key];
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = ESRI_TILE_URL.replace('{z}', z).replace('{y}', y).replace('{x}', x);
+            img.onload = () => { tileCache[key].loaded = true; drawCanvas(); };
+            img.onerror = () => { tileCache[key].error = true; };
+            tileCache[key] = { img, loaded: false, error: false };
+            return tileCache[key];
+        }
+
+        function drawMapTiles() {
+            ctx.clearRect(0, 0, canvasW, canvasH);
+            ctx.fillStyle = '#2d2d2d'; ctx.fillRect(0, 0, canvasW, canvasH);
+
+            if (!mapState.lat || !mapState.lng) return;
+
+            const z = bestTileZoom(mapState.lat, state.zoom);
+            const mpp = metersPerPixel(mapState.lat, z); // metres per tile pixel
+            const canvasMpp = 0.3048 / (BASE_GRID_SPACING * state.zoom); // metres per canvas pixel
+            const scale = canvasMpp / mpp; // tile pixels per canvas pixel → draw each tile pixel as `1/scale` canvas pixels
+
+            // Where is world origin (0,0) on the map? We treat world (0,0) as the searched lat/lng
+            const centerTileX = lngToTileX(mapState.lng, z);
+            const centerTileY = latToTileY(mapState.lat, z);
+
+            // Canvas pixel for world origin
+            const originScreenX = state.panX;
+            const originScreenY = state.panY;
+
+            // Tile pixel offset from tile grid for the center point
+            const tilePixelSize = TILE_SIZE / scale; // size of one tile in canvas pixels
+
+            // Offset of the center within its tile
+            const centerFracX = centerTileX - Math.floor(centerTileX);
+            const centerFracY = centerTileY - Math.floor(centerTileY);
+
+            // Canvas position of the top-left corner of the center tile
+            const centerTileScreenX = originScreenX - centerFracX * tilePixelSize;
+            const centerTileScreenY = originScreenY - centerFracY * tilePixelSize;
+            const baseTileX = Math.floor(centerTileX);
+            const baseTileY = Math.floor(centerTileY);
+
+            // How many tiles to draw in each direction to fill the canvas
+            const tilesLeft = Math.ceil((centerTileScreenX) / tilePixelSize) + 1;
+            const tilesRight = Math.ceil((canvasW - centerTileScreenX) / tilePixelSize) + 1;
+            const tilesUp = Math.ceil((centerTileScreenY) / tilePixelSize) + 1;
+            const tilesDown = Math.ceil((canvasH - centerTileScreenY) / tilePixelSize) + 1;
+
+            const maxTile = Math.pow(2, z);
+
+            for (let dy = -tilesUp; dy < tilesDown; dy++) {
+                for (let dx = -tilesLeft; dx < tilesRight; dx++) {
+                    const tx = baseTileX + dx;
+                    const ty = baseTileY + dy;
+                    if (tx < 0 || tx >= maxTile || ty < 0 || ty >= maxTile) continue;
+                    const screenX = centerTileScreenX + dx * tilePixelSize;
+                    const screenY = centerTileScreenY + dy * tilePixelSize;
+                    // Skip tiles completely off-screen
+                    if (screenX + tilePixelSize < 0 || screenX > canvasW || screenY + tilePixelSize < 0 || screenY > canvasH) continue;
+                    const tile = getTile(z, tx, ty);
+                    if (tile.loaded) {
+                        ctx.drawImage(tile.img, screenX, screenY, tilePixelSize + 0.5, tilePixelSize + 0.5);
+                    }
+                }
+            }
+
+            // Semi-transparent grid overlay in map mode
+            const gs = gridSpacing();
+            if (gs >= 15) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.5;
+                const sx = Math.floor(-state.panX / gs) * gs + (state.panX % gs);
+                const sy = Math.floor(-state.panY / gs) * gs + (state.panY % gs);
+                for (let x = sx; x <= canvasW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
+                for (let y = sy; y <= canvasH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
+            }
+
+            // Scale bar (white for dark background)
+            ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '11px Inter, sans-serif';
+            const sl = Math.max(1, Math.round(10 / state.zoom));
+            const sp = sl * BASE_GRID_SPACING * state.zoom;
+            ctx.fillText(sl + ' ft', 16, canvasH - 22);
+            ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(16, canvasH - 16); ctx.lineTo(16 + sp, canvasH - 16); ctx.stroke();
+        }
+
+        // Mode toggle
+        const mapAddrBtn = document.getElementById('mapAddrBtn');
+        const mapAddrLabel = document.getElementById('mapAddrLabel');
+        function updateMapUI() {
+            mapAddrBtn.style.display = canvasMode === 'map' ? '' : 'none';
+            if (mapState.address) {
+                const short = mapState.address.split(',').slice(0, 2).join(',');
+                mapAddrLabel.textContent = short;
+            }
+        }
+        document.querySelectorAll('.canvas-mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const mode = btn.dataset.mode;
+                if (mode === canvasMode) return;
+                document.querySelectorAll('.canvas-mode-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                canvasMode = mode;
+                if (mode === 'map' && !mapState.lat) {
+                    document.getElementById('mapSearchOverlay').classList.add('visible');
+                    document.getElementById('mapAddressInput').focus();
+                } else {
+                    document.getElementById('mapSearchOverlay').classList.remove('visible');
+                }
+                updateMapUI();
+                drawCanvas();
+            });
+        });
+        mapAddrBtn.addEventListener('click', () => {
+            document.getElementById('mapSearchOverlay').classList.add('visible');
+            document.getElementById('mapAddressInput').focus();
+        });
+
+        // Address search
+        async function searchAddress() {
+            const input = document.getElementById('mapAddressInput');
+            const status = document.getElementById('mapSearchStatus');
+            const btn = document.getElementById('mapSearchBtn');
+            const addr = input.value.trim();
+            if (!addr) { status.textContent = 'Please enter an address.'; status.className = 'map-search-status error'; return; }
+            btn.disabled = true; status.textContent = 'Searching…'; status.className = 'map-search-status';
+            try {
+                const res = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(addr) + '&format=json&limit=1', {
+                    headers: { 'User-Agent': 'PeteFixesFenceTool/1.0' }
+                });
+                const data = await res.json();
+                if (!data.length) { status.textContent = 'Address not found. Try adding city/province.'; status.className = 'map-search-status error'; btn.disabled = false; return; }
+                mapState.lat = parseFloat(data[0].lat);
+                mapState.lng = parseFloat(data[0].lon);
+                mapState.address = data[0].display_name;
+                status.textContent = '';
+                document.getElementById('mapSearchOverlay').classList.remove('visible');
+                // Center the map: world origin (0,0) maps to the address
+                state.panX = canvasW / 2;
+                state.panY = canvasH / 2;
+                state.zoom = 1;
+                updateZoomLabel();
+                updateMapUI();
+                drawCanvas();
+            } catch (err) {
+                status.textContent = 'Search failed. Check your connection.'; status.className = 'map-search-status error';
+            }
+            btn.disabled = false;
+        }
+        document.getElementById('mapSearchBtn').addEventListener('click', searchAddress);
+        document.getElementById('mapAddressInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchAddress(); });
+
+        function drawCanvas() { (canvasMode === 'map' ? drawMapTiles : drawGrid)(); drawFenceLines(); }
 
         // ============================================
         // HELPERS
