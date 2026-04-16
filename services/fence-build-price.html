@@ -50,7 +50,7 @@
     }
     </script>
 
-    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="../styles.css?v=5">
     <link rel="stylesheet" href="../service-page.css">
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
     <style>
@@ -387,10 +387,11 @@
                 </div>
             </div>
             <div class="config-section" data-show-for="chainlink" id="chainlinkPostSizeSection">
-                <label class="config-label">Post Size</label>
+                <label class="config-label">Corner & End Post Size</label>
+                <span class="config-hint" style="font-size:11px;color:var(--gray-400);display:block;margin-top:-4px;margin-bottom:6px">Excludes line posts</span>
                 <div class="config-pills" id="chainlinkPostSizePills">
-                    <div class="config-pill active" data-clpostsize="2-3/8">2 3/8"</div>
-                    <div class="config-pill" data-clpostsize="1-7/8">1 7/8"</div>
+                    <div class="config-pill" data-clpostsize="2-3/8">2 3/8"</div>
+                    <div class="config-pill active" data-clpostsize="1-7/8">1 7/8"</div>
                 </div>
             </div>
             <div class="config-section" data-show-for="wood" id="woodTypeSection">
@@ -851,7 +852,7 @@
         // ============================================
         function createDefaultStyle() {
             return {
-                fenceType: 'chainlink', height: 6, chainlinkColor: 'galvanized', chainlinkPostSize: '2-3/8',
+                fenceType: 'chainlink', height: 6, chainlinkColor: 'galvanized', chainlinkPostSize: '1-7/8',
                 woodBuildType: 'full', postSpacing: 8,
                 woodType: 'pressure-treated', boardSize: '1x6', orientation: 'vertical', boardSpan: '8', ornamentalColor: 'black',
                 weldedWireColor: 'galvanized',
@@ -896,7 +897,7 @@
             fenceType: { get() { return activeStyle().fenceType; }, set(v) { activeStyle().fenceType = v; } },
             height: { get() { return activeStyle().height; }, set(v) { activeStyle().height = v; } },
             chainlinkColor: { get() { return activeStyle().chainlinkColor; }, set(v) { activeStyle().chainlinkColor = v; } },
-            chainlinkPostSize: { get() { return activeStyle().chainlinkPostSize || '2-3/8'; }, set(v) { activeStyle().chainlinkPostSize = v; } },
+            chainlinkPostSize: { get() { return activeStyle().chainlinkPostSize || '1-7/8'; }, set(v) { activeStyle().chainlinkPostSize = v; } },
             woodBuildType: { get() { return activeStyle().woodBuildType || 'full'; }, set(v) { activeStyle().woodBuildType = v; } },
             postSpacing: { get() { return activeStyle().postSpacing || 8; }, set(v) { activeStyle().postSpacing = parseInt(v) || 8; } },
             woodType: { get() { return activeStyle().woodType; }, set(v) { activeStyle().woodType = v; } },
@@ -1172,8 +1173,9 @@
                     { id: 'gateReinforcement', label: 'Gate Post Reinforcement', dimension: '2x6', length: 8, quantity: 1, required: true }
                 ],
                 postInstallation: {
-                    wood: { methods: { gravel: { enabled: true, costPerPost: 15, label: 'Gravel' }, expansionFoam: { enabled: true, costPerPost: 25, label: 'Expansion Foam' } }, default: 'gravel', userCanChoose: true },
-                    chainlink: { methods: { concrete: { enabled: true, costPerPost: 20, label: 'Concrete' }, expansionFoam: { enabled: true, costPerPost: 25, label: 'Expansion Foam' } }, default: 'concrete', userCanChoose: true },
+                    wood: { methods: { directDriven: { enabled: true, costPerPost: 0, label: 'Direct Driven' }, gravel: { enabled: true, costPerPost: 15, label: 'Gravel' }, expansionFoam: { enabled: true, costPerPost: 25, label: 'Expansion Foam' } }, default: 'directDriven', userCanChoose: true },
+                    chainlink: { methods: { directDriven: { enabled: true, costPerPost: 0, label: 'Direct Driven' }, concrete: { enabled: true, costPerPost: 20, label: 'Concrete' }, expansionFoam: { enabled: true, costPerPost: 25, label: 'Expansion Foam' } }, default: 'directDriven', userCanChoose: true },
+                    weldedWire: { methods: { directDriven: { enabled: true, costPerPost: 0, label: 'Direct Driven' }, concrete: { enabled: true, costPerPost: 20, label: 'Concrete' }, expansionFoam: { enabled: true, costPerPost: 25, label: 'Expansion Foam' } }, default: 'directDriven', userCanChoose: true },
                     mudRemoval: { enabled: false, costPerPost: 10, userCanToggle: true }
                 }
             },
@@ -1442,12 +1444,12 @@
 
         // Stock length rules — restrict which board lengths the optimizer can choose
         // Rails & top cap: 8ft and 16ft only
-        // Horizontal boards: 8ft only (cut to section width)
+        // Horizontal boards: 8ft for single-section cuts, 16ft for staggered 2-section spans
         // Vertical pickets: exclude 10, 12, 20
         var BOARD_LENGTH_RULES = {
             rail:       [8, 16],
             topCap:     [8, 16],
-            hzBoard:    [8],
+            hzBoard:    [8, 16],
             picket:     [4, 5, 6, 8, 16]
         };
 
@@ -1506,7 +1508,7 @@
                 var effectiveW = wIn;
                 // Picket gap: add gap between boards
                 if (item._infillStyle === 'picketGap') {
-                    var pgGap = style.picketGapSpacing || 1.0;
+                    var pgGap = parseFloat(style.picketGapSpacing) || 1.0;
                     effectiveW = wIn + pgGap;
                 }
                 return Math.ceil((sw * 12) / effectiveW) * sections;
@@ -1564,12 +1566,13 @@
                 var qty = Math.ceil(heightIn / boardW);
                 results.push({ dimension: dim, qty: qty });
             } else if (designOpt === 'gapSpacing') {
-                var gapIn = style.hzGapSpacing || (hz.designOptions.gapSpacing && hz.designOptions.gapSpacing.default) || 0.5;
+                var gapIn = parseFloat(style.hzGapSpacing) || (hz.designOptions.gapSpacing && hz.designOptions.gapSpacing.default) || 0.5;
                 var qty = Math.ceil(heightIn / (boardW + gapIn));
                 results.push({ dimension: dim, qty: qty });
             } else if (designOpt === 'boardOnBoard') {
-                var overlap = (hz.designOptions.boardOnBoard && hz.designOptions.boardOnBoard.overlapInches) || 1.5;
+                var overlap = parseFloat(hz.designOptions.boardOnBoard && hz.designOptions.boardOnBoard.overlapInches) || 1.5;
                 var effectiveW = boardW - overlap;
+                if (effectiveW <= 0) effectiveW = boardW / 2;
                 var qty = Math.ceil(heightIn / effectiveW);
                 results.push({ dimension: dim, qty: qty, doubleSided: true });
             } else if (designOpt === 'mixedSizing') {
@@ -1817,7 +1820,7 @@
             function getPostInstallCost(fType, s) {
                 var recipe = cfgWoodBuild();
                 var piCfg = recipe.postInstallation || {};
-                var section = fType === 'chainlink' ? (piCfg.chainlink || {}) : (piCfg.wood || {});
+                var section = fType === 'chainlink' ? (piCfg.chainlink || {}) : fType === 'weldedWire' ? (piCfg.weldedWire || {}) : (piCfg.wood || {});
                 var methods = section.methods || {};
                 var method = s.postInstallMethod || section.default;
                 var installCost = 0;
@@ -1831,7 +1834,7 @@
             }
             if (style.fenceType === 'chainlink') {
                 const cl = cfgChainlink();
-                const ps = style.chainlinkPostSize || '2-3/8';
+                const ps = style.chainlinkPostSize || '1-7/8';
                 const color = style.chainlinkColor || 'galvanized';
                 const lengthPrice = getPostLengthPrice('chainlink', h, style);
                 const linePrice = (cl.posts && cl.posts[ps] && cl.posts[ps].line && cl.posts[ps].line[color]) || lengthPrice || cl.postCost || 25;
@@ -1843,7 +1846,7 @@
             }
             if (style.fenceType === 'weldedWire') {
                 const wwPrice = getPostLengthPrice('weldedWire', h, style);
-                return postCount * (wwPrice !== null ? wwPrice : cfgWeldedWire().postCost);
+                return postCount * ((wwPrice !== null ? wwPrice : cfgWeldedWire().postCost) + getPostInstallCost('weldedWire', style));
             }
             if (style.fenceType === 'vinyl') {
                 const vnPrice = getPostLengthPrice('vinyl', h, style);
@@ -1894,7 +1897,7 @@
             if (style.fenceType === 'chainlink') {
                 const cl = cfgChainlink();
                 const color = style.chainlinkColor || 'galvanized';
-                const ps = style.chainlinkPostSize || '2-3/8';
+                const ps = style.chainlinkPostSize || '1-7/8';
                 const h = style.height;
                 // Mesh per foot
                 let perFt = (cl.base && cl.base[h]) || 14.44;
@@ -2068,7 +2071,7 @@
                 if (s.fenceType === 'chainlink') {
                     const cl = cfgChainlink();
                     const color = s.chainlinkColor || 'galvanized';
-                    const ps = s.chainlinkPostSize || '2-3/8';
+                    const ps = s.chainlinkPostSize || '1-7/8';
                     const h = s.height;
 
                     // 1. Mesh: per foot pricing
@@ -2290,10 +2293,10 @@
                     }
                 }
 
-                // Post installation cost line items (wood + chainlink)
+                // Post installation cost line items (wood, chainlink, welded wire)
                 var piRecipe = cfgWoodBuild();
                 var piConf = piRecipe.postInstallation || {};
-                var piSec = s.fenceType === 'chainlink' ? (piConf.chainlink || {}) : (piConf.wood || {});
+                var piSec = s.fenceType === 'chainlink' ? (piConf.chainlink || {}) : s.fenceType === 'weldedWire' ? (piConf.weldedWire || {}) : (piConf.wood || {});
                 var piMethods = piSec.methods || {};
                 var piMethod = s.postInstallMethod || piSec.default;
                 if (piMethod && piMethods[piMethod] && piMethods[piMethod].enabled && piMethods[piMethod].costPerPost > 0) {
@@ -2516,7 +2519,7 @@
         const POINT_RADIUS = 7;
         const MIN_ZOOM = 0.05;
         const MAX_ZOOM = 4;
-        const ZOOM_STEP = 1.25;
+        const ZOOM_STEP = 1.04;
         function gridSpacing() { return BASE_GRID_SPACING * state.zoom; }
 
         // ============================================
@@ -2939,8 +2942,9 @@
             // --- Post Installation ---
             const piCfg = recipe.postInstallation || {};
             const isChainlinkType = state.fenceType === 'chainlink';
-            const piApplies = isWood || isChainlinkType;
-            const piSection = isChainlinkType ? (piCfg.chainlink || {}) : (piCfg.wood || {});
+            const isWeldedWireType = state.fenceType === 'weldedWire';
+            const piApplies = isWood || isChainlinkType || isWeldedWireType;
+            const piSection = isChainlinkType ? (piCfg.chainlink || {}) : isWeldedWireType ? (piCfg.weldedWire || {}) : (piCfg.wood || {});
             const piMethods = piSection.methods || {};
             const enabledMethods = Object.keys(piMethods).filter(k => piMethods[k].enabled);
             const showPostInstall = piApplies && enabledMethods.length > 0 && piSection.userCanChoose;
@@ -3107,7 +3111,7 @@
             document.querySelectorAll('#heightPills [data-height]').forEach(p => p.classList.toggle('active', parseInt(p.dataset.height) === s.height));
             // Chainlink
             document.querySelectorAll('#chainlinkColorPills [data-color]').forEach(p => p.classList.toggle('active', p.dataset.color === s.chainlinkColor));
-            document.querySelectorAll('#chainlinkPostSizePills [data-clpostsize]').forEach(p => p.classList.toggle('active', p.dataset.clpostsize === (s.chainlinkPostSize || '2-3/8')));
+            document.querySelectorAll('#chainlinkPostSizePills [data-clpostsize]').forEach(p => p.classList.toggle('active', p.dataset.clpostsize === (s.chainlinkPostSize || '1-7/8')));
             // Wood options
             document.querySelectorAll('#woodTypePills [data-wood]').forEach(p => p.classList.toggle('active', p.dataset.wood === s.woodType));
             document.querySelectorAll('#boardSizePills [data-board]').forEach(p => p.classList.toggle('active', p.dataset.board === s.boardSize));
@@ -3257,10 +3261,17 @@
 
         let isPanning = false, panStartX, panStartY, panStartPanX, panStartPanY;
         let isDraggingPoint = false, dragPoint = null, dragStartTime = 0, dragMoved = false;
+        let mouseDownTime = 0, mouseDownX = 0, mouseDownY = 0, holdPanning = false;
         const DRAG_HOLD_MS = 150;
+        const PAN_HOLD_MS = 180;
+        const PAN_MOVE_THRESHOLD = 4;
         canvas.addEventListener('mousedown', (e) => {
+            mouseDownTime = Date.now(); mouseDownX = e.clientX; mouseDownY = e.clientY;
+            // Always prepare for potential hold-to-pan
+            panStartX = e.clientX; panStartY = e.clientY; panStartPanX = state.panX; panStartPanY = state.panY;
+            holdPanning = false;
             if (state.activeTool === 'pan' || spaceHeld || e.button === 1) {
-                isPanning = true; panStartX = e.clientX; panStartY = e.clientY; panStartPanX = state.panX; panStartPanY = state.panY; canvas.style.cursor = 'grabbing'; e.preventDefault();
+                isPanning = true; canvas.style.cursor = 'grabbing'; e.preventDefault();
                 return;
             }
             // Check if clicking on an existing point to drag
@@ -3276,6 +3287,17 @@
         });
         window.addEventListener('mousemove', (e) => {
             if (isPanning) { state.panX = panStartPanX + (e.clientX - panStartX); state.panY = panStartPanY + (e.clientY - panStartY); drawCanvas(); return; }
+            // Hold-to-pan: if mouse is held and moved enough distance, start panning
+            if (mouseDownTime && !holdPanning && !isDraggingPoint) {
+                const dx = e.clientX - mouseDownX, dy = e.clientY - mouseDownY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist >= PAN_MOVE_THRESHOLD) {
+                    holdPanning = true; isPanning = true; dragPoint = null;
+                    canvas.style.cursor = 'grabbing';
+                    state.panX = panStartPanX + (e.clientX - panStartX); state.panY = panStartPanY + (e.clientY - panStartY);
+                    drawCanvas(); return;
+                }
+            }
             if (dragPoint && (Date.now() - dragStartTime >= DRAG_HOLD_MS || isDraggingPoint)) {
                 isDraggingPoint = true; dragMoved = true;
                 canvas.style.cursor = 'move';
@@ -3288,9 +3310,11 @@
             }
         });
         window.addEventListener('mouseup', () => {
-            if (isPanning) { isPanning = false; canvas.style.cursor = (state.activeTool === 'pan' || spaceHeld) ? 'grab' : 'crosshair'; }
+            if (isPanning) { isPanning = false; holdPanning = false; canvas.style.cursor = (state.activeTool === 'pan' || spaceHeld) ? 'grab' : 'crosshair'; }
             if (isDraggingPoint) { isDraggingPoint = false; dragPoint = null; canvas.style.cursor = 'crosshair'; }
             else { dragPoint = null; }
+            if (holdPanning) { dragMoved = true; } // suppress click event after hold-pan
+            mouseDownTime = 0; holdPanning = false;
         });
 
         // COORD TRANSFORMS
@@ -4132,7 +4156,7 @@
         }
 
         canvas.addEventListener('mousemove', (e) => {
-            if (isPanning) return;
+            if (isPanning || holdPanning) return;
             const r = canvas.getBoundingClientRect();
             mousePos = { sx: e.clientX - r.left, sy: e.clientY - r.top };
             if (state.pendingPoint !== null) lastPreviewPos = { sx: mousePos.sx, sy: mousePos.sy };
@@ -4280,7 +4304,11 @@
                 title: 'Options',
                 sections: ['chainlinkOptions', 'buildTypeSection', 'woodTypeSection', 'postTypeSection', 'postSpacingSection',
                     'boardSizeSection', 'boardSpanSection', 'railSection', 'railTopSizeSection', 'railBottomSizeSection',
-                    'topCapSection', 'hzDoubleCoverSection', 'postInstallSection', 'mudRemovalSection',
+                    'trimBoardSection', 'topCapSection', 'frameAttachSection', 'frameSpanSection',
+                    'infillStyleSection', 'picketGapSection',
+                    'hzBoardDimSection', 'hzDesignOptionSection', 'hzGapSpacingSection', 'hzMixedConfigSection', 'hzStaggerSection',
+                    'designerCutSection', 'bundleSection',
+                    'postInstallSection', 'mudRemovalSection',
                     'ornamentalColorSection', 'privacyInsertSection', 'privacyInstallSection', 'privacyColorSection']
             },
             lines: {
@@ -4597,7 +4625,132 @@
             html += '<tr style="background:#f0ead6"><td style="padding:8px;font-weight:700">Margin</td><td style="padding:8px;text-align:right;font-weight:700;color:#27ae60">' + margin + '%</td></tr>';
             html += '</table>';
 
-            // ── SECTION 3: Per-Line P&L ──
+            // ── SECTION 3: Detailed Pricing Worksheet ──
+            html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">📐 Pricing Worksheet — Full Calculation</h3>';
+            html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Step-by-step math for how the estimate was built from admin settings.</p>';
+
+            // 3a. Markup Tiers — show all tiers, highlight the selected one
+            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+            html += '<tr style="background:#555;color:#fff"><th style="text-align:left;padding:5px 8px" colspan="4">Markup Tiers (basis: ' + (matOrder.markupBasis === 'footage' ? 'total footage' : 'material cost') + ')</th></tr>';
+            html += '<tr style="background:#eee;font-weight:600"><td style="padding:4px 8px">Tier</td><td style="padding:4px 8px;text-align:right">Max Value</td><td style="padding:4px 8px;text-align:right">Multiplier</td><td style="padding:4px 8px;text-align:center">Selected</td></tr>';
+            tiers.forEach(function(t) {
+                var isSelected = t.multiplier === mk;
+                var bg = isSelected ? 'background:#f0ead6;font-weight:700' : '';
+                html += '<tr style="border-bottom:1px solid #e5e5e5;' + bg + '">';
+                html += '<td style="padding:4px 8px">' + (t.label || '—') + '</td>';
+                html += '<td style="padding:4px 8px;text-align:right">' + (t.maxValue !== null && t.maxValue !== undefined ? '$' + t.maxValue.toLocaleString() : '∞') + '</td>';
+                html += '<td style="padding:4px 8px;text-align:right">' + t.multiplier + '×</td>';
+                html += '<td style="padding:4px 8px;text-align:center">' + (isSelected ? '✔' : '') + '</td></tr>';
+            });
+            var minCharge = PCFG.minimumJobCharge || DEFAULT_PRICING_CONFIG.minimumJobCharge || 0;
+            html += '<tr style="border-bottom:1px solid #e5e5e5"><td colspan="3" style="padding:4px 8px;color:#888">Minimum Job Charge</td><td style="padding:4px 8px;text-align:center;font-weight:600">' + (minCharge > 0 ? '$' + minCharge : 'None') + '</td></tr>';
+            html += '</table>';
+
+            // 3b. Labour & Add-On Settings
+            var lab = cfgLabour();
+            var ao = cfgAddOns();
+            var labourRows = [];
+            if (lab.perPost && lab.perPost.enabled) {
+                var ppDetails = [];
+                ['postmaster','metal-2x2','chainlink','ornamental','weldedWire','vinyl'].forEach(function(k) {
+                    if (lab.perPost[k] > 0) ppDetails.push(k.replace('metal-2x2','Metal 2×2') + ': $' + lab.perPost[k]);
+                });
+                if (ppDetails.length) labourRows.push({ label: 'Per Post', detail: ppDetails.join(' · ') });
+            }
+            if (lab.perSection && lab.perSection.enabled) {
+                var psDetails = [];
+                Object.keys(lab.perSection).forEach(function(k) { if (k !== 'enabled' && lab.perSection[k] > 0) psDetails.push(k + ': $' + lab.perSection[k]); });
+                if (psDetails.length) labourRows.push({ label: 'Per Section', detail: psDetails.join(' · ') });
+            }
+            if (lab.perFoot && lab.perFoot.enabled) {
+                var pfDetails = [];
+                Object.keys(lab.perFoot).forEach(function(k) { if (k !== 'enabled' && lab.perFoot[k] > 0) pfDetails.push(k + ': $' + lab.perFoot[k]); });
+                if (pfDetails.length) labourRows.push({ label: 'Per Foot', detail: pfDetails.join(' · ') });
+            }
+            if (lab.perPanel && lab.perPanel.enabled) {
+                var ppnDetails = [];
+                Object.keys(lab.perPanel).forEach(function(k) { if (k !== 'enabled' && lab.perPanel[k] > 0) ppnDetails.push(k + ': $' + lab.perPanel[k]); });
+                if (ppnDetails.length) labourRows.push({ label: 'Per Panel', detail: ppnDetails.join(' · ') });
+            }
+            if (lab.perHookup && lab.perHookup.enabled && lab.perHookup.chainlink > 0) {
+                labourRows.push({ label: 'Per Hookup (CL)', detail: '$' + lab.perHookup.chainlink });
+            }
+            if (lab.perGate && lab.perGate.enabled) {
+                var pgDetails = [];
+                Object.keys(lab.perGate).forEach(function(k) { if (k !== 'enabled' && lab.perGate[k] > 0) pgDetails.push(k.replace(/-/g,' ') + ': $' + lab.perGate[k]); });
+                if (pgDetails.length) labourRows.push({ label: 'Per Gate', detail: pgDetails.join(' · ') });
+            }
+
+            if (labourRows.length > 0 || aoTotal > 0) {
+                html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+                html += '<tr style="background:#555;color:#fff"><th style="text-align:left;padding:5px 8px" colspan="2">Labour & Add-On Rates Applied</th></tr>';
+                labourRows.forEach(function(lr) {
+                    html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:4px 8px;font-weight:600;width:100px">' + lr.label + '</td><td style="padding:4px 8px;color:#666">' + lr.detail + '</td></tr>';
+                });
+                // Add-ons
+                var aoKeys = ['topCap','trimBoards','thirdRail','cedar','horizontal','privacyInserts','designerCut','doubleCover'];
+                aoKeys.forEach(function(k) {
+                    if (ao[k] && ao[k].enabled && ao[k].perFoot > 0) {
+                        html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:4px 8px;font-weight:600">Add-On</td><td style="padding:4px 8px;color:#666">' + k.replace(/([A-Z])/g, ' $1').trim() + ': $' + ao[k].perFoot + '/ft</td></tr>';
+                    }
+                });
+                html += '</table>';
+            }
+
+            // 3c. Per-line detailed math
+            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+            html += '<tr style="background:#555;color:#fff"><th style="text-align:left;padding:5px 8px" colspan="4">Per-Line Calculation Detail</th></tr>';
+            state.lines.forEach(function(line, idx) {
+                var p1 = state.points.find(function(p) { return p.id === line.p1; });
+                var p2 = state.points.find(function(p) { return p.id === line.p2; });
+                if (!p1 || !p2) return;
+                var len = getLineLengthFt(p1, p2);
+                var posts = calculatePostsForLine(p1, p2, line);
+                var s = getStyleForLine(line);
+                var mat = calculateLineMaterial(line, len, posts.length);
+                var postMat = calculatePostMaterial(s, posts.length);
+                var fenceMat = mat - postMat;
+                var labour = calculateLabourForLine(line, len, posts.length);
+                var addons = calculateAddOnsForLine(line, len);
+                var lineCost = Math.round(mat * mk + labour + addons);
+                var sectionCount = Math.max(posts.length - 1, 0);
+
+                html += '<tr style="background:#eee"><td colspan="4" style="padding:6px 8px;font-weight:700">Line ' + (idx + 1) + ': ' + (STYLE_LABELS[s.fenceType] || s.fenceType) + ' ' + s.height + "' — " + len.toFixed(1) + ' ft, ' + posts.length + ' posts, ' + sectionCount + ' sections</td></tr>';
+                html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Fence material (mesh/panels/boards)</td><td style="padding:3px 8px;text-align:right">$' + fenceMat.toFixed(2) + '</td></tr>';
+                html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Posts (' + posts.length + ' × hardware + install)</td><td style="padding:3px 8px;text-align:right">$' + postMat.toFixed(2) + '</td></tr>';
+                html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Total material</td><td style="padding:3px 8px;text-align:right;font-weight:600">$' + mat.toFixed(2) + '</td></tr>';
+                html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">× markup ' + mk + '×</td><td style="padding:3px 8px;text-align:right">$' + Math.round(mat * mk).toLocaleString() + '</td></tr>';
+                if (labour > 0) html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">+ Labour</td><td style="padding:3px 8px;text-align:right">$' + Math.round(labour).toLocaleString() + '</td></tr>';
+                if (addons > 0) html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">+ Add-ons</td><td style="padding:3px 8px;text-align:right">$' + Math.round(addons).toLocaleString() + '</td></tr>';
+                html += '<tr style="border-bottom:2px solid #ddd"><td style="padding:4px 8px 4px 20px;font-weight:700" colspan="3">Line total</td><td style="padding:4px 8px;text-align:right;font-weight:700">$' + lineCost.toLocaleString() + '</td></tr>';
+            });
+            state.gates.forEach(function(gate, idx) {
+                var gp1 = state.points.find(function(p) { return p.id === gate.p1; });
+                var gp2 = state.points.find(function(p) { return p.id === gate.p2; });
+                if (!gp1 || !gp2) return;
+                var gw = getLineLengthFt(gp1, gp2);
+                var gs = getStyleForLine(gate);
+                var gMat = calculateGateMaterial(gate.gateType, gw, gs);
+                var gLabour = calculateLabourForGate(gate.gateType);
+                var gCost = Math.round(gMat * mk + gLabour);
+                html += '<tr style="background:#eee"><td colspan="4" style="padding:6px 8px;font-weight:700">Gate ' + (idx + 1) + ': ' + (GATE_TYPE_LABELS[gate.gateType] || 'Gate') + ' — ' + gw.toFixed(1) + "' wide</td></tr>";
+                html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Gate material</td><td style="padding:3px 8px;text-align:right">$' + gMat.toFixed(2) + '</td></tr>';
+                html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">× markup ' + mk + '×</td><td style="padding:3px 8px;text-align:right">$' + Math.round(gMat * mk).toLocaleString() + '</td></tr>';
+                if (gLabour > 0) html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">+ Labour</td><td style="padding:3px 8px;text-align:right">$' + Math.round(gLabour).toLocaleString() + '</td></tr>';
+                html += '<tr style="border-bottom:2px solid #ddd"><td style="padding:4px 8px 4px 20px;font-weight:700" colspan="3">Gate total</td><td style="padding:4px 8px;text-align:right;font-weight:700">$' + gCost.toLocaleString() + '</td></tr>';
+            });
+
+            // Final formula
+            html += '<tr style="background:#f0ead6"><td colspan="4" style="padding:8px;font-weight:700;font-size:12px">';
+            html += 'Formula: ($' + matOrder.totalMaterial.toLocaleString() + ' material × ' + mk + '×)';
+            if (labTotal > 0) html += ' + $' + labTotal.toLocaleString() + ' labour';
+            if (aoTotal > 0) html += ' + $' + aoTotal.toLocaleString() + ' add-ons';
+            html += ' = <span style="color:' + cfgAccent() + '">$' + finalPrice.toLocaleString() + '</span>';
+            if (minCharge > 0 && finalPrice === minCharge) html += ' <span style="color:#e74c3c">(min charge applied)</span>';
+            html += '</td></tr>';
+            html += '</table>';
+
+            // ── SECTION 4: Per-Line P&L ──
             html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">Per-Line Breakdown</h3>';
             var hasLabour = (breakdown.labourTotal || 0) > 0;
             var hasAddons = (breakdown.addonTotal || 0) > 0;
