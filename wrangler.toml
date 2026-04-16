@@ -1,6 +1,13 @@
 name = "petefixes-redesign"
 compatibility_date = "2026-04-15"
+main = "./worker/index.js"
+
+[vars]
+ADMIN_USER = "admin"
+ADMIN_PASS = "changethings2"
 
 [assets]
 directory = "./"
+binding = "ASSETS"
 not_found_handling = "404-page"
+run_worker_first = ["/services/fence-admin*"]

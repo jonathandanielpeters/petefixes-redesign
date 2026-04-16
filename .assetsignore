@@ -5,6 +5,7 @@ wrangler.toml
 .github/**
 .claude/**
 node_modules/**
+worker/**
 WIX-IMPLEMENTATION-GUIDE.md
 services/email-worker/**
 **/.DS_Store
