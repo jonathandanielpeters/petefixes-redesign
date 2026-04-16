@@ -298,10 +298,12 @@
 
         /* Mobile: floating icon sidebar over canvas */
         @media (max-width: 768px) {
-            .configurator { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+            .beta-banner { padding: 4px 12px; font-size: 10px; top: 56px; }
+            .beta-text { font-size: 10px; }
+            .configurator { grid-template-columns: 1fr; grid-template-rows: 1fr; margin-top: 84px; min-height: calc(100vh - 84px); }
             .config-panel { display: none !important; }
             .mobile-sidebar { display: flex; }
-            .config-canvas-area { min-height: calc(100vh - 72px); }
+            .config-canvas-area { min-height: calc(100vh - 84px); }
             .canvas-toolbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; padding-left: 56px; }
             .pricing-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 10px; }
             .pricing-summary { gap: 16px; flex-wrap: wrap; }
@@ -309,6 +311,9 @@
             .pricing-total-value { font-size: 22px; }
         }
         @media (max-width: 480px) {
+            .beta-banner { padding: 3px 10px; }
+            .beta-badge { font-size: 8px; padding: 1px 5px; }
+            .beta-text { font-size: 9px; }
             .pricing-actions { width: 100%; justify-content: stretch; }
             .pricing-actions .btn { flex: 1; text-align: center; }
             .pricing-disclaimer { display: none; }
