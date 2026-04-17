@@ -7,7 +7,7 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "changethings2"
 SQUARE_APP_ID = "sandbox-sq0idb-HrpOwCmlKx1ij0tUxD0B-Q"
 SQUARE_ENV = "sandbox"
-SQUARE_ACCESS_TOKEN = "EAAAl5ZPNhqG0J7ttlRGupa8XeC5oqxgyg3ajx6mumVepvfkBwRrdqZxkcbNhAxL"
+# SQUARE_ACCESS_TOKEN is stored as a Wrangler secret (wrangler secret put SQUARE_ACCESS_TOKEN)
 
 [assets]
 directory = "./"

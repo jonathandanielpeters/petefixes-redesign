@@ -142,10 +142,27 @@ async function handleBookInstallation(request, env) {
     });
     const customerId = customerRes.customer.id;
 
-    // 2. Charge the $100 deposit
+    // 2. Save card on file FIRST (nonce is single-use — must save before charging)
+    let savedCardId = null;
+    let paymentSourceId = sourceId; // default: pay with the nonce directly
+
+    if (saveCard) {
+      const cardRes = await squareRequest(env, "POST", "/v2/cards", {
+        idempotency_key: idempotencyKey + "-card",
+        source_id: sourceId,
+        card: {
+          customer_id: customerId,
+          cardholder_name: fullName,
+        },
+      });
+      savedCardId = cardRes.card.id;
+      paymentSourceId = savedCardId; // charge the saved card instead of the consumed nonce
+    }
+
+    // 3. Charge the $100 deposit
     const paymentRes = await squareRequest(env, "POST", "/v2/payments", {
       idempotency_key: idempotencyKey + "-pay",
-      source_id: sourceId,
+      source_id: paymentSourceId,
       amount_money: {
         amount: 10000, // $100.00 in cents
         currency: "CAD",
@@ -156,30 +173,6 @@ async function handleBookInstallation(request, env) {
       note: `Fence installation deposit — ${fullName} @ ${address}`,
     });
     const paymentId = paymentRes.payment.id;
-
-    // 3. Save card on file for future second deposit (if opted in)
-    let savedCardId = null;
-    if (saveCard) {
-      try {
-        // Need a second token for card-on-file — use the payment's card details
-        // Actually, we can create a card from the customer + source in a separate call
-        // But the sourceId nonce is single-use. We store the card from the payment.
-        const cardRes = await squareRequest(env, "POST", "/v2/cards", {
-          idempotency_key: idempotencyKey + "-card",
-          source_id: sourceId,
-          card: {
-            customer_id: customerId,
-            cardholder_name: fullName,
-          },
-        });
-        savedCardId = cardRes.card.id;
-      } catch (cardErr) {
-        // Card save failed — payment still succeeded, log and continue
-        console.error("Card save failed:", cardErr.message);
-        // The nonce was already used for payment — this is expected.
-        // We'll note this in the response so the frontend can explain.
-      }
-    }
 
     // 4. Build Google Calendar event link
     const startDate = preferredDate.replace(/-/g, "");
