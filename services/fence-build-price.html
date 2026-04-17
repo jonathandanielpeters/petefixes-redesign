@@ -209,6 +209,17 @@
         .canvas-wrapper { flex: 1; position: relative; overflow: hidden; }
         #fenceCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
+        /* Onboarding overlay */
+        .onboarding-overlay { position: absolute; inset: 0; z-index: 20; background: rgba(250,250,253,0.92); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .onboarding-card { max-width: 420px; background: var(--white); border: 1px solid var(--gray-100); border-radius: 16px; padding: 28px 30px; box-shadow: 0 8px 40px rgba(0,0,0,0.1); }
+        .onboarding-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--black); }
+        .onboarding-card ol { padding-left: 20px; margin-bottom: 16px; }
+        .onboarding-card li { font-size: 13px; color: var(--gray-600); line-height: 1.6; margin-bottom: 6px; }
+        .onboarding-card li strong { color: var(--black); }
+        .onboarding-tips { font-size: 12px; color: var(--gray-400); margin-bottom: 18px; line-height: 1.5; }
+        .onboarding-start-btn { width: 100%; padding: 12px; font-size: 14px; font-weight: 600; background: var(--accent); color: var(--white); border: none; border-radius: 980px; cursor: pointer; transition: background 0.2s; }
+        .onboarding-start-btn:hover { background: var(--accent-hover); }
+
         /* Map Search Overlay */
         .map-search-overlay {
             position: absolute; inset: 0; background: rgba(250,250,253,0.92); backdrop-filter: blur(8px);
@@ -240,6 +251,20 @@
         .map-search-status { font-size: 11px; color: var(--gray-400); margin-top: 10px; min-height: 16px; }
         .map-search-status.error { color: #d44; }
         .map-addr-btn .map-addr-label { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .map-search-results {
+            margin-top: 8px; text-align: left; max-height: 220px; overflow-y: auto;
+            border: 1px solid var(--gray-100); border-radius: 10px; background: var(--white);
+            display: none;
+        }
+        .map-search-results.visible { display: block; }
+        .map-search-result {
+            padding: 10px 14px; border-bottom: 1px solid var(--gray-50); cursor: pointer;
+            transition: background 0.15s; font-size: 12px; line-height: 1.4;
+        }
+        .map-search-result:last-child { border-bottom: none; }
+        .map-search-result:hover, .map-search-result.focused { background: var(--gray-50); }
+        .map-search-result-primary { font-weight: 600; color: var(--black); }
+        .map-search-result-secondary { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
 
         /* Pricing Bar */
         .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; border-top: 1px solid var(--gray-700); }
@@ -753,6 +778,10 @@
                         <button class="canvas-mode-btn active" data-mode="grid">Grid</button>
                         <button class="canvas-mode-btn" data-mode="map">Map</button>
                     </div>
+                    <div class="canvas-mode-toggle map-style-toggle" id="mapStyleToggle" style="display:none">
+                        <button class="canvas-mode-btn active" data-style="satellite">Satellite</button>
+                        <button class="canvas-mode-btn" data-style="roadmap">Streets</button>
+                    </div>
                     <button class="canvas-tool-btn map-addr-btn" id="mapAddrBtn" style="display:none" title="Change address">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                         <span class="map-addr-label" id="mapAddrLabel">Address</span>
@@ -764,6 +793,10 @@
                     <button class="canvas-tool-btn" id="gateTool" data-tool="gate">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>
                         Gate
+                    </button>
+                    <button class="canvas-tool-btn" id="houseTool" data-tool="house">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                        House
                     </button>
                     <button class="canvas-tool-btn" id="panTool" data-tool="pan">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
@@ -777,6 +810,10 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                         Undo
                     </button>
+                    <button class="canvas-tool-btn danger" id="deletePointBtn" style="display:none" title="Delete selected point">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        Delete Point
+                    </button>
                 </div>
                 <div class="canvas-toolbar-right">
                     <span class="canvas-hint" id="canvasHint">Click to place your first point</span>
@@ -789,15 +826,32 @@
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="fenceCanvas"></canvas>
+                <!-- Getting started overlay -->
+                <div class="onboarding-overlay" id="onboardingOverlay">
+                    <div class="onboarding-card">
+                        <h3>How to Use Build &amp; Price</h3>
+                        <ol>
+                            <li><strong>Select a fence type</strong> from the panel on the left</li>
+                            <li><strong>Click on the grid</strong> to place your first post</li>
+                            <li><strong>Click again</strong> to place the second post — a fence line is drawn between them</li>
+                            <li><strong>Keep clicking</strong> to add more posts and extend your fence</li>
+                            <li>Press <strong>Esc</strong> to finish a line, then start a new one anywhere</li>
+                            <li>Use the <strong>Gate</strong> tool to add gates between two posts</li>
+                        </ol>
+                        <p class="onboarding-tips"><strong>Tips:</strong> Scroll to zoom · Hold &amp; drag to pan · Click a post to select &amp; delete it</p>
+                        <button class="onboarding-start-btn" id="onboardingStartBtn">Got it — Start Drawing</button>
+                    </div>
+                </div>
                 <div class="map-search-overlay" id="mapSearchOverlay">
                     <div class="map-search-card">
                         <div class="map-search-icon">📍</div>
                         <h3 class="map-search-title">Enter Your Address</h3>
                         <p class="map-search-desc">Type your property address to load satellite imagery behind your fence drawing.</p>
                         <div class="map-search-row">
-                            <input type="text" class="map-search-input" id="mapAddressInput" placeholder="123 Main St, Winnipeg, MB" autocomplete="street-address">
+                            <input type="text" class="map-search-input" id="mapAddressInput" placeholder="Start typing your address…" autocomplete="off" spellcheck="false">
                             <button class="map-search-btn" id="mapSearchBtn">Search</button>
                         </div>
+                        <div class="map-search-results" id="mapSearchResults" role="listbox"></div>
                         <p class="map-search-status" id="mapSearchStatus"></p>
                     </div>
                 </div>
@@ -941,7 +995,6 @@
         <div class="pricing-actions">
             <div class="pricing-total"><span class="pricing-total-label">Estimated Total</span><span class="pricing-total-value" id="totalPrice">$0</span></div>
             <span class="pricing-disclaimer">Estimate only. Final price confirmed after in-person visit.</span>
-            <span class="config-indicator" id="configIndicator" style="display:block;font-size:10px;color:#bbb;margin-top:2px;cursor:help" title=""></span>
             <button class="btn btn-primary" id="saveEstimateBtn" type="button">Save Estimate</button>
         </div>
     </div>
@@ -993,13 +1046,14 @@
         const state = {
             fenceStyles: [createDefaultStyle()],
             activeStyleIdx: 0,
-            points: [], lines: [], gates: [],
+            points: [], lines: [], gates: [], houses: [],
             actionHistory: [],
             pendingPoint: null, activeTool: 'draw',
-            zoom: 1, panX: 0, panY: 0, selectedLineIdx: -1, selectedGateIdx: -1
+            zoom: 1, panX: 0, panY: 0, selectedLineIdx: -1, selectedGateIdx: -1, selectedHouseIdx: -1, selectedPointId: null
         };
         let pointIdCounter = 0;
         let gateIdCounter = 0;
+        let houseIdCounter = 0;
 
         function activeStyle() { return state.fenceStyles[state.activeStyleIdx]; }
 
@@ -2028,7 +2082,7 @@
                 }
                 // Top rail: 10' lengths (full boards only)
                 fenceCost += Math.ceil(lengthFt / 10) * ((cl.topRail && cl.topRail[color]) || 0);
-                // Hookup hardware estimate: 2 hookup sets per line (1 per endpoint)
+                // Hookup hardware — 1 per endpoint, 3 if endpoint is a house terminal
                 const hw = cl.hookupHardware && cl.hookupHardware[ps];
                 if (hw) {
                     const tbCount = (cl.tensionBandsPerHookup && cl.tensionBandsPerHookup[h]) || 4;
@@ -2043,7 +2097,12 @@
                         tbCount * ((hw.nutsBolts && hw.nutsBolts[color]) || 0) +
                         ((hw.tensionBar && hw.tensionBar[color]) || 0) +
                         ((hw.railEnd && hw.railEnd[color]) || 0);
-                    fenceCost += hookupCost * 2;
+                    // House terminal posts get 3 hookups each instead of 1
+                    const lp1 = state.points.find(p => p.id === line.p1);
+                    const lp2 = state.points.find(p => p.id === line.p2);
+                    const h1 = (lp1 && isPointOnHouseEdge(lp1.x, lp1.y)) ? 3 : 1;
+                    const h2 = (lp2 && isPointOnHouseEdge(lp2.x, lp2.y)) ? 3 : 1;
+                    fenceCost += hookupCost * (h1 + h2);
                     // Center bands for line posts (intermediate)
                     const linePosts = Math.max(0, postCount - 2);
                     fenceCost += linePosts * ((hw.centerBand && hw.centerBand[color]) || 0);
@@ -2232,11 +2291,13 @@
                         addToOrder('cl-post-line-' + ps + '-' + color, 'CL ' + ps + '"' + clPostLabel + ' line post (' + color + ')', linePosts, lpp);
                     }
 
-                    // 4. Hookup hardware — 1 set per endpoint (both endpoints per line)
+                    // 4. Hookup hardware — 1 per endpoint, 3 if house terminal
                     const hw = cl.hookupHardware && cl.hookupHardware[ps];
                     if (hw) {
                         const tbCount = (cl.tensionBandsPerHookup && cl.tensionBandsPerHookup[h]) || 4;
-                        const hookups = 2; // 1 per endpoint
+                        const bp1 = state.points.find(p => p.id === line.p1);
+                        const bp2 = state.points.find(p => p.id === line.p2);
+                        const hookups = ((bp1 && isPointOnHouseEdge(bp1.x, bp1.y)) ? 3 : 1) + ((bp2 && isPointOnHouseEdge(bp2.x, bp2.y)) ? 3 : 1);
                         // Height-specific tension band price with fallback
                         var tbPrice = 0;
                         var tbLabel = 'CL tension band (' + color + ')';
@@ -2628,7 +2689,7 @@
         const SNAP_RADIUS = 15;
         const POST_MAX_SPACING = 8;
         const POINT_RADIUS = 7;
-        const MIN_ZOOM = 0.05;
+        const MIN_ZOOM = 0.01;
         const MAX_ZOOM = 4;
         const ZOOM_STEP = 1.04;
         function gridSpacing() { return BASE_GRID_SPACING * state.zoom; }
@@ -3276,17 +3337,20 @@
         // ============================================
         const drawToolBtn = document.getElementById('drawTool');
         const gateToolBtn = document.getElementById('gateTool');
+        const houseToolBtn = document.getElementById('houseTool');
         const panToolBtn = document.getElementById('panTool');
 
         function setActiveTool(tool) {
             state.activeTool = tool;
             drawToolBtn.classList.remove('active', 'active-gate');
             gateToolBtn.classList.remove('active', 'active-gate');
+            houseToolBtn.classList.remove('active', 'active-gate');
             panToolBtn.classList.remove('active', 'active-gate');
             if (tool === 'draw') drawToolBtn.classList.add('active');
             else if (tool === 'gate') gateToolBtn.classList.add('active-gate');
+            else if (tool === 'house') houseToolBtn.classList.add('active');
             else if (tool === 'pan') panToolBtn.classList.add('active');
-            canvas.style.cursor = tool === 'pan' ? 'grab' : 'crosshair';
+            canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'house' ? 'copy' : 'crosshair');
             // Cancel pending on tool switch
             if (state.pendingPoint !== null && tool !== state.activeTool) {
                 cancelPending();
@@ -3296,12 +3360,24 @@
 
         function updateHint() {
             const hint = document.getElementById('canvasHint');
-            if (state.activeTool === 'gate') {
-                hint.textContent = state.pendingPoint !== null ? 'Click to place gate end' : 'Click to place gate start';
+            hint.style.color = '';
+            if (state.selectedPointId !== null) {
+                const lbl = getPostNumberMap()[state.selectedPointId] || '?';
+                hint.textContent = 'Post ' + lbl + ' selected — press Delete or use button to remove';
+            } else if (state.activeTool === 'gate') {
+                hint.textContent = state.pendingPoint !== null ? 'Click to place gate end post' : 'Click two posts to define gate opening';
             } else if (state.activeTool === 'draw') {
-                hint.textContent = state.pendingPoint !== null ? 'Click to continue or Esc to finish' : 'Click to place your first point';
+                if (state.points.length === 0 && state.pendingPoint === null) {
+                    hint.textContent = 'Click on the grid to place your first fence post';
+                } else if (state.pendingPoint !== null) {
+                    hint.textContent = 'Click to place next post — Esc to finish line';
+                } else {
+                    hint.textContent = 'Click a post to continue, or click empty space for a new line';
+                }
+            } else if (state.activeTool === 'house') {
+                hint.textContent = 'Click to place house — drag corners to resize';
             } else {
-                hint.textContent = 'Click and drag to pan';
+                hint.textContent = 'Click and drag to pan the view';
             }
         }
 
@@ -3318,6 +3394,7 @@
 
         drawToolBtn.addEventListener('click', () => setActiveTool('draw'));
         gateToolBtn.addEventListener('click', () => setActiveTool('gate'));
+        houseToolBtn.addEventListener('click', () => setActiveTool('house'));
         panToolBtn.addEventListener('click', () => setActiveTool('pan'));
 
         let spaceHeld = false;
@@ -3368,10 +3445,20 @@
         document.getElementById('zoomInBtn').addEventListener('click', () => setZoom(state.zoom * ZOOM_STEP));
         document.getElementById('zoomOutBtn').addEventListener('click', () => setZoom(state.zoom / ZOOM_STEP));
         document.getElementById('zoomLevel').addEventListener('click', () => { state.zoom = 1; state.panX = 0; state.panY = 0; updateZoomLabel(); drawCanvas(); });
-        wrapper.addEventListener('wheel', (e) => { e.preventDefault(); const r = canvas.getBoundingClientRect(); setZoom(state.zoom * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+        wrapper.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const r = canvas.getBoundingClientRect();
+            let dy = e.deltaY;
+            if (e.deltaMode === 1) dy *= 16;
+            if (e.ctrlKey) dy *= 3;
+            const factor = Math.exp(-dy * 0.002);
+            setZoom(state.zoom * factor, e.clientX - r.left, e.clientY - r.top);
+        }, { passive: false });
 
         let isPanning = false, panStartX, panStartY, panStartPanX, panStartPanY;
         let isDraggingPoint = false, dragPoint = null, dragStartTime = 0, dragMoved = false;
+        let isDraggingHouse = false, dragHouse = null, dragHouseOffsetX = 0, dragHouseOffsetY = 0;
+        let isResizingHouse = false, resizeHouse = null, resizeHandle = '';
         let mouseDownTime = 0, mouseDownX = 0, mouseDownY = 0, holdPanning = false;
         const DRAG_HOLD_MS = 150;
         const PAN_HOLD_MS = 180;
@@ -3385,10 +3472,25 @@
                 isPanning = true; canvas.style.cursor = 'grabbing'; e.preventDefault();
                 return;
             }
+            // Check house resize handles or body drag
+            const r = canvas.getBoundingClientRect();
+            const sx = e.clientX - r.left, sy = e.clientY - r.top;
+            const houseHit = hitTestHouses(sx, sy);
+            if (houseHit) {
+                if (houseHit.handle) {
+                    isResizingHouse = true; resizeHouse = houseHit.house; resizeHandle = houseHit.handle;
+                    canvas.style.cursor = houseHit.handle.includes('n') || houseHit.handle.includes('s') ? 'ns-resize' : (houseHit.handle.includes('e') || houseHit.handle.includes('w') ? 'ew-resize' : 'nwse-resize');
+                    e.preventDefault(); return;
+                } else if (houseHit.body) {
+                    isDraggingHouse = true; dragHouse = houseHit.house;
+                    const world = screenToWorld(sx, sy);
+                    dragHouseOffsetX = world.x - dragHouse.x;
+                    dragHouseOffsetY = world.y - dragHouse.y;
+                    canvas.style.cursor = 'move'; e.preventDefault(); return;
+                }
+            }
             // Check if clicking on an existing point to drag
             if (state.activeTool === 'draw' || state.activeTool === 'gate') {
-                const r = canvas.getBoundingClientRect();
-                const sx = e.clientX - r.left, sy = e.clientY - r.top;
                 const nearby = findNearbyPoint(sx, sy);
                 if (nearby && state.pendingPoint === null) {
                     dragPoint = nearby; dragStartTime = Date.now(); dragMoved = false;
@@ -3398,6 +3500,25 @@
         });
         window.addEventListener('mousemove', (e) => {
             if (isPanning) { state.panX = panStartPanX + (e.clientX - panStartX); state.panY = panStartPanY + (e.clientY - panStartY); drawCanvas(); return; }
+            // House resize
+            if (isResizingHouse && resizeHouse) {
+                const r = canvas.getBoundingClientRect();
+                const world = screenToWorld(e.clientX - r.left, e.clientY - r.top);
+                const snapped = snapWorldToGrid(world.x, world.y);
+                if (resizeHandle.includes('e')) resizeHouse.width = Math.max(5, snapped.x - resizeHouse.x);
+                if (resizeHandle.includes('w')) { const newX = Math.min(snapped.x, resizeHouse.x + resizeHouse.width - 5); resizeHouse.width += resizeHouse.x - newX; resizeHouse.x = newX; }
+                if (resizeHandle.includes('s')) resizeHouse.height = Math.max(5, snapped.y - resizeHouse.y);
+                if (resizeHandle.includes('n')) { const newY = Math.min(snapped.y, resizeHouse.y + resizeHouse.height - 5); resizeHouse.height += resizeHouse.y - newY; resizeHouse.y = newY; }
+                dragMoved = true; drawCanvas(); return;
+            }
+            // House drag
+            if (isDraggingHouse && dragHouse) {
+                const r = canvas.getBoundingClientRect();
+                const world = screenToWorld(e.clientX - r.left, e.clientY - r.top);
+                const snapped = snapWorldToGrid(world.x - dragHouseOffsetX, world.y - dragHouseOffsetY);
+                dragHouse.x = snapped.x; dragHouse.y = snapped.y;
+                dragMoved = true; drawCanvas(); return;
+            }
             // Hold-to-pan: if mouse is held and moved enough distance, start panning
             if (mouseDownTime && !holdPanning && !isDraggingPoint) {
                 const dx = e.clientX - mouseDownX, dy = e.clientY - mouseDownY;
@@ -3421,10 +3542,12 @@
             }
         });
         window.addEventListener('mouseup', () => {
-            if (isPanning) { isPanning = false; holdPanning = false; canvas.style.cursor = (state.activeTool === 'pan' || spaceHeld) ? 'grab' : 'crosshair'; }
+            const wasPanning = isPanning || holdPanning;
+            if (isPanning) { isPanning = false; canvas.style.cursor = (state.activeTool === 'pan' || spaceHeld) ? 'grab' : (state.activeTool === 'house' ? 'copy' : 'crosshair'); }
             if (isDraggingPoint) { isDraggingPoint = false; dragPoint = null; canvas.style.cursor = 'crosshair'; }
             else { dragPoint = null; }
-            if (holdPanning) { dragMoved = true; } // suppress click event after hold-pan
+            if (isDraggingHouse || isResizingHouse) { isDraggingHouse = false; isResizingHouse = false; dragHouse = null; resizeHouse = null; canvas.style.cursor = state.activeTool === 'house' ? 'copy' : 'crosshair'; }
+            if (wasPanning) { dragMoved = true; } // suppress click event after any panning
             mouseDownTime = 0; holdPanning = false;
         });
 
@@ -3432,6 +3555,92 @@
         function worldToScreen(wx, wy) { return { x: wx * BASE_GRID_SPACING * state.zoom + state.panX, y: wy * BASE_GRID_SPACING * state.zoom + state.panY }; }
         function screenToWorld(sx, sy) { return { x: (sx - state.panX) / (BASE_GRID_SPACING * state.zoom), y: (sy - state.panY) / (BASE_GRID_SPACING * state.zoom) }; }
         function snapWorldToGrid(wx, wy) { return { x: Math.round(wx), y: Math.round(wy) }; }
+
+        // ============================================
+        // HOUSE HELPERS
+        // ============================================
+        function hitTestHouses(sx, sy) {
+            const HANDLE_SIZE = 8;
+            for (let i = state.houses.length - 1; i >= 0; i--) {
+                const h = state.houses[i];
+                const tl = worldToScreen(h.x, h.y);
+                const br = worldToScreen(h.x + h.width, h.y + h.height);
+                const corners = [
+                    { handle: 'nw', x: tl.x, y: tl.y }, { handle: 'ne', x: br.x, y: tl.y },
+                    { handle: 'sw', x: tl.x, y: br.y }, { handle: 'se', x: br.x, y: br.y }
+                ];
+                for (const c of corners) {
+                    if (Math.abs(sx - c.x) < HANDLE_SIZE && Math.abs(sy - c.y) < HANDLE_SIZE)
+                        return { house: h, handle: c.handle, idx: i };
+                }
+                if (sx >= tl.x && sx <= br.x && sy >= tl.y && sy <= br.y)
+                    return { house: h, body: true, idx: i };
+            }
+            return null;
+        }
+
+        function isPointInsideHouse(wx, wy) {
+            for (const h of state.houses) {
+                if (wx > h.x && wx < h.x + h.width && wy > h.y && wy < h.y + h.height) return h;
+            }
+            return null;
+        }
+
+        function isPointOnHouseEdge(wx, wy) {
+            const EDGE_TOLERANCE = 0.5; // half a foot
+            for (const h of state.houses) {
+                const inX = wx >= h.x - EDGE_TOLERANCE && wx <= h.x + h.width + EDGE_TOLERANCE;
+                const inY = wy >= h.y - EDGE_TOLERANCE && wy <= h.y + h.height + EDGE_TOLERANCE;
+                if (!inX || !inY) continue;
+                const onLeft = Math.abs(wx - h.x) <= EDGE_TOLERANCE;
+                const onRight = Math.abs(wx - (h.x + h.width)) <= EDGE_TOLERANCE;
+                const onTop = Math.abs(wy - h.y) <= EDGE_TOLERANCE;
+                const onBottom = Math.abs(wy - (h.y + h.height)) <= EDGE_TOLERANCE;
+                if ((onLeft || onRight) && wy >= h.y - EDGE_TOLERANCE && wy <= h.y + h.height + EDGE_TOLERANCE) return true;
+                if ((onTop || onBottom) && wx >= h.x - EDGE_TOLERANCE && wx <= h.x + h.width + EDGE_TOLERANCE) return true;
+            }
+            return false;
+        }
+
+        function snapToHouseEdge(wx, wy) {
+            // If point is inside a house, push it to the nearest edge
+            for (const h of state.houses) {
+                if (wx >= h.x && wx <= h.x + h.width && wy >= h.y && wy <= h.y + h.height) {
+                    const dists = [
+                        { edge: 'left', val: wx - h.x, x: h.x, y: wy },
+                        { edge: 'right', val: h.x + h.width - wx, x: h.x + h.width, y: wy },
+                        { edge: 'top', val: wy - h.y, x: wx, y: h.y },
+                        { edge: 'bottom', val: h.y + h.height - wy, x: wx, y: h.y + h.height }
+                    ];
+                    dists.sort((a, b) => a.val - b.val);
+                    return { x: Math.round(dists[0].x), y: Math.round(dists[0].y) };
+                }
+            }
+            return { x: wx, y: wy };
+        }
+
+        function lineIntersectsHouse(x1, y1, x2, y2) {
+            // Check if line segment from (x1,y1) to (x2,y2) passes through any house interior
+            for (const h of state.houses) {
+                // Check multiple sample points along line
+                const steps = Math.max(10, Math.ceil(Math.sqrt((x2-x1)**2 + (y2-y1)**2)));
+                for (let i = 1; i < steps; i++) {
+                    const t = i / steps;
+                    const px = x1 + (x2 - x1) * t, py = y1 + (y2 - y1) * t;
+                    if (px > h.x + 0.5 && px < h.x + h.width - 0.5 && py > h.y + 0.5 && py < h.y + h.height - 0.5) return true;
+                }
+            }
+            return false;
+        }
+
+        function deleteHouse(idx) {
+            const ref = state.houses[idx];
+            state.houses.splice(idx, 1);
+            state.actionHistory = state.actionHistory.filter(a => a.ref !== ref);
+            if (state.selectedHouseIdx === idx) state.selectedHouseIdx = -1;
+            else if (state.selectedHouseIdx > idx) state.selectedHouseIdx--;
+            drawCanvas();
+        }
 
         // ============================================
         // DRAWING
@@ -3571,23 +3780,33 @@
                 ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s2.x, s2.y, 3, 0, Math.PI * 2); ctx.fill();
             });
 
-            // Draw fence endpoint posts with numbered labels
-            let postNum = 0;
+            // Draw fence endpoint posts with letter labels
+            const pnLabels = getPostNumberMap();
             state.points.forEach(point => {
                 const usedByFence = state.lines.some(l => l.p1 === point.id || l.p2 === point.id);
                 const usedByGate = state.gates.some(g => g.p1 === point.id || g.p2 === point.id);
                 const isPending = state.pendingPoint === point.id;
+                const isSelected = state.selectedPointId === point.id;
                 if (!usedByFence && !usedByGate && !isPending) return;
-                postNum++;
                 const sp = worldToScreen(point.x, point.y);
                 const isCorner = isCornerPost(point.id);
+                const isHouseTerminal = isPointOnHouseEdge(point.x, point.y);
                 // Determine accent color from connected line's fence type
                 const connLine = state.lines.find(l => l.p1 === point.id || l.p2 === point.id);
                 const pointAccent = connLine ? (FENCE_TYPE_COLORS[getStyleForLine(connLine).fenceType] || { line: '#888888' }).line : '#888888';
-                ctx.fillStyle = isPending ? '#c8a55a' : pc;
+                ctx.fillStyle = isSelected ? '#d44' : (isPending ? '#c8a55a' : pc);
                 ctx.beginPath(); ctx.arc(sp.x, sp.y, POINT_RADIUS, 0, Math.PI * 2); ctx.fill();
-                if (isPending && !usedByFence && !usedByGate) {
+                if (isSelected) {
+                    ctx.strokeStyle = '#d44'; ctx.lineWidth = 2.5;
+                    ctx.beginPath(); ctx.arc(sp.x, sp.y, POINT_RADIUS + 4, 0, Math.PI * 2); ctx.stroke();
+                } else if (isPending && !usedByFence && !usedByGate) {
                     ctx.strokeStyle = '#c8a55a'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(sp.x, sp.y, POINT_RADIUS + 3, 0, Math.PI * 2); ctx.stroke();
+                } else if (isHouseTerminal) {
+                    // Terminal post at house — orange diamond marker
+                    ctx.fillStyle = '#e07020';
+                    ctx.beginPath(); ctx.arc(sp.x, sp.y, 4.5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = '#e07020'; ctx.lineWidth = 2;
                     ctx.beginPath(); ctx.arc(sp.x, sp.y, POINT_RADIUS + 3, 0, Math.PI * 2); ctx.stroke();
                 } else if (isCorner) {
                     ctx.fillStyle = pointAccent;
@@ -3596,8 +3815,8 @@
                     ctx.fillStyle = '#fff';
                     ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2); ctx.fill();
                 }
-                // Draw post number label
-                const label = 'P' + postNum;
+                // Draw post letter label
+                const label = pnLabels[point.id] || '?';
                 ctx.font = '600 10px Inter, sans-serif';
                 const lw = ctx.measureText(label).width;
                 const lx = sp.x - lw / 2, ly = sp.y - POINT_RADIUS - 8;
@@ -3638,13 +3857,40 @@
         }
 
         // ============================================
-        // MAP MODE — satellite tile rendering
+        // MAP MODE — Google Map Tiles (2D) rendering
         // ============================================
+        // NOTE: This API key is exposed in client JS. It MUST be restricted in Google Cloud Console
+        // by HTTP referrer (petefixes.com, *.workers.dev, localhost) and restricted to Map Tiles API only.
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyBE17zClisJ1P4AYoBgyepsAA2SA3g2QNo';
         let canvasMode = 'grid'; // 'grid' or 'map'
+        let mapStyle = 'satellite'; // 'satellite' or 'roadmap'
         const mapState = { lat: null, lng: null, address: '' };
-        const tileCache = {};
+        const tileCache = {}; // key: `${mapStyle}/${z}/${x}/${y}`
         const TILE_SIZE = 256;
-        const ESRI_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+        const googleSessions = {}; // mapType -> { token, expiry, promise }
+
+        async function ensureGoogleSession(mapType) {
+            const now = Date.now() / 1000;
+            const cached = googleSessions[mapType];
+            if (cached && cached.token && cached.expiry > now + 60) return cached.token;
+            if (cached && cached.promise) return cached.promise;
+            const promise = (async () => {
+                const body = { mapType, language: 'en-US', region: 'CA', scale: 'scaleFactor1x' };
+                const res = await fetch('https://tile.googleapis.com/v1/createSession?key=' + GOOGLE_MAPS_API_KEY, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) throw new Error('Google session failed: HTTP ' + res.status);
+                const json = await res.json();
+                if (!json.session) throw new Error('Google session failed: ' + JSON.stringify(json));
+                googleSessions[mapType] = { token: json.session, expiry: parseInt(json.expiry, 10) };
+                return json.session;
+            })();
+            googleSessions[mapType] = { promise };
+            try { return await promise; }
+            catch (e) { delete googleSessions[mapType]; throw e; }
+        }
 
         // Web Mercator helpers
         function lngToTileX(lng, z) { return ((lng + 180) / 360) * Math.pow(2, z); }
@@ -3652,32 +3898,46 @@
         function metersPerPixel(lat, z) { return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z); }
 
         // Convert 1 foot = 0.3048 metres; BASE_GRID_SPACING pixels per foot at zoom=1
-        // So at canvas zoom=1, 1 pixel = 1/BASE_GRID_SPACING ft = 0.3048/BASE_GRID_SPACING m
-        // We need tile zoom where metres-per-tile-pixel ≈ metres-per-canvas-pixel
+        // Google Map Tiles supports z up to ~22 for satellite, ~21 for roadmap in most populated areas.
+        const MAX_TILE_Z = 21;
         function bestTileZoom(lat, canvasZoom) {
             const canvasMetresPerPx = 0.3048 / (BASE_GRID_SPACING * canvasZoom);
-            // Find z where metersPerPixel(lat, z) is closest
-            for (let z = 21; z >= 1; z--) {
+            for (let z = MAX_TILE_Z; z >= 1; z--) {
                 if (metersPerPixel(lat, z) <= canvasMetresPerPx * 1.5) return z;
             }
-            return 1;
+            // Canvas is more zoomed-in than available tiles — return max so imagery still renders (pixelated but visible)
+            return MAX_TILE_Z;
         }
 
         function getTile(z, x, y) {
-            const key = z + '/' + y + '/' + x;
+            const style = mapStyle;
+            const key = style + '/' + z + '/' + x + '/' + y;
             if (tileCache[key]) return tileCache[key];
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.src = ESRI_TILE_URL.replace('{z}', z).replace('{y}', y).replace('{x}', x);
-            img.onload = () => { tileCache[key].loaded = true; drawCanvas(); };
-            img.onerror = () => { tileCache[key].error = true; };
-            tileCache[key] = { img, loaded: false, error: false };
-            return tileCache[key];
+            const entry = { img: new Image(), loaded: false, error: false };
+            entry.img.crossOrigin = 'anonymous';
+            entry.img.onload = () => { entry.loaded = true; drawCanvas(); };
+            entry.img.onerror = () => { entry.error = true; };
+            tileCache[key] = entry;
+            ensureGoogleSession(style).then(token => {
+                entry.img.src = 'https://tile.googleapis.com/v1/2dtiles/' + z + '/' + x + '/' + y +
+                    '?session=' + encodeURIComponent(token) + '&key=' + GOOGLE_MAPS_API_KEY;
+            }).catch(err => {
+                entry.error = true;
+                console.error('Tile session error:', err);
+            });
+            return entry;
+        }
+
+        function getCachedTile(z, x, y) {
+            const key = mapStyle + '/' + z + '/' + x + '/' + y;
+            const t = tileCache[key];
+            return (t && t.loaded) ? t : null;
         }
 
         function drawMapTiles() {
             ctx.clearRect(0, 0, canvasW, canvasH);
-            ctx.fillStyle = '#2d2d2d'; ctx.fillRect(0, 0, canvasW, canvasH);
+            ctx.fillStyle = mapStyle === 'roadmap' ? '#e8e8ea' : '#2d2d2d';
+            ctx.fillRect(0, 0, canvasW, canvasH);
 
             if (!mapState.lat || !mapState.lng) return;
 
@@ -3722,49 +3982,84 @@
                     if (tx < 0 || tx >= maxTile || ty < 0 || ty >= maxTile) continue;
                     const screenX = centerTileScreenX + dx * tilePixelSize;
                     const screenY = centerTileScreenY + dy * tilePixelSize;
-                    // Skip tiles completely off-screen
                     if (screenX + tilePixelSize < 0 || screenX > canvasW || screenY + tilePixelSize < 0 || screenY > canvasH) continue;
-                    const tile = getTile(z, tx, ty);
+
+                    const tile = getTile(z, tx, ty); // kicks off fetch if needed
                     if (tile.loaded) {
                         ctx.drawImage(tile.img, screenX, screenY, tilePixelSize + 0.5, tilePixelSize + 0.5);
+                        continue;
+                    }
+
+                    // Pyramid fallback — keeps the canvas filled during z-transitions so zoom feels smooth.
+                    // 1) Try parent levels (zoom-in case: we already have coarser tiles cached).
+                    let filled = false;
+                    for (let levels = 1; levels <= 4 && z - levels >= 1; levels++) {
+                        const div = 1 << levels;
+                        const parent = getCachedTile(z - levels, Math.floor(tx / div), Math.floor(ty / div));
+                        if (!parent) continue;
+                        const subSize = TILE_SIZE / div;
+                        const subX = (tx - Math.floor(tx / div) * div) * subSize;
+                        const subY = (ty - Math.floor(ty / div) * div) * subSize;
+                        ctx.drawImage(parent.img, subX, subY, subSize, subSize,
+                            screenX, screenY, tilePixelSize + 0.5, tilePixelSize + 0.5);
+                        filled = true;
+                        break;
+                    }
+                    // 2) Try one level of children (zoom-out case: we have finer tiles cached).
+                    if (!filled && z < MAX_TILE_Z) {
+                        const subSize = tilePixelSize / 2;
+                        for (let cdy = 0; cdy < 2; cdy++) {
+                            for (let cdx = 0; cdx < 2; cdx++) {
+                                const child = getCachedTile(z + 1, tx * 2 + cdx, ty * 2 + cdy);
+                                if (child) {
+                                    ctx.drawImage(child.img,
+                                        screenX + cdx * subSize, screenY + cdy * subSize,
+                                        subSize + 0.5, subSize + 0.5);
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             // Semi-transparent grid overlay in map mode
             const gs = gridSpacing();
+            const gridColor = mapStyle === 'roadmap' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.08)';
             if (gs >= 15) {
-                ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.5;
+                ctx.strokeStyle = gridColor; ctx.lineWidth = 0.5;
                 const sx = Math.floor(-state.panX / gs) * gs + (state.panX % gs);
                 const sy = Math.floor(-state.panY / gs) * gs + (state.panY % gs);
                 for (let x = sx; x <= canvasW; x += gs) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvasH); ctx.stroke(); }
                 for (let y = sy; y <= canvasH; y += gs) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasW, y); ctx.stroke(); }
             }
 
-            // Scale bar (white for dark background)
-            ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.font = '11px Inter, sans-serif';
+            // Scale bar — color depends on style
+            const scaleColor = mapStyle === 'roadmap' ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.8)';
+            ctx.fillStyle = scaleColor; ctx.font = '11px Inter, sans-serif';
             const sl = Math.max(1, Math.round(10 / state.zoom));
             const sp = sl * BASE_GRID_SPACING * state.zoom;
             ctx.fillText(sl + ' ft', 16, canvasH - 22);
-            ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 2;
+            ctx.strokeStyle = scaleColor; ctx.lineWidth = 2;
             ctx.beginPath(); ctx.moveTo(16, canvasH - 16); ctx.lineTo(16 + sp, canvasH - 16); ctx.stroke();
         }
 
         // Mode toggle
         const mapAddrBtn = document.getElementById('mapAddrBtn');
         const mapAddrLabel = document.getElementById('mapAddrLabel');
+        const mapStyleToggle = document.getElementById('mapStyleToggle');
         function updateMapUI() {
             mapAddrBtn.style.display = canvasMode === 'map' ? '' : 'none';
+            mapStyleToggle.style.display = canvasMode === 'map' ? '' : 'none';
             if (mapState.address) {
                 const short = mapState.address.split(',').slice(0, 2).join(',');
                 mapAddrLabel.textContent = short;
             }
         }
-        document.querySelectorAll('.canvas-mode-btn').forEach(btn => {
+        document.querySelectorAll('.canvas-mode-btn[data-mode]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const mode = btn.dataset.mode;
                 if (mode === canvasMode) return;
-                document.querySelectorAll('.canvas-mode-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.canvas-mode-btn[data-mode]').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 canvasMode = mode;
                 if (mode === 'map' && !mapState.lat) {
@@ -3773,7 +4068,19 @@
                 } else {
                     document.getElementById('mapSearchOverlay').classList.remove('visible');
                 }
+                if (mode === 'map') ensureGoogleSession(mapStyle).catch(e => console.error(e));
                 updateMapUI();
+                drawCanvas();
+            });
+        });
+        document.querySelectorAll('.canvas-mode-btn[data-style]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const style = btn.dataset.style;
+                if (style === mapStyle) return;
+                document.querySelectorAll('.canvas-mode-btn[data-style]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                mapStyle = style;
+                ensureGoogleSession(style).catch(e => console.error(e));
                 drawCanvas();
             });
         });
@@ -3782,41 +4089,188 @@
             document.getElementById('mapAddressInput').focus();
         });
 
-        // Address search
-        async function searchAddress() {
-            const input = document.getElementById('mapAddressInput');
-            const status = document.getElementById('mapSearchStatus');
-            const btn = document.getElementById('mapSearchBtn');
-            const addr = input.value.trim();
-            if (!addr) { status.textContent = 'Please enter an address.'; status.className = 'map-search-status error'; return; }
-            btn.disabled = true; status.textContent = 'Searching…'; status.className = 'map-search-status';
-            try {
-                const res = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(addr) + '&format=json&limit=1', {
-                    headers: { 'User-Agent': 'PeteFixesFenceTool/1.0' }
-                });
-                const data = await res.json();
-                if (!data.length) { status.textContent = 'Address not found. Try adding city/province.'; status.className = 'map-search-status error'; btn.disabled = false; return; }
-                mapState.lat = parseFloat(data[0].lat);
-                mapState.lng = parseFloat(data[0].lon);
-                mapState.address = data[0].display_name;
-                status.textContent = '';
-                document.getElementById('mapSearchOverlay').classList.remove('visible');
-                // Center the map: world origin (0,0) maps to the address
-                state.panX = canvasW / 2;
-                state.panY = canvasH / 2;
-                state.zoom = 1;
-                updateZoomLabel();
-                updateMapUI();
-                drawCanvas();
-            } catch (err) {
-                status.textContent = 'Search failed. Check your connection.'; status.className = 'map-search-status error';
-            }
-            btn.disabled = false;
-        }
-        document.getElementById('mapSearchBtn').addEventListener('click', searchAddress);
-        document.getElementById('mapAddressInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchAddress(); });
+        // Address search with autocomplete
+        const mapSearchInput = document.getElementById('mapAddressInput');
+        const mapSearchStatus = document.getElementById('mapSearchStatus');
+        const mapSearchBtn = document.getElementById('mapSearchBtn');
+        const mapSearchResults = document.getElementById('mapSearchResults');
+        let suggestTimer = null;
+        let suggestSeq = 0;
+        let currentSuggestions = [];
+        let focusedIdx = -1;
 
-        function drawCanvas() { (canvasMode === 'map' ? drawMapTiles : drawGrid)(); drawFenceLines(); }
+        function formatSuggestion(item) {
+            const a = item.address || {};
+            const house = a.house_number || '';
+            const road = a.road || a.pedestrian || a.footway || '';
+            const primary = [house, road].filter(Boolean).join(' ') || (item.display_name.split(',')[0] || '').trim();
+            const city = a.city || a.town || a.village || a.hamlet || a.municipality || a.county || '';
+            const region = a.state || a.province || a.state_district || '';
+            const country = a.country_code ? a.country_code.toUpperCase() : (a.country || '');
+            const secondary = [city, region, country].filter(Boolean).join(', ');
+            return { primary, secondary };
+        }
+
+        function renderSuggestions(items) {
+            currentSuggestions = items;
+            focusedIdx = -1;
+            if (!items.length) {
+                mapSearchResults.classList.remove('visible');
+                mapSearchResults.innerHTML = '';
+                return;
+            }
+            mapSearchResults.innerHTML = items.map((it, i) => {
+                const f = formatSuggestion(it);
+                return '<div class="map-search-result" role="option" data-idx="' + i + '">' +
+                    '<div class="map-search-result-primary">' + escapeHtml(f.primary) + '</div>' +
+                    '<div class="map-search-result-secondary">' + escapeHtml(f.secondary) + '</div>' +
+                    '</div>';
+            }).join('');
+            mapSearchResults.classList.add('visible');
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        async function fetchSuggestions(q) {
+            const seq = ++suggestSeq;
+            try {
+                const url = 'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) +
+                    '&format=json&addressdetails=1&limit=5&countrycodes=ca,us';
+                const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+                const data = await res.json();
+                if (seq !== suggestSeq) return; // stale
+                if (!Array.isArray(data) || !data.length) {
+                    renderSuggestions([]);
+                    mapSearchStatus.textContent = 'No matches. Try adding city/province.';
+                    mapSearchStatus.className = 'map-search-status';
+                    return;
+                }
+                renderSuggestions(data);
+                mapSearchStatus.textContent = data.length + ' match' + (data.length === 1 ? '' : 'es') + ' — pick one';
+                mapSearchStatus.className = 'map-search-status';
+            } catch (err) {
+                if (seq !== suggestSeq) return;
+                mapSearchStatus.textContent = 'Search failed. Check your connection.';
+                mapSearchStatus.className = 'map-search-status error';
+            }
+        }
+
+        function selectSuggestion(item) {
+            mapState.lat = parseFloat(item.lat);
+            mapState.lng = parseFloat(item.lon);
+            mapState.address = item.display_name;
+            mapSearchStatus.textContent = '';
+            mapSearchStatus.className = 'map-search-status';
+            renderSuggestions([]);
+            document.getElementById('mapSearchOverlay').classList.remove('visible');
+            // Center on address at a zoom that actually shows satellite imagery (ESRI caps ~z19)
+            state.panX = canvasW / 2;
+            state.panY = canvasH / 2;
+            state.zoom = 0.1;
+            updateZoomLabel();
+            updateMapUI();
+            drawCanvas();
+        }
+
+        mapSearchInput.addEventListener('input', () => {
+            const q = mapSearchInput.value.trim();
+            clearTimeout(suggestTimer);
+            if (q.length < 3) {
+                renderSuggestions([]);
+                mapSearchStatus.textContent = '';
+                return;
+            }
+            mapSearchStatus.textContent = 'Searching…';
+            mapSearchStatus.className = 'map-search-status';
+            suggestTimer = setTimeout(() => fetchSuggestions(q), 300);
+        });
+
+        mapSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!currentSuggestions.length) return;
+                focusedIdx = (focusedIdx + 1) % currentSuggestions.length;
+                updateFocusedSuggestion();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (!currentSuggestions.length) return;
+                focusedIdx = (focusedIdx - 1 + currentSuggestions.length) % currentSuggestions.length;
+                updateFocusedSuggestion();
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (focusedIdx >= 0 && currentSuggestions[focusedIdx]) {
+                    selectSuggestion(currentSuggestions[focusedIdx]);
+                } else if (currentSuggestions[0]) {
+                    selectSuggestion(currentSuggestions[0]);
+                } else {
+                    // Force immediate fetch if user hits Enter before debounce
+                    const q = mapSearchInput.value.trim();
+                    if (q.length >= 3) fetchSuggestions(q);
+                }
+            } else if (e.key === 'Escape') {
+                renderSuggestions([]);
+            }
+        });
+
+        function updateFocusedSuggestion() {
+            mapSearchResults.querySelectorAll('.map-search-result').forEach((el, i) => {
+                el.classList.toggle('focused', i === focusedIdx);
+                if (i === focusedIdx) el.scrollIntoView({ block: 'nearest' });
+            });
+        }
+
+        mapSearchResults.addEventListener('click', (e) => {
+            const el = e.target.closest('.map-search-result');
+            if (!el) return;
+            const idx = parseInt(el.dataset.idx, 10);
+            if (currentSuggestions[idx]) selectSuggestion(currentSuggestions[idx]);
+        });
+
+        mapSearchBtn.addEventListener('click', () => {
+            if (currentSuggestions[0]) { selectSuggestion(currentSuggestions[0]); return; }
+            const q = mapSearchInput.value.trim();
+            if (q.length >= 3) fetchSuggestions(q);
+        });
+
+        function drawCanvas() { (canvasMode === 'map' ? drawMapTiles : drawGrid)(); drawHouses(); drawFenceLines(); }
+
+        function drawHouses() {
+            state.houses.forEach((h, idx) => {
+                const tl = worldToScreen(h.x, h.y);
+                const br = worldToScreen(h.x + h.width, h.y + h.height);
+                const w = br.x - tl.x, ht = br.y - tl.y;
+                const sel = idx === state.selectedHouseIdx;
+                // Fill
+                ctx.fillStyle = sel ? 'rgba(120,120,140,0.25)' : 'rgba(140,140,155,0.18)';
+                ctx.fillRect(tl.x, tl.y, w, ht);
+                // Border
+                ctx.strokeStyle = sel ? '#555' : '#888';
+                ctx.lineWidth = sel ? 2.5 : 1.5;
+                ctx.setLineDash([6, 3]);
+                ctx.strokeRect(tl.x, tl.y, w, ht);
+                ctx.setLineDash([]);
+                // Label
+                ctx.font = '600 12px Inter, sans-serif';
+                const label = (h.label || 'House') + '  ' + h.width + '×' + h.height + ' ft';
+                const tw = ctx.measureText(label).width;
+                const cx = tl.x + w / 2, cy = tl.y + ht / 2;
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.beginPath(); ctx.roundRect(cx - tw / 2 - 6, cy - 8, tw + 12, 18, 4); ctx.fill();
+                ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+                ctx.fillText(label, cx, cy + 5); ctx.textAlign = 'start';
+                // Resize handles
+                if (sel) {
+                    const HANDLE = 6;
+                    [[tl.x, tl.y], [br.x, tl.y], [tl.x, br.y], [br.x, br.y]].forEach(([cx, cy]) => {
+                        ctx.fillStyle = '#fff'; ctx.fillRect(cx - HANDLE, cy - HANDLE, HANDLE * 2, HANDLE * 2);
+                        ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
+                        ctx.strokeRect(cx - HANDLE, cy - HANDLE, HANDLE * 2, HANDLE * 2);
+                    });
+                }
+            });
+        }
 
         // ============================================
         // HELPERS
@@ -3836,7 +4290,13 @@
             return (fenceConns + gateConns) >= 2;
         }
 
-        // Build map of point id → post number (consistent with canvas labels)
+        // Build map of point id → letter label A-Z (consistent with canvas labels)
+        function postLetterLabel(n) {
+            // 1→A, 2→B, ... 26→Z, 27→AA, 28→AB ...
+            let s = '';
+            while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
+            return s;
+        }
         function getPostNumberMap() {
             const map = {};
             let num = 0;
@@ -3845,7 +4305,7 @@
                 const usedByGate = state.gates.some(g => g.p1 === point.id || g.p2 === point.id);
                 const isPending = state.pendingPoint === point.id;
                 if (!usedByFence && !usedByGate && !isPending) return;
-                map[point.id] = ++num;
+                map[point.id] = postLetterLabel(++num);
             });
             return map;
         }
@@ -4048,7 +4508,7 @@
                 const styleNum = state.fenceStyles.length > 1 ? ' S' + ((line.styleIdx || 0) + 1) : '';
                 const pn1 = pnMap[line.p1] || '?', pn2 = pnMap[line.p2] || '?';
                 html += '<div class="fence-line-item' + (sel ? ' selected' : '') + '" data-line-idx="' + idx + '">' +
-                    '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + styleNum + '</span></div><div class="fence-line-meta">P' + pn1 + ' \u2192 P' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
+                    '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + styleNum + '</span></div><div class="fence-line-meta">' + pn1 + ' \u2192 ' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
                     '<input class="fence-line-input" type="number" min="1" max="2000" step="0.1" value="' + dist.toFixed(1) + '" data-line-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-line="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
             });
@@ -4078,7 +4538,7 @@
 
                 const gpn1 = pnMap[gate.p1] || '?', gpn2 = pnMap[gate.p2] || '?';
                 html += '<div class="fence-line-item' + (sel ? ' selected' : '') + '" data-gate-idx="' + idx + '">' +
-                    '<div class="fence-line-color gate-color"></div><div class="fence-line-info"><div class="fence-line-name">Gate ' + (idx + 1) + ' <span class="gate-post-badge">P' + gpn1 + '\u2013P' + gpn2 + ' \u00b7 ' + postCtx.desc + '</span>' + dirBadge + '</div>' +
+                    '<div class="fence-line-color gate-color"></div><div class="fence-line-info"><div class="fence-line-name">Gate ' + (idx + 1) + ' <span class="gate-post-badge">' + gpn1 + '\u2013' + gpn2 + ' \u00b7 ' + postCtx.desc + '</span>' + dirBadge + '</div>' +
                     '<select class="gate-type-select" data-gate-type-idx="' + idx + '">' + typeOptions + '</select></div>' +
                     '<input class="fence-line-input" type="number" min="2" max="30" step="0.5" value="' + width.toFixed(1) + '" data-gate-width-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-gate="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
@@ -4190,11 +4650,31 @@
         }
 
         function deleteSelected() {
-            if (state.selectedLineIdx >= 0 && state.selectedLineIdx < state.lines.length) {
+            if (state.selectedPointId !== null) {
+                deletePoint(state.selectedPointId);
+            } else if (state.selectedLineIdx >= 0 && state.selectedLineIdx < state.lines.length) {
                 deleteLine(state.selectedLineIdx);
             } else if (state.selectedGateIdx >= 0 && state.selectedGateIdx < state.gates.length) {
                 deleteGate(state.selectedGateIdx);
+            } else if (state.selectedHouseIdx >= 0 && state.selectedHouseIdx < state.houses.length) {
+                deleteHouse(state.selectedHouseIdx);
             }
+        }
+
+        function deletePoint(pointId) {
+            // Remove all lines and gates connected to this point
+            state.lines = state.lines.filter(l => l.p1 !== pointId && l.p2 !== pointId);
+            state.gates = state.gates.filter(g => g.p1 !== pointId && g.p2 !== pointId);
+            state.points = state.points.filter(p => p.id !== pointId);
+            state.actionHistory = state.actionHistory.filter(a => !(a.ref && (a.ref.p1 === pointId || a.ref.p2 === pointId)));
+            state.selectedPointId = null; state.selectedLineIdx = -1; state.selectedGateIdx = -1;
+            updateDeletePointBtn();
+            cleanOrphanPoints(); drawCanvas(); updatePricing(); renderSidebar();
+        }
+
+        function updateDeletePointBtn() {
+            const btn = document.getElementById('deletePointBtn');
+            if (btn) btn.style.display = state.selectedPointId !== null ? 'inline-flex' : 'none';
         }
 
         function cleanOrphanPoints() {
@@ -4450,9 +4930,19 @@
             const r = canvas.getBoundingClientRect();
             mousePos = { sx: e.clientX - r.left, sy: e.clientY - r.top };
             if (state.pendingPoint !== null) lastPreviewPos = { sx: mousePos.sx, sy: mousePos.sy };
-            if ((state.activeTool === 'draw' || state.activeTool === 'gate') && !spaceHeld && !isDraggingPoint) {
-                const hover = findNearbyPoint(mousePos.sx, mousePos.sy);
-                canvas.style.cursor = hover ? (state.pendingPoint === null ? 'move' : 'pointer') : 'crosshair';
+            if (!spaceHeld && !isDraggingPoint) {
+                const hoverHouse = hitTestHouses(mousePos.sx, mousePos.sy);
+                if (hoverHouse && hoverHouse.handle) {
+                    const hh = hoverHouse.handle;
+                    canvas.style.cursor = (hh === 'nw' || hh === 'se') ? 'nwse-resize' : (hh === 'ne' || hh === 'sw') ? 'nesw-resize' : 'move';
+                } else if (hoverHouse && hoverHouse.body) {
+                    canvas.style.cursor = 'move';
+                } else if (state.activeTool === 'draw' || state.activeTool === 'gate') {
+                    const hover = findNearbyPoint(mousePos.sx, mousePos.sy);
+                    canvas.style.cursor = hover ? (state.pendingPoint === null ? 'move' : 'pointer') : 'crosshair';
+                } else if (state.activeTool === 'house') {
+                    canvas.style.cursor = 'copy';
+                }
             }
             if (state.pendingPoint !== null && (state.activeTool === 'draw' || state.activeTool === 'gate') && !spaceHeld) drawCanvas();
         });
@@ -4467,8 +4957,61 @@
             if (dragMoved) { dragMoved = false; return; }
             const r = canvas.getBoundingClientRect();
             const sx = e.clientX - r.left, sy = e.clientY - r.top;
+
+            // House tool — place a house
+            if (state.activeTool === 'house') {
+                const houseHit = hitTestHouses(sx, sy);
+                if (houseHit) {
+                    // Select/deselect existing house
+                    state.selectedHouseIdx = state.selectedHouseIdx === houseHit.idx ? -1 : houseHit.idx;
+                    state.selectedLineIdx = -1; state.selectedGateIdx = -1;
+                } else {
+                    const world = screenToWorld(sx, sy);
+                    const snH = snapWorldToGrid(world.x, world.y);
+                    const newHouse = { id: ++houseIdCounter, x: snH.x - 15, y: snH.y - 10, width: 30, height: 20, label: 'House' };
+                    state.houses.push(newHouse);
+                    state.actionHistory.push({ type: 'house', ref: newHouse });
+                    state.selectedHouseIdx = state.houses.length - 1;
+                    state.selectedLineIdx = -1; state.selectedGateIdx = -1;
+                }
+                drawCanvas(); return;
+            }
+
             const nearby = findNearbyPoint(sx, sy);
-            const snapped = nearby ? { x: nearby.x, y: nearby.y } : getSnappedWorldPos(sx, sy);
+
+            // Point selection: if no pending action and clicking near an existing point, toggle select
+            if (nearby && state.pendingPoint === null && state.activeTool === 'draw') {
+                const usedByLine = state.lines.some(l => l.p1 === nearby.id || l.p2 === nearby.id);
+                const usedByGate = state.gates.some(g => g.p1 === nearby.id || g.p2 === nearby.id);
+                if (usedByLine || usedByGate) {
+                    state.selectedPointId = state.selectedPointId === nearby.id ? null : nearby.id;
+                    state.selectedLineIdx = -1; state.selectedGateIdx = -1;
+                    updateDeletePointBtn();
+                    drawCanvas(); return;
+                }
+            }
+            // Clear point selection when placing new points
+            state.selectedPointId = null; updateDeletePointBtn();
+
+            let snapped = nearby ? { x: nearby.x, y: nearby.y } : getSnappedWorldPos(sx, sy);
+
+            // Block points inside a house — snap to nearest edge
+            if (!nearby && isPointInsideHouse(snapped.x, snapped.y)) {
+                snapped = snapToHouseEdge(snapped.x, snapped.y);
+            }
+
+            // Check if a fence/gate line would cross through a house
+            if (state.pendingPoint !== null && (state.activeTool === 'draw' || state.activeTool === 'gate')) {
+                const p1 = state.points.find(p => p.id === state.pendingPoint);
+                if (p1 && lineIntersectsHouse(p1.x, p1.y, snapped.x, snapped.y)) {
+                    // Don't allow — flash hint
+                    const hint = document.getElementById('canvasHint');
+                    hint.textContent = 'Cannot draw fence through house';
+                    hint.style.color = '#d44';
+                    setTimeout(() => { hint.style.color = ''; updateHint(); }, 1500);
+                    return;
+                }
+            }
 
             if (state.activeTool === 'gate') {
                 // Gate tool: always two clicks, no chaining
@@ -4528,6 +5071,7 @@
             if (e.key === 'f' || e.key === 'F') autoFitIfNeeded();
             if (e.key === 'g' || e.key === 'G') setActiveTool('gate');
             if (e.key === 'd' || e.key === 'D') setActiveTool('draw');
+            if (e.key === 'h' || e.key === 'H') setActiveTool('house');
         });
 
         document.getElementById('clearBtn').addEventListener('click', () => {
@@ -4536,10 +5080,10 @@
         });
 
         function doClearAll() {
-            state.points = []; state.lines = []; state.gates = []; state.pendingPoint = null;
+            state.points = []; state.lines = []; state.gates = []; state.houses = []; state.pendingPoint = null;
             state.actionHistory = [];
             state.fenceStyles = [createDefaultStyle()]; state.activeStyleIdx = 0;
-            state.selectedLineIdx = -1; state.selectedGateIdx = -1; pointIdCounter = 0; gateIdCounter = 0;
+            state.selectedLineIdx = -1; state.selectedGateIdx = -1; state.selectedHouseIdx = -1; pointIdCounter = 0; gateIdCounter = 0; houseIdCounter = 0;
             syncPanelToActiveStyle(); renderStyleSwitcher();
             updateHint(); drawCanvas(); updatePricing(); renderSidebar();
         }
@@ -4555,6 +5099,19 @@
             document.getElementById('clearConfirmModal').classList.remove('open');
         });
 
+        // Onboarding — show once per user
+        (function initOnboarding() {
+            const overlay = document.getElementById('onboardingOverlay');
+            if (!overlay) return;
+            if (localStorage.getItem('pf_onboarding_done') || state.lines.length > 0) {
+                overlay.style.display = 'none'; return;
+            }
+            document.getElementById('onboardingStartBtn').addEventListener('click', () => {
+                overlay.style.display = 'none';
+                localStorage.setItem('pf_onboarding_done', '1');
+            });
+        })();
+
         function undoLast() {
             if (state.actionHistory.length === 0) return;
             const last = state.actionHistory.pop();
@@ -4564,13 +5121,18 @@
             } else if (last.type === 'gate') {
                 const idx = state.gates.indexOf(last.ref);
                 if (idx !== -1) state.gates.splice(idx, 1);
+            } else if (last.type === 'house') {
+                const idx = state.houses.indexOf(last.ref);
+                if (idx !== -1) state.houses.splice(idx, 1);
             }
             cleanOrphanPoints();
             if (state.selectedLineIdx >= state.lines.length) state.selectedLineIdx = -1;
             if (state.selectedGateIdx >= state.gates.length) state.selectedGateIdx = -1;
+            if (state.selectedHouseIdx >= state.houses.length) state.selectedHouseIdx = -1;
             updateHint(); drawCanvas(); updatePricing(); renderSidebar();
         }
         document.getElementById('undoBtn').addEventListener('click', undoLast);
+        document.getElementById('deletePointBtn').addEventListener('click', () => { if (state.selectedPointId !== null) deletePoint(state.selectedPointId); });
 
         // Touch — pinch-to-zoom + single-finger tap/pan
         let lastTouchDist = null, touchPanning = false, touchPanStartX = 0, touchPanStartY = 0;
@@ -4722,6 +5284,7 @@
                 points: state.points.map(p => ({ id: p.id, x: p.x, y: p.y })),
                 lines: state.lines.map(l => ({ p1: l.p1, p2: l.p2, styleIdx: l.styleIdx || 0 })),
                 gates: state.gates.map(g => ({ p1: g.p1, p2: g.p2, gateType: g.gateType, styleIdx: g.styleIdx || 0, hingePost: g.hingePost, swingDir: g.swingDir, slideDir: g.slideDir })),
+                houses: state.houses.map(h => ({ id: h.id, x: h.x, y: h.y, width: h.width, height: h.height, label: h.label || 'House' })),
                 activeStyleIdx: state.activeStyleIdx
             };
             return btoa(encodeURIComponent(JSON.stringify(data)));
@@ -4735,8 +5298,10 @@
                 state.points = data.points || [];
                 state.lines = data.lines || [];
                 state.gates = data.gates || [];
+                state.houses = data.houses || [];
                 pointIdCounter = Math.max(0, ...state.points.map(p => p.id));
-                state.selectedLineIdx = -1; state.selectedGateIdx = -1;
+                houseIdCounter = state.houses.length ? Math.max(...state.houses.map(h => h.id)) : 0;
+                state.selectedLineIdx = -1; state.selectedGateIdx = -1; state.selectedHouseIdx = -1;
                 state.pendingPoint = null;
                 syncPanelToActiveStyle(); renderStyleSwitcher();
                 updateHint(); drawCanvas(); updatePricing(); renderSidebar();
@@ -4803,7 +5368,7 @@
                 } else if (s.fenceType === 'vinyl') {
                     desc += ' ' + (s.vinylColor || 'white');
                 }
-                rows.push({ type: 'line', label: 'Line ' + (idx + 1) + ' (P' + pn1 + '\u2192P' + pn2 + ')', desc: desc, length: len.toFixed(1) + ' ft', posts: posts.length, cost: cost, material: Math.round(mat), labour: Math.round(labour), addons: Math.round(addons) });
+                rows.push({ type: 'line', label: 'Line ' + (idx + 1) + ' (' + pn1 + '\u2192' + pn2 + ')', desc: desc, length: len.toFixed(1) + ' ft', posts: posts.length, cost: cost, material: Math.round(mat), labour: Math.round(labour), addons: Math.round(addons) });
             });
 
             state.gates.forEach((gate, idx) => {
@@ -4816,7 +5381,7 @@
                 const labour = calculateLabourForGate(gate.gateType);
                 const cost = Math.round(mat * mk + labour);
                 const gpn1 = pnMap[gate.p1] || '?', gpn2 = pnMap[gate.p2] || '?';
-                rows.push({ type: 'gate', label: 'Gate ' + (idx + 1) + ' (P' + gpn1 + '\u2013P' + gpn2 + ')', desc: (GATE_TYPE_LABELS[gate.gateType] || 'Gate') + ' ' + w.toFixed(1) + "'", cost: cost, material: Math.round(mat), labour: Math.round(labour), addons: 0 });
+                rows.push({ type: 'gate', label: 'Gate ' + (idx + 1) + ' (' + gpn1 + '\u2013' + gpn2 + ')', desc: (GATE_TYPE_LABELS[gate.gateType] || 'Gate') + ' ' + w.toFixed(1) + "'", cost: cost, material: Math.round(mat), labour: Math.round(labour), addons: 0 });
             });
 
             const price = calculatePrice();
@@ -5284,16 +5849,6 @@
                     }
                     ldScript.textContent = JSON.stringify(ld);
                 } catch(e) {}
-            }
-            // Config indicator — shows which config is active
-            const ind = document.getElementById('configIndicator');
-            if (ind) {
-                const v = PCFG.configVersion || '?';
-                const d = PCFG.deploymentId || 'default';
-                const mod = PCFG.lastModified ? new Date(PCFG.lastModified).toLocaleDateString() : 'unknown';
-                const tiers = (PCFG.markupTiers || []).length;
-                ind.textContent = 'Config: ' + d + ' v' + v + ' · ' + mod + ' · ' + tiers + ' tiers';
-                ind.title = 'Deployment: ' + d + '\nVersion: ' + v + '\nLast modified: ' + (PCFG.lastModified || 'unknown') + '\nTiers: ' + (PCFG.markupTiers || []).map(function(t) { return (t.label || '?') + ' ' + t.multiplier + '×'; }).join(', ') + '\nMin charge: $' + (PCFG.minimumJobCharge || 0) + '\nMarkup basis: ' + (PCFG.markupBasis || 'material');
             }
         }
         applyBranding();
