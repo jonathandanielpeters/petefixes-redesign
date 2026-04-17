@@ -324,17 +324,18 @@
         .map-locate-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
         /* Pricing Bar */
-        .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 10px 20px; display: flex; align-items: center; z-index: 100; border-top: 1px solid var(--gray-700); }
-        .pricing-summary { display: flex; align-items: center; gap: 24px; }
+        .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 6px 20px; display: flex; align-items: center; z-index: 100; border-top: 1px solid var(--gray-700); }
+        .pricing-summary { display: flex; align-items: center; gap: 18px; }
         .pricing-item { text-align: center; }
-        .pricing-item-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; }
-        .pricing-item-value { font-size: 18px; font-weight: 700; color: var(--white); letter-spacing: -0.01em; }
+        .pricing-item-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; line-height: 1.2; }
+        .pricing-item-value { font-size: 15px; font-weight: 700; color: var(--white); letter-spacing: -0.01em; }
         .pricing-total { text-align: center; flex: 1; }
-        .pricing-total-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; }
-        .pricing-total-value { font-size: 28px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
+        .pricing-total-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; line-height: 1.2; }
+        .pricing-total-value { font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
+        .pricing-disclaimer { font-size: 9px; color: var(--gray-500); line-height: 1.2; }
         .pricing-actions { display: flex; gap: 10px; align-items: center; }
         .pricing-disclaimer { font-size: 10px; color: var(--gray-500); max-width: 140px; line-height: 1.3; }
-        .pricing-actions .btn, .pricing-actions .btn-book { font-weight: 600; border-radius: 980px; padding: 10px 22px; border: none; cursor: pointer; font-size: 14px; transition: background 0.2s; white-space: nowrap; min-width: 150px; text-align: center; }
+        .pricing-actions .btn, .pricing-actions .btn-book { font-weight: 600; border-radius: 980px; padding: 7px 18px; border: none; cursor: pointer; font-size: 13px; transition: background 0.2s; white-space: nowrap; min-width: 140px; text-align: center; }
         .btn-book { background: #27ae60 !important; color: #fff !important; }
         .btn-book:hover { background: #219a52 !important; }
 
@@ -445,13 +446,13 @@
             .canvas-toolbar-right { flex-shrink: 0; gap: 6px; margin-left: auto; }
             .canvas-hint { display: none; }
             .zoom-controls { flex-shrink: 0; }
-            .pricing-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
-            .pricing-summary { gap: 16px; flex-wrap: wrap; }
+            .pricing-bar { left: 0; padding: 6px 14px; flex-wrap: wrap; gap: 6px; }
+            .pricing-summary { gap: 14px; flex-wrap: wrap; }
             .pricing-total { text-align: center; width: 100%; order: -1; }
-            .pricing-item-value { font-size: 15px; }
-            .pricing-total-value { font-size: 22px; }
+            .pricing-item-value { font-size: 14px; }
+            .pricing-total-value { font-size: 20px; }
             .pricing-actions { width: 100%; }
-            .pricing-actions .btn, .pricing-actions .btn-book { flex: 1; min-width: 0; padding: 10px 14px; font-size: 13px; }
+            .pricing-actions .btn, .pricing-actions .btn-book { flex: 1; min-width: 0; padding: 7px 14px; font-size: 12px; }
             /* Map search overlay — full-screen on mobile */
             .map-search-overlay { position: fixed; inset: 0; z-index: 200; padding: 20px; overflow-y: auto; }
             .map-search-card { padding: 24px 20px; max-width: 100%; }
@@ -464,9 +465,9 @@
             .beta-badge { font-size: 8px; padding: 1px 5px; }
             .beta-text { font-size: 9px; }
             .pricing-disclaimer { display: none; }
-            .pricing-bar { padding: 8px 10px; gap: 6px; }
-            .pricing-total-value { font-size: 20px; }
-            .pricing-item-value { font-size: 14px; }
+            .pricing-bar { padding: 5px 10px; gap: 5px; }
+            .pricing-total-value { font-size: 18px; }
+            .pricing-item-value { font-size: 13px; }
             .canvas-toolbar-left { flex-wrap: wrap; gap: 4px; }
             .canvas-tool-btn { padding: 5px 10px; font-size: 11px; }
             .map-search-row { flex-direction: column; }
@@ -1226,7 +1227,7 @@
         <div class="pricing-total">
             <span class="pricing-total-label">Estimated Total</span>
             <span class="pricing-total-value" id="totalPrice">$0</span>
-            <span class="pricing-disclaimer" style="display:block;margin-top:2px">Estimate only. Final price confirmed after in-person visit.</span>
+            <span class="pricing-disclaimer" style="display:block;margin-top:1px">Estimate only. Final price confirmed after in-person visit.</span>
         </div>
         <div class="pricing-actions">
             <button class="btn btn-primary" id="saveEstimateBtn" type="button">Save Estimate</button>
