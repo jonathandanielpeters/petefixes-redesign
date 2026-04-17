@@ -5,9 +5,12 @@ main = "./worker/index.js"
 [vars]
 ADMIN_USER = "admin"
 ADMIN_PASS = "changethings2"
+SQUARE_APP_ID = "sandbox-sq0idb-HrpOwCmlKx1ij0tUxD0B-Q"
+SQUARE_ENV = "sandbox"
+SQUARE_ACCESS_TOKEN = "EAAAl5ZPNhqG0J7ttlRGupa8XeC5oqxgyg3ajx6mumVepvfkBwRrdqZxkcbNhAxL"
 
 [assets]
 directory = "./"
 binding = "ASSETS"
 not_found_handling = "404-page"
-run_worker_first = ["/services/fence-admin*"]
+run_worker_first = ["/services/fence-admin*", "/api/*"]

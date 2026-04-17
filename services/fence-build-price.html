@@ -53,6 +53,7 @@
     <link rel="stylesheet" href="../styles.css?v=5">
     <link rel="stylesheet" href="../service-page.css">
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script src="https://sandbox.web.squarecdn.com/v1/square.js"></script>
     <style>
         .configurator { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 100px); margin-top: 100px; }
         .config-panel { background: var(--white); border-right: 1px solid var(--gray-100); padding: 14px 16px 80px; overflow-y: auto; max-height: calc(100vh - 100px); position: sticky; top: 100px; }
@@ -284,6 +285,22 @@
         .pricing-total-value { font-size: 28px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
         .pricing-actions { display: flex; gap: 10px; align-items: center; }
         .pricing-disclaimer { font-size: 10px; color: var(--gray-500); max-width: 140px; line-height: 1.3; }
+        .btn-book { background: #27ae60 !important; color: #fff !important; font-weight: 600; border-radius: 980px; padding: 10px 22px; border: none; cursor: pointer; font-size: 14px; transition: background 0.2s; white-space: nowrap; }
+        .btn-book:hover { background: #219a52 !important; }
+
+        /* Booking modal */
+        .book-modal-dialog { position: relative; background: var(--white); border-radius: var(--radius-lg); padding: 32px; width: 480px; max-width: 92vw; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto; }
+        .book-modal-dialog h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; color: var(--black); }
+        .book-subtitle { font-size: 13px; color: var(--gray-400); margin-bottom: 18px; line-height: 1.4; }
+        .book-deposit-badge { display: inline-block; background: #27ae60; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 980px; margin-bottom: 14px; }
+        .book-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); margin: 18px 0 8px; }
+        #sq-card-container { min-height: 90px; }
+        .book-date-row { display: flex; gap: 10px; }
+        .book-date-row .modal-field { flex: 1; }
+        .book-card-saved-note { font-size: 12px; color: var(--gray-500); line-height: 1.4; margin-top: 6px; }
+        .book-status { text-align: center; padding: 12px 0 4px; font-size: 13px; color: var(--gray-400); }
+        .book-status.error { color: #e74c3c; }
+        .book-status.success { color: #27ae60; }
 
         /* Mobile floating sidebar */
         .mobile-sidebar { display: none; }
@@ -1019,6 +1036,76 @@
         </div>
     </div>
 
+    <!-- Book Installation Modal -->
+    <div class="add-line-modal" id="bookInstallModal">
+        <div class="add-line-backdrop" id="bookInstallBackdrop"></div>
+        <div class="book-modal-dialog">
+            <h3>Book Your Fence Installation</h3>
+            <p class="book-subtitle">Secure your installation date with a $100 refundable deposit. We'll confirm your schedule within 24 hours.</p>
+            <span class="book-deposit-badge">$100 Deposit</span>
+
+            <div class="save-estimate-summary" id="bookEstimateSummary"></div>
+
+            <form id="bookInstallForm" autocomplete="on">
+                <div class="book-section-label">Your Information</div>
+                <div class="save-estimate-row">
+                    <div class="modal-field">
+                        <label>First Name</label>
+                        <input type="text" id="bookFirstName" name="given-name" autocomplete="given-name" required>
+                    </div>
+                    <div class="modal-field">
+                        <label>Last Name</label>
+                        <input type="text" id="bookLastName" name="family-name" autocomplete="family-name" required>
+                    </div>
+                </div>
+                <div class="modal-field">
+                    <label>Email</label>
+                    <input type="email" id="bookEmail" name="email" autocomplete="email" required>
+                </div>
+                <div class="modal-field">
+                    <label>Phone</label>
+                    <input type="tel" id="bookPhone" name="tel" autocomplete="tel" required>
+                </div>
+                <div class="modal-field">
+                    <label>Site Address</label>
+                    <input type="text" id="bookAddress" name="street-address" autocomplete="street-address" placeholder="123 Main St, Winnipeg" required>
+                </div>
+
+                <div class="book-section-label">Preferred Installation Date</div>
+                <div class="book-date-row">
+                    <div class="modal-field">
+                        <input type="date" id="bookDate" required>
+                    </div>
+                </div>
+
+                <div class="modal-field">
+                    <label>Special Requests <span style="font-weight:400;color:var(--gray-400)">(optional)</span></label>
+                    <textarea id="bookNotes" rows="2" placeholder="Timeline, access instructions, colour preferences..." style="resize:vertical;min-height:50px"></textarea>
+                </div>
+
+                <div class="book-section-label">Payment — $100 Deposit</div>
+                <div id="sq-card-container"></div>
+
+                <label class="modal-checkbox" style="margin-top:12px">
+                    <input type="checkbox" id="bookSaveCard" checked>
+                    <span>Save my card for the second deposit before installation starts</span>
+                </label>
+                <p class="book-card-saved-note">Your card details are handled securely by Square. We'll only charge the second deposit after confirming your installation date. You can cancel anytime before work begins for a full refund.</p>
+
+                <label class="modal-checkbox">
+                    <input type="checkbox" id="bookConsent" required>
+                    <span class="consent-brand-text">I authorize a $100 deposit charge and consent to Pete Fixes contacting me about my installation.</span>
+                </label>
+
+                <div class="book-status" id="bookStatus" style="display:none"></div>
+                <div class="modal-actions">
+                    <button type="button" class="modal-cancel" id="bookInstallCancel">Cancel</button>
+                    <button type="submit" class="btn-book" id="bookInstallSubmit" style="flex:1">Pay $100 Deposit & Book</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Pricing Bar -->
     <div class="pricing-bar" id="pricingBar">
         <div class="pricing-summary">
@@ -1030,6 +1117,7 @@
             <div class="pricing-total"><span class="pricing-total-label">Estimated Total</span><span class="pricing-total-value" id="totalPrice">$0</span></div>
             <span class="pricing-disclaimer">Estimate only. Final price confirmed after in-person visit.</span>
             <button class="btn btn-primary" id="saveEstimateBtn" type="button">Save Estimate</button>
+            <button class="btn btn-book" id="bookInstallBtn" type="button">Book Installation</button>
         </div>
     </div>
 
@@ -6125,6 +6213,198 @@
                 statusEl.className = 'save-estimate-status error';
                 btn.disabled = false;
                 btn.textContent = 'Send Estimate';
+            }
+        });
+
+        // ============================================
+        // BOOK INSTALLATION — Square Payment
+        // ============================================
+        const SQUARE_APP_ID = 'sandbox-sq0idb-HrpOwCmlKx1ij0tUxD0B-Q';
+        const SQUARE_LOCATION_ID = 'LFFMPGRVMBEBZ'; // Sandbox — update for production
+        let squareCard = null;
+        let squarePayments = null;
+
+        async function initSquareCard() {
+            if (squareCard) return; // already initialized
+            if (typeof Square === 'undefined') { console.warn('Square SDK not loaded'); return; }
+            try {
+                squarePayments = Square.payments(SQUARE_APP_ID, SQUARE_LOCATION_ID);
+                squareCard = await squarePayments.card();
+                await squareCard.attach('#sq-card-container');
+            } catch (e) {
+                console.error('Square card init error:', e);
+            }
+        }
+
+        // Open booking modal
+        document.getElementById('bookInstallBtn').addEventListener('click', () => {
+            if (state.lines.length === 0 && state.gates.length === 0) {
+                alert('Draw at least one fence line or gate before booking.');
+                return;
+            }
+            // Populate summary
+            const breakdown = buildEstimateBreakdown();
+            const container = document.getElementById('bookEstimateSummary');
+            let html = '';
+            breakdown.rows.forEach(r => {
+                html += '<div class="save-estimate-summary-row"><span>' + r.label + ' — ' + r.desc + '</span><span>$' + r.cost.toLocaleString() + '</span></div>';
+            });
+            html += '<div class="save-estimate-summary-row total"><span>Estimated Total</span><span>$' + breakdown.total.toLocaleString() + '</span></div>';
+            container.innerHTML = html;
+
+            // Set min date to tomorrow
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            document.getElementById('bookDate').min = tomorrow.toISOString().split('T')[0];
+
+            // Auto-fill from map address
+            const addrField = document.getElementById('bookAddress');
+            if (!addrField.value && mapState.address) {
+                addrField.value = mapState.address.split(',').slice(0, 3).join(',').trim();
+            }
+
+            document.getElementById('bookStatus').style.display = 'none';
+            document.getElementById('bookInstallModal').classList.add('open');
+
+            // Initialize Square card form (lazy)
+            initSquareCard();
+        });
+
+        document.getElementById('bookInstallCancel').addEventListener('click', () => {
+            document.getElementById('bookInstallModal').classList.remove('open');
+        });
+        document.getElementById('bookInstallBackdrop').addEventListener('click', () => {
+            document.getElementById('bookInstallModal').classList.remove('open');
+        });
+
+        // Submit booking
+        document.getElementById('bookInstallForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('bookInstallSubmit');
+            const statusEl = document.getElementById('bookStatus');
+
+            const firstName = document.getElementById('bookFirstName').value.trim();
+            const lastName = document.getElementById('bookLastName').value.trim();
+            const email = document.getElementById('bookEmail').value.trim();
+            const phone = document.getElementById('bookPhone').value.trim();
+            const address = document.getElementById('bookAddress').value.trim();
+            const preferredDate = document.getElementById('bookDate').value;
+            const notes = document.getElementById('bookNotes').value.trim();
+            const saveCard = document.getElementById('bookSaveCard').checked;
+            const consent = document.getElementById('bookConsent').checked;
+
+            if (!consent) {
+                statusEl.textContent = 'Please authorize the deposit charge to continue.';
+                statusEl.className = 'book-status error';
+                statusEl.style.display = '';
+                return;
+            }
+
+            if (!squareCard) {
+                statusEl.textContent = 'Card form not loaded. Please refresh and try again.';
+                statusEl.className = 'book-status error';
+                statusEl.style.display = '';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Processing payment…';
+            statusEl.textContent = 'Securely processing your $100 deposit…';
+            statusEl.className = 'book-status';
+            statusEl.style.display = '';
+
+            try {
+                // Tokenize the card
+                const tokenResult = await squareCard.tokenize();
+                if (tokenResult.status !== 'OK') {
+                    throw new Error(tokenResult.errors?.[0]?.message || 'Card verification failed. Please check your card details.');
+                }
+
+                const breakdown = buildEstimateBreakdown();
+
+                // Send to our Worker API
+                const res = await fetch('/api/book-installation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourceId: tokenResult.token,
+                        firstName: firstName,
+                        lastName: lastName,
+                        email: email,
+                        phone: phone,
+                        address: address,
+                        preferredDate: preferredDate,
+                        estimateTotal: Math.round(breakdown.total * 100),
+                        estimateSummary: breakdown.rows.map(r => r.label + ': $' + r.cost).join(', '),
+                        notes: notes,
+                        saveCard: saveCard
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!data.ok) {
+                    throw new Error(data.error || 'Booking failed');
+                }
+
+                // Success!
+                statusEl.innerHTML = '<strong>Deposit paid! Your installation is booked.</strong><br>' +
+                    '<span style="font-size:12px;color:var(--gray-500)">Payment ID: ' + data.paymentId + '</span>' +
+                    (data.cardSaved ? '<br><span style="font-size:12px;color:#27ae60">Card saved for second deposit</span>' : '');
+                statusEl.className = 'book-status success';
+                btn.textContent = 'Booked ✓';
+
+                // Open Google Calendar in new tab
+                if (data.googleCalendarUrl) {
+                    setTimeout(() => {
+                        window.open(data.googleCalendarUrl, '_blank');
+                    }, 1000);
+                }
+
+                // Send confirmation email via existing email system
+                try {
+                    const fullName = firstName + ' ' + lastName;
+                    const confirmSubj = 'Booking Confirmed — $100 Deposit Received';
+                    const confirmHtml = '<!DOCTYPE html><html><body style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f4f4f4;color:#1d1d1f">' +
+                        '<div style="background:#27ae60;padding:20px 24px;border-radius:12px 12px 0 0"><h1 style="color:#fff;margin:0;font-size:22px">Installation Booked!</h1></div>' +
+                        '<div style="padding:24px;background:#f9f9f9;border:1px solid #e5e5e5;border-top:none">' +
+                        '<p>Hi ' + escHtml(firstName) + ', your fence installation deposit of <strong>$100</strong> has been received.</p>' +
+                        '<p><strong>Preferred Date:</strong> ' + preferredDate + '</p>' +
+                        '<p><strong>Site Address:</strong> ' + escHtml(address) + '</p>' +
+                        (data.cardSaved ? '<p style="color:#27ae60">Your card has been saved for the second deposit before installation begins.</p>' : '') +
+                        '<p style="font-size:13px;color:#666">We\'ll confirm your installation date within 24 hours. If you need to reschedule or cancel, call us at ' + escHtml(cfgBrand('phone')) + '.</p>' +
+                        '<p style="font-size:12px;color:#888">Payment ID: ' + data.paymentId + '</p>' +
+                        '</div></body></html>';
+                    const intConfirmSubj = 'BOOKING: ' + fullName + ' @ ' + address + ' — $100 deposit paid' + (data.cardSaved ? ' (card saved)' : '');
+                    const intConfirmHtml = '<!DOCTYPE html><html><body style="font-family:Inter,Arial,sans-serif;padding:20px">' +
+                        '<h2 style="color:#27ae60">New Installation Booking</h2>' +
+                        '<p><strong>' + escHtml(fullName) + '</strong></p>' +
+                        '<p>Phone: ' + escHtml(phone) + ' | Email: ' + escHtml(email) + '</p>' +
+                        '<p>Address: <strong>' + escHtml(address) + '</strong></p>' +
+                        '<p>Preferred Date: <strong>' + preferredDate + '</strong></p>' +
+                        '<p>Estimate: $' + breakdown.total.toLocaleString() + '</p>' +
+                        '<p>Deposit: $100 | Payment ID: ' + data.paymentId + '</p>' +
+                        (data.cardSaved ? '<p style="color:#27ae60">Card saved for second deposit (ID: ' + data.savedCardId + ')</p>' : '<p style="color:#e74c3c">Card NOT saved</p>') +
+                        (notes ? '<p>Notes: ' + escHtml(notes) + '</p>' : '') +
+                        '</body></html>';
+                    await sendEstimateEmails(email, fullName, confirmSubj, confirmHtml, intConfirmSubj, intConfirmHtml);
+                } catch (emailErr) {
+                    console.warn('Booking confirmation email failed:', emailErr);
+                }
+
+                setTimeout(() => {
+                    document.getElementById('bookInstallModal').classList.remove('open');
+                    btn.disabled = false;
+                    btn.textContent = 'Pay $100 Deposit & Book';
+                    document.getElementById('bookInstallForm').reset();
+                }, 4000);
+
+            } catch (err) {
+                console.error('[BOOKING]', err);
+                statusEl.textContent = err.message || 'Payment failed. Please try again.';
+                statusEl.className = 'book-status error';
+                btn.disabled = false;
+                btn.textContent = 'Pay $100 Deposit & Book';
             }
         });
 
