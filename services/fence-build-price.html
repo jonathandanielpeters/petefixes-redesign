@@ -271,14 +271,15 @@
 
         /* Map Search Overlay */
         .map-search-overlay {
-            position: absolute; inset: 0; background: rgba(250,250,253,0.92); backdrop-filter: blur(8px);
+            position: absolute; inset: 0; background: rgba(250,250,253,0.95); backdrop-filter: blur(8px);
             display: none; align-items: center; justify-content: center; z-index: 10;
+            overflow-y: auto; padding: 20px;
         }
         .map-search-overlay.visible { display: flex; }
         .map-search-card {
             background: var(--white); border: 1px solid var(--gray-100); border-radius: 16px;
-            padding: 32px 28px; max-width: 420px; width: 90%; text-align: center;
-            box-shadow: 0 8px 40px rgba(0,0,0,0.1);
+            padding: 32px 28px; max-width: 420px; width: 100%; text-align: center;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.1); margin: auto;
         }
         .map-search-icon { font-size: 32px; margin-bottom: 8px; }
         .map-search-title { font-size: 17px; font-weight: 700; color: var(--black); margin-bottom: 6px; }
@@ -323,17 +324,18 @@
         .map-locate-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 
         /* Pricing Bar */
-        .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; z-index: 100; border-top: 1px solid var(--gray-700); }
-        .pricing-summary { display: flex; align-items: center; gap: 32px; }
+        .pricing-bar { position: fixed; bottom: 0; left: 290px; right: 0; background: var(--black); color: var(--white); padding: 10px 20px; display: flex; align-items: center; z-index: 100; border-top: 1px solid var(--gray-700); }
+        .pricing-summary { display: flex; align-items: center; gap: 24px; }
         .pricing-item { text-align: center; }
         .pricing-item-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; }
         .pricing-item-value { font-size: 18px; font-weight: 700; color: var(--white); letter-spacing: -0.01em; }
-        .pricing-total { text-align: right; }
+        .pricing-total { text-align: center; flex: 1; }
         .pricing-total-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); display: block; }
         .pricing-total-value { font-size: 28px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; }
         .pricing-actions { display: flex; gap: 10px; align-items: center; }
         .pricing-disclaimer { font-size: 10px; color: var(--gray-500); max-width: 140px; line-height: 1.3; }
-        .btn-book { background: #27ae60 !important; color: #fff !important; font-weight: 600; border-radius: 980px; padding: 10px 22px; border: none; cursor: pointer; font-size: 14px; transition: background 0.2s; white-space: nowrap; }
+        .pricing-actions .btn, .pricing-actions .btn-book { font-weight: 600; border-radius: 980px; padding: 10px 22px; border: none; cursor: pointer; font-size: 14px; transition: background 0.2s; white-space: nowrap; min-width: 150px; text-align: center; }
+        .btn-book { background: #27ae60 !important; color: #fff !important; }
         .btn-book:hover { background: #219a52 !important; }
 
         /* Booking modal */
@@ -342,6 +344,13 @@
         .book-subtitle { font-size: 13px; color: var(--gray-400); margin-bottom: 18px; line-height: 1.4; }
         .book-deposit-badge { display: inline-block; background: #27ae60; color: #fff; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 980px; margin-bottom: 14px; }
         .book-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); margin: 18px 0 8px; }
+        .book-deposit-toggle { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+        .book-deposit-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1.5px solid var(--gray-200); border-radius: 10px; cursor: pointer; transition: all 0.15s ease; background: #fff; }
+        .book-deposit-option:has(input:checked) { border-color: #27ae60; background: rgba(39,174,96,0.04); }
+        .book-deposit-option input[type="radio"] { margin-top: 3px; accent-color: #27ae60; }
+        .book-deposit-option-label { display: flex; flex-direction: column; gap: 2px; }
+        .book-deposit-option-label strong { font-size: 13px; color: var(--gray-700); }
+        .book-deposit-option-label small { font-size: 11px; color: var(--gray-400); }
         #sq-card-container { min-height: 90px; }
         .book-date-row { display: flex; gap: 10px; }
         .book-date-row .modal-field { flex: 1; }
@@ -436,10 +445,13 @@
             .canvas-toolbar-right { flex-shrink: 0; gap: 6px; margin-left: auto; }
             .canvas-hint { display: none; }
             .zoom-controls { flex-shrink: 0; }
-            .pricing-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 10px; }
+            .pricing-bar { left: 0; padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
             .pricing-summary { gap: 16px; flex-wrap: wrap; }
+            .pricing-total { text-align: center; width: 100%; order: -1; }
             .pricing-item-value { font-size: 15px; }
             .pricing-total-value { font-size: 22px; }
+            .pricing-actions { width: 100%; }
+            .pricing-actions .btn, .pricing-actions .btn-book { flex: 1; min-width: 0; padding: 10px 14px; font-size: 13px; }
             /* Map search overlay — full-screen on mobile */
             .map-search-overlay { position: fixed; inset: 0; z-index: 200; padding: 20px; overflow-y: auto; }
             .map-search-card { padding: 24px 20px; max-width: 100%; }
@@ -451,10 +463,8 @@
             .beta-banner { padding: 3px 10px; }
             .beta-badge { font-size: 8px; padding: 1px 5px; }
             .beta-text { font-size: 9px; }
-            .pricing-actions { width: 100%; justify-content: stretch; }
-            .pricing-actions .btn { flex: 1; text-align: center; }
             .pricing-disclaimer { display: none; }
-            .pricing-bar { padding: 8px 10px; gap: 8px; }
+            .pricing-bar { padding: 8px 10px; gap: 6px; }
             .pricing-total-value { font-size: 20px; }
             .pricing-item-value { font-size: 14px; }
             .canvas-toolbar-left { flex-wrap: wrap; gap: 4px; }
@@ -897,6 +907,10 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                         Undo
                     </button>
+                    <button class="canvas-tool-btn" id="redoBtn">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/></svg>
+                        Redo
+                    </button>
                     <!-- Delete point moved to floating overlay -->
                 </div>
                 <div class="canvas-toolbar-right">
@@ -1104,10 +1118,28 @@
         <div class="add-line-backdrop" id="bookInstallBackdrop"></div>
         <div class="book-modal-dialog">
             <h3>Book Your Fence Installation</h3>
-            <p class="book-subtitle">Secure your installation date with a $100 refundable deposit. We'll confirm your schedule within 24 hours.</p>
-            <span class="book-deposit-badge">$100 Deposit</span>
+            <p class="book-subtitle">Secure your installation date with a deposit. We'll confirm your schedule within 24 hours.</p>
+            <span class="book-deposit-badge" id="bookDepositBadge">$100 Deposit</span>
 
             <div class="save-estimate-summary" id="bookEstimateSummary"></div>
+
+            <div class="book-section-label">Deposit Option</div>
+            <div class="book-deposit-toggle">
+                <label class="book-deposit-option">
+                    <input type="radio" name="depositType" value="100" checked>
+                    <span class="book-deposit-option-label">
+                        <strong>$100 Refundable Deposit</strong>
+                        <small>Minimum to reserve your date</small>
+                    </span>
+                </label>
+                <label class="book-deposit-option">
+                    <input type="radio" name="depositType" value="50pct">
+                    <span class="book-deposit-option-label">
+                        <strong>50% Deposit — <span id="halfDepositAmount">$0</span></strong>
+                        <small>Pay half now, half before installation</small>
+                    </span>
+                </label>
+            </div>
 
             <form id="bookInstallForm" autocomplete="on">
                 <div class="book-section-label">Your Information</div>
@@ -1146,18 +1178,18 @@
                     <textarea id="bookNotes" rows="2" placeholder="Timeline, access instructions, colour preferences..." style="resize:vertical;min-height:50px"></textarea>
                 </div>
 
-                <div class="book-section-label">Payment — $100 Deposit</div>
+                <div class="book-section-label" id="bookPaymentLabel">Payment — $100 Deposit</div>
                 <div id="sq-card-container"></div>
 
                 <label class="modal-checkbox" style="margin-top:12px">
                     <input type="checkbox" id="bookSaveCard" checked>
-                    <span>Save my card for the second deposit before installation starts</span>
+                    <span>Save my card for the remaining balance before installation starts</span>
                 </label>
-                <p class="book-card-saved-note">Your card details are handled securely by Square. We'll only charge the second deposit after confirming your installation date. You can cancel anytime before work begins for a full refund.</p>
+                <p class="book-card-saved-note">Your card details are handled securely by Square. We'll only charge the remaining balance after confirming your installation date. You can cancel anytime before work begins for a full refund.</p>
 
                 <label class="modal-checkbox">
                     <input type="checkbox" id="bookConsent" required>
-                    <span class="consent-brand-text">I authorize a $100 deposit charge and consent to Pete Fixes contacting me about my installation.</span>
+                    <span class="consent-brand-text" id="bookConsentText">I authorize a $100 deposit charge and consent to Pete Fixes contacting me about my installation.</span>
                 </label>
 
                 <div class="book-status" id="bookStatus" style="display:none"></div>
@@ -1191,9 +1223,12 @@
             <div class="pricing-item"><span class="pricing-item-label">Gates</span><span class="pricing-item-value" id="totalGates">0</span></div>
             <div class="pricing-item"><span class="pricing-item-label">Posts</span><span class="pricing-item-value" id="totalPosts">0</span></div>
         </div>
+        <div class="pricing-total">
+            <span class="pricing-total-label">Estimated Total</span>
+            <span class="pricing-total-value" id="totalPrice">$0</span>
+            <span class="pricing-disclaimer" style="display:block;margin-top:2px">Estimate only. Final price confirmed after in-person visit.</span>
+        </div>
         <div class="pricing-actions">
-            <div class="pricing-total"><span class="pricing-total-label">Estimated Total</span><span class="pricing-total-value" id="totalPrice">$0</span></div>
-            <span class="pricing-disclaimer">Estimate only. Final price confirmed after in-person visit.</span>
             <button class="btn btn-primary" id="saveEstimateBtn" type="button">Save Estimate</button>
             <button class="btn btn-book" id="bookInstallBtn" type="button">Book Installation</button>
         </div>
@@ -1424,7 +1459,8 @@
                     'single-swing': { base: 71, perFt: 8 }, 'single-swing-header': { base: 125, perFt: 12.5 },
                     'single-swing-wheel': { base: 175, perFt: 12.5 }, 'double-swing': { base: 122, perFt: 13 },
                     'double-swing-header': { base: 207, perFt: 13 }, 'double-swing-wheel': { base: 257, perFt: 13 },
-                    'overhead-track-slide': { base: 667, perFt: 67 }, 'double-overhead-track': { base: 1111, perFt: 89 }
+                    'overhead-track-slide': { base: 667, perFt: 67 }, 'double-overhead-track': { base: 1111, perFt: 89 },
+                    'cantilever-slide': { base: 800, perFt: 75 }, 'american-slide': { base: 750, perFt: 70 }
                 }
             },
             // Wood Build Recipe — defines all materials per section and per post
@@ -1555,7 +1591,7 @@
                 perPost: { enabled: false, postmaster: 0, 'metal-2x2': 0, chainlink: 0, ornamental: 0, weldedWire: 0, vinyl: 0 },
                 perSection: { enabled: false, 'wood-vertical': 0, 'wood-horizontal': 0, chainlink: 0, ornamental: 0, weldedWire: 0, vinyl: 0 },
                 perFoot: { enabled: false, 'wood-vertical': 0, 'wood-horizontal': 0, chainlink: 0, ornamental: 0, weldedWire: 0, vinyl: 0 },
-                perGate: { enabled: false, 'single-swing': 0, 'single-swing-header': 0, 'single-swing-wheel': 0, 'double-swing': 0, 'double-swing-header': 0, 'double-swing-wheel': 0, 'overhead-track-slide': 0, 'double-overhead-track': 0 },
+                perGate: { enabled: false, 'single-swing': 0, 'single-swing-header': 0, 'single-swing-wheel': 0, 'double-swing': 0, 'double-swing-header': 0, 'double-swing-wheel': 0, 'overhead-track-slide': 0, 'double-overhead-track': 0, 'cantilever-slide': 0, 'american-slide': 0 },
                 perPanel: { enabled: false, ornamental: 0, weldedWire: 0, vinyl: 0 },
                 perHookup: { enabled: false, chainlink: 0 }
             },
@@ -2728,8 +2764,10 @@
                 if (w <= 5) return ['single-swing'];
                 if (w <= 6) return ['single-swing', 'single-swing-wheel', 'double-swing'];
                 if (w <= 8) return ['double-swing', 'single-swing-wheel', 'double-swing-wheel', 'overhead-track-slide', 'double-overhead-track'];
-                if (w <= 12) return ['double-swing-wheel', 'overhead-track-slide', 'double-overhead-track'];
-                return ['overhead-track-slide', 'double-overhead-track'];
+                if (w <= 10) return ['double-swing-wheel', 'overhead-track-slide', 'double-overhead-track'];
+                // Chain link >10': cantilever & American slide options
+                if (w <= 12) return ['double-swing-wheel', 'overhead-track-slide', 'double-overhead-track', 'cantilever-slide', 'american-slide'];
+                return ['overhead-track-slide', 'double-overhead-track', 'cantilever-slide', 'american-slide'];
             }
             // Wood & ornamental: require header for structure
             if (w <= 5) return ['single-swing-header'];
@@ -2752,12 +2790,14 @@
             'double-swing-header':   'Double Swing w/ Header',
             'double-swing-wheel':    'Double Swing w/ Wheel',
             'overhead-track-slide':  'Overhead Track Sliding',
-            'double-overhead-track': 'Double Overhead Track (Biparting)'
+            'double-overhead-track': 'Double Overhead Track (Biparting)',
+            'cantilever-slide':      'Cantilever Sliding',
+            'american-slide':        'American Slide'
         };
 
         // Gate property helpers
         function isSwingGate(gateType) { return gateType && (gateType.includes('swing')); }
-        function isSlidingGate(gateType) { return gateType === 'overhead-track-slide' || gateType === 'double-overhead-track'; }
+        function isSlidingGate(gateType) { return gateType === 'overhead-track-slide' || gateType === 'double-overhead-track' || gateType === 'cantilever-slide' || gateType === 'american-slide'; }
         function isDoubleGate(gateType) { return gateType && gateType.startsWith('double'); }
 
         function getGateTypeDescription(widthFt) {
@@ -2768,8 +2808,9 @@
                 if (w <= 5) return 'Single Swing (no header needed)';
                 if (w <= 6) return 'Single/Double Swing or Wheel options';
                 if (w <= 8) return 'Swing, Wheel, or Overhead Track options';
-                if (w <= 12) return 'Double Swing w/ Wheel or Overhead Track';
-                return 'Overhead Track Sliding Gate (12\'+ only)';
+                if (w <= 10) return 'Double Swing w/ Wheel or Overhead Track';
+                if (w <= 12) return 'Wheel, Overhead Track, Cantilever, or American Slide';
+                return 'Overhead Track, Cantilever, or American Slide (12\'+ only)';
             }
             if (w <= 5) return 'Single Swing w/ Header (2\' - 5\')';
             if (w <= 6) return 'Single Swing w/ Wheel or Double Swing w/ Header';
@@ -3744,9 +3785,9 @@
         window.addEventListener('mouseup', () => {
             const wasPanning = isPanning || holdPanning;
             if (isPanning) { isPanning = false; canvas.style.cursor = (state.activeTool === 'pan' || spaceHeld) ? 'grab' : (state.activeTool === 'house' ? 'copy' : 'crosshair'); }
-            if (isDraggingPoint) { isDraggingPoint = false; dragPoint = null; canvas.style.cursor = 'crosshair'; }
+            if (isDraggingPoint) { pushUndo(); isDraggingPoint = false; dragPoint = null; canvas.style.cursor = 'crosshair'; }
             else { dragPoint = null; }
-            if (isDraggingHouse || isResizingHouse) { isDraggingHouse = false; isResizingHouse = false; dragHouse = null; resizeHouse = null; canvas.style.cursor = state.activeTool === 'house' ? 'copy' : 'crosshair'; }
+            if (isDraggingHouse || isResizingHouse) { pushUndo(); isDraggingHouse = false; isResizingHouse = false; dragHouse = null; resizeHouse = null; canvas.style.cursor = state.activeTool === 'house' ? 'copy' : 'crosshair'; }
             if (wasPanning) { dragMoved = true; } // suppress click event after any panning
             mouseDownTime = 0; holdPanning = false;
         });
@@ -5038,10 +5079,10 @@
 
             // Delete buttons
             container.querySelectorAll('[data-delete-line]').forEach(btn => {
-                btn.addEventListener('click', () => deleteLine(parseInt(btn.dataset.deleteLine)));
+                btn.addEventListener('click', () => { pushUndo(); deleteLine(parseInt(btn.dataset.deleteLine)); });
             });
             container.querySelectorAll('[data-delete-gate]').forEach(btn => {
-                btn.addEventListener('click', () => deleteGate(parseInt(btn.dataset.deleteGate)));
+                btn.addEventListener('click', () => { pushUndo(); deleteGate(parseInt(btn.dataset.deleteGate)); });
             });
         }
 
@@ -5088,13 +5129,13 @@
 
         function deleteSelected() {
             if (state.selectedPointId !== null) {
-                deletePoint(state.selectedPointId);
+                pushUndo(); deletePoint(state.selectedPointId);
             } else if (state.selectedLineIdx >= 0 && state.selectedLineIdx < state.lines.length) {
-                deleteLine(state.selectedLineIdx);
+                pushUndo(); deleteLine(state.selectedLineIdx);
             } else if (state.selectedGateIdx >= 0 && state.selectedGateIdx < state.gates.length) {
-                deleteGate(state.selectedGateIdx);
+                pushUndo(); deleteGate(state.selectedGateIdx);
             } else if (state.selectedHouseIdx >= 0 && state.selectedHouseIdx < state.houses.length) {
-                deleteHouse(state.selectedHouseIdx);
+                pushUndo(); deleteHouse(state.selectedHouseIdx);
             }
         }
 
@@ -5135,6 +5176,7 @@
             const dir = document.getElementById('modalDirection').value;
             const sf = document.getElementById('modalStartFrom').value;
             if (isNaN(len) || len <= 0) return;
+            pushUndo();
             const { p1, p2 } = createLineFromModal(len, dir, sf);
             const newLine = { p1: p1.id, p2: p2.id, styleIdx: state.activeStyleIdx };
             state.lines.push(newLine);
@@ -5174,6 +5216,7 @@
             const sf = document.getElementById('gateModalStart').value;
             const gt = gateTypeSelect.value;
             if (isNaN(w) || w < 2) return;
+            pushUndo();
             const { p1, p2 } = createLineFromModal(w, dir, sf);
             const newGate = { id: ++gateIdCounter, p1: p1.id, p2: p2.id, gateType: gt, hingePost: 'p1', swingDir: 'inward', slideDir: 'auto', styleIdx: state.activeStyleIdx };
             const ad = isSwingGate(gt) ? autoDetectSwingDirection(newGate) : {};
@@ -5411,6 +5454,7 @@
                     state.selectedHouseIdx = state.selectedHouseIdx === houseHit.idx ? -1 : houseHit.idx;
                     state.selectedLineIdx = -1; state.selectedGateIdx = -1;
                 } else {
+                    pushUndo();
                     const world = screenToWorld(sx, sy);
                     const snH = snapWorldToGrid(world.x, world.y);
                     const newHouse = { id: ++houseIdCounter, x: snH.x - 15, y: snH.y - 10, width: 30, height: 20, label: 'House' };
@@ -5431,6 +5475,7 @@
             if (!nearby && state.pendingPoint === null && state.activeTool === 'draw') {
                 const hitLine = findNearbyLine(sx, sy);
                 if (hitLine) {
+                    pushUndo();
                     const mp = splitLineAtPoint(hitLine.idx, hitLine.t);
                     if (mp) {
                         state.selectedPointId = mp.id;
@@ -5482,6 +5527,7 @@
                     const newGate = { id: ++gateIdCounter, p1: state.pendingPoint, p2: ep.id, gateType: gType, hingePost: 'p1', swingDir: 'inward', slideDir: 'auto', styleIdx: state.activeStyleIdx };
                     if (isSwingGate(gType)) { const ad = autoDetectSwingDirection(newGate); newGate.hingePost = ad.hingePost; newGate.swingDir = ad.swingDir; }
                     if (isSlidingGate(gType)) { newGate.slideDir = autoDetectSlideDirection(newGate); }
+                    pushUndo();
                     state.gates.push(newGate);
                     state.actionHistory.push({ type: 'gate', ref: newGate });
                     state.pendingPoint = null;
@@ -5500,6 +5546,7 @@
                     if (nearby) { if (nearby.id === state.pendingPoint) { state.pendingPoint = null; document.getElementById('canvasHint').textContent = 'Click to place your first point'; drawCanvas(); updatePricing(); renderSidebar(); return; } ep = nearby; }
                     else { ep = { x: snapped.x, y: snapped.y, id: ++pointIdCounter }; state.points.push(ep); }
                     if (!state.lines.some(l => (l.p1 === state.pendingPoint && l.p2 === ep.id) || (l.p1 === ep.id && l.p2 === state.pendingPoint))) {
+                        pushUndo();
                         const newLine = { p1: state.pendingPoint, p2: ep.id, styleIdx: state.activeStyleIdx };
                         state.lines.push(newLine);
                         state.actionHistory.push({ type: 'line', ref: newLine });
@@ -5517,7 +5564,9 @@
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
             if (e.key === 'Escape') { cancelPending(); drawCanvas(); updatePricing(); renderSidebar(); updateHint(); }
-            if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undoLast(); }
+            if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey) && e.shiftKey) { e.preventDefault(); redoLast(); }
+            else if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); undoLast(); }
+            if ((e.key === 'y' || e.key === 'Y') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); redoLast(); }
             if (e.key === 'Backspace' || e.key === 'Delete') { deleteSelected(); }
             if (e.key === '=' || e.key === '+') setZoom(state.zoom * ZOOM_STEP);
             if (e.key === '-') setZoom(state.zoom / ZOOM_STEP);
@@ -5534,6 +5583,7 @@
         });
 
         function doClearAll() {
+            pushUndo();
             state.points = []; state.lines = []; state.gates = []; state.houses = []; state.pendingPoint = null;
             state.actionHistory = [];
             state.fenceStyles = [createDefaultStyle()]; state.activeStyleIdx = 0;
@@ -5566,26 +5616,63 @@
             });
         })();
 
-        function undoLast() {
-            if (state.actionHistory.length === 0) return;
-            const last = state.actionHistory.pop();
-            if (last.type === 'line') {
-                const idx = state.lines.indexOf(last.ref);
-                if (idx !== -1) state.lines.splice(idx, 1);
-            } else if (last.type === 'gate') {
-                const idx = state.gates.indexOf(last.ref);
-                if (idx !== -1) state.gates.splice(idx, 1);
-            } else if (last.type === 'house') {
-                const idx = state.houses.indexOf(last.ref);
-                if (idx !== -1) state.houses.splice(idx, 1);
-            }
-            cleanOrphanPoints();
-            if (state.selectedLineIdx >= state.lines.length) state.selectedLineIdx = -1;
-            if (state.selectedGateIdx >= state.gates.length) state.selectedGateIdx = -1;
-            if (state.selectedHouseIdx >= state.houses.length) state.selectedHouseIdx = -1;
-            updateHint(); drawCanvas(); updatePricing(); renderSidebar();
+        // ── Snapshot-based Undo / Redo ──────────────────────────────────
+        const undoStack = [];
+        const redoStack = [];
+        const MAX_UNDO = 60;
+
+        function takeSnapshot() {
+            return JSON.stringify({
+                points: state.points,
+                lines: state.lines,
+                gates: state.gates,
+                houses: state.houses,
+                actionHistory: state.actionHistory,
+                pendingPoint: state.pendingPoint,
+                fenceStyles: state.fenceStyles,
+                activeStyleIdx: state.activeStyleIdx
+            });
         }
+
+        function restoreSnapshot(json) {
+            const snap = JSON.parse(json);
+            state.points = snap.points;
+            state.lines = snap.lines;
+            state.gates = snap.gates;
+            state.houses = snap.houses;
+            state.actionHistory = snap.actionHistory;
+            state.pendingPoint = snap.pendingPoint;
+            if (snap.fenceStyles) { state.fenceStyles = snap.fenceStyles; state.activeStyleIdx = snap.activeStyleIdx || 0; }
+            // Restore ID counters to max existing
+            pointIdCounter = state.points.reduce((m, p) => Math.max(m, p.id), pointIdCounter);
+            gateIdCounter = state.gates.reduce((m, g) => Math.max(m, g.id || 0), gateIdCounter);
+            houseIdCounter = state.houses.reduce((m, h) => Math.max(m, h.id || 0), houseIdCounter);
+            state.selectedPointId = null; state.selectedLineIdx = -1;
+            state.selectedGateIdx = -1; state.selectedHouseIdx = -1;
+            syncPanelToActiveStyle(); renderStyleSwitcher();
+            updateDeletePointBtn(); updateHint(); drawCanvas(); updatePricing(); renderSidebar();
+        }
+
+        function pushUndo() {
+            undoStack.push(takeSnapshot());
+            if (undoStack.length > MAX_UNDO) undoStack.shift();
+            redoStack.length = 0; // clear redo on new action
+        }
+
+        function undoLast() {
+            if (undoStack.length === 0) return;
+            redoStack.push(takeSnapshot());
+            restoreSnapshot(undoStack.pop());
+        }
+
+        function redoLast() {
+            if (redoStack.length === 0) return;
+            undoStack.push(takeSnapshot());
+            restoreSnapshot(redoStack.pop());
+        }
+
         document.getElementById('undoBtn').addEventListener('click', undoLast);
+        document.getElementById('redoBtn').addEventListener('click', redoLast);
         document.getElementById('deletePointBtn').addEventListener('click', () => { deleteSelected(); });
 
         // Select all / Deselect all floating buttons
@@ -5773,6 +5860,7 @@
 
             if (touchDragActive && touchDragPoint) {
                 // Finished dragging a point
+                pushUndo();
                 touchDragActive = false; touchDragPoint = null;
                 canvas.style.cursor = 'crosshair';
                 lastTouchDist = null; touchIsPinch = false; touchMoved = false; touchPanning = false;
@@ -6498,6 +6586,28 @@
             }
         }
 
+        // Deposit toggle logic
+        let bookingEstimateTotal = 0;
+        function getSelectedDepositCents() {
+            const sel = document.querySelector('input[name="depositType"]:checked');
+            if (sel && sel.value === '50pct') return Math.round(bookingEstimateTotal * 50); // 50% in cents
+            return 10000; // $100 in cents
+        }
+        function getSelectedDepositLabel() {
+            const cents = getSelectedDepositCents();
+            return '$' + (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        function updateDepositUI() {
+            const label = getSelectedDepositLabel();
+            document.getElementById('bookDepositBadge').textContent = label + ' Deposit';
+            document.getElementById('bookPaymentLabel').textContent = 'Payment — ' + label + ' Deposit';
+            document.getElementById('bookConsentText').textContent = 'I authorize a ' + label + ' deposit charge and consent to Pete Fixes contacting me about my installation.';
+            document.getElementById('bookInstallSubmit').textContent = 'Pay ' + label + ' Deposit & Book';
+        }
+        document.querySelectorAll('input[name="depositType"]').forEach(r => {
+            r.addEventListener('change', updateDepositUI);
+        });
+
         // Open booking modal
         document.getElementById('bookInstallBtn').addEventListener('click', () => {
             if (state.lines.length === 0 && state.gates.length === 0) {
@@ -6506,6 +6616,7 @@
             }
             // Populate summary
             const breakdown = buildEstimateBreakdown();
+            bookingEstimateTotal = breakdown.total;
             const container = document.getElementById('bookEstimateSummary');
             let html = '';
             breakdown.rows.forEach(r => {
@@ -6513,6 +6624,14 @@
             });
             html += '<div class="save-estimate-summary-row total"><span>Estimated Total</span><span>$' + breakdown.total.toLocaleString() + '</span></div>';
             container.innerHTML = html;
+
+            // Update 50% deposit amount display
+            const halfAmt = Math.round(breakdown.total * 50) / 100;
+            document.getElementById('halfDepositAmount').textContent = '$' + halfAmt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            // Reset deposit selection to $100 default
+            document.querySelector('input[name="depositType"][value="100"]').checked = true;
+            updateDepositUI();
 
             // Set min date to tomorrow
             const tomorrow = new Date();
@@ -6569,9 +6688,12 @@
                 return;
             }
 
+            const depositCents = getSelectedDepositCents();
+            const depositLabel = getSelectedDepositLabel();
+
             btn.disabled = true;
             btn.textContent = 'Processing payment…';
-            statusEl.textContent = 'Securely processing your $100 deposit…';
+            statusEl.textContent = 'Securely processing your ' + depositLabel + ' deposit…';
             statusEl.className = 'book-status';
             statusEl.style.display = '';
 
@@ -6599,7 +6721,8 @@
                         estimateTotal: Math.round(breakdown.total * 100),
                         estimateSummary: breakdown.rows.map(r => r.label + ': $' + r.cost).join(', '),
                         notes: notes,
-                        saveCard: saveCard
+                        saveCard: saveCard,
+                        depositAmount: depositCents
                     })
                 });
 
@@ -6610,9 +6733,9 @@
                 }
 
                 // Success!
-                statusEl.innerHTML = '<strong>Deposit paid! Your installation is booked.</strong><br>' +
+                statusEl.innerHTML = '<strong>' + depositLabel + ' deposit paid! Your installation is booked.</strong><br>' +
                     '<span style="font-size:12px;color:var(--gray-500)">Payment ID: ' + data.paymentId + '</span>' +
-                    (data.cardSaved ? '<br><span style="font-size:12px;color:#27ae60">Card saved for second deposit</span>' : '');
+                    (data.cardSaved ? '<br><span style="font-size:12px;color:#27ae60">Card saved for remaining balance</span>' : '');
                 statusEl.className = 'book-status success';
                 btn.textContent = 'Booked ✓';
 
@@ -6626,18 +6749,18 @@
                 // Send confirmation email via existing email system
                 try {
                     const fullName = firstName + ' ' + lastName;
-                    const confirmSubj = 'Booking Confirmed — $100 Deposit Received';
+                    const confirmSubj = 'Booking Confirmed — ' + depositLabel + ' Deposit Received';
                     const confirmHtml = '<!DOCTYPE html><html><body style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f4f4f4;color:#1d1d1f">' +
                         '<div style="background:#27ae60;padding:20px 24px;border-radius:12px 12px 0 0"><h1 style="color:#fff;margin:0;font-size:22px">Installation Booked!</h1></div>' +
                         '<div style="padding:24px;background:#f9f9f9;border:1px solid #e5e5e5;border-top:none">' +
-                        '<p>Hi ' + escHtml(firstName) + ', your fence installation deposit of <strong>$100</strong> has been received.</p>' +
+                        '<p>Hi ' + escHtml(firstName) + ', your fence installation deposit of <strong>' + depositLabel + '</strong> has been received.</p>' +
                         '<p><strong>Preferred Date:</strong> ' + preferredDate + '</p>' +
                         '<p><strong>Site Address:</strong> ' + escHtml(address) + '</p>' +
-                        (data.cardSaved ? '<p style="color:#27ae60">Your card has been saved for the second deposit before installation begins.</p>' : '') +
+                        (data.cardSaved ? '<p style="color:#27ae60">Your card has been saved for the remaining balance before installation begins.</p>' : '') +
                         '<p style="font-size:13px;color:#666">We\'ll confirm your installation date within 24 hours. If you need to reschedule or cancel, call us at ' + escHtml(cfgBrand('phone')) + '.</p>' +
                         '<p style="font-size:12px;color:#888">Payment ID: ' + data.paymentId + '</p>' +
                         '</div></body></html>';
-                    const intConfirmSubj = 'BOOKING: ' + fullName + ' @ ' + address + ' — $100 deposit paid' + (data.cardSaved ? ' (card saved)' : '');
+                    const intConfirmSubj = 'BOOKING: ' + fullName + ' @ ' + address + ' — ' + depositLabel + ' deposit paid' + (data.cardSaved ? ' (card saved)' : '');
                     const intConfirmHtml = '<!DOCTYPE html><html><body style="font-family:Inter,Arial,sans-serif;padding:20px">' +
                         '<h2 style="color:#27ae60">New Installation Booking</h2>' +
                         '<p><strong>' + escHtml(fullName) + '</strong></p>' +
@@ -6645,7 +6768,7 @@
                         '<p>Address: <strong>' + escHtml(address) + '</strong></p>' +
                         '<p>Preferred Date: <strong>' + preferredDate + '</strong></p>' +
                         '<p>Estimate: $' + breakdown.total.toLocaleString() + '</p>' +
-                        '<p>Deposit: $100 | Payment ID: ' + data.paymentId + '</p>' +
+                        '<p>Deposit: ' + depositLabel + ' | Payment ID: ' + data.paymentId + '</p>' +
                         (data.cardSaved ? '<p style="color:#27ae60">Card saved for second deposit (ID: ' + data.savedCardId + ')</p>' : '<p style="color:#e74c3c">Card NOT saved</p>') +
                         (notes ? '<p>Notes: ' + escHtml(notes) + '</p>' : '') +
                         '</body></html>';
@@ -6657,7 +6780,7 @@
                 setTimeout(() => {
                     document.getElementById('bookInstallModal').classList.remove('open');
                     btn.disabled = false;
-                    btn.textContent = 'Pay $100 Deposit & Book';
+                    btn.textContent = 'Pay ' + depositLabel + ' Deposit & Book';
                     document.getElementById('bookInstallForm').reset();
                 }, 4000);
 
@@ -6666,7 +6789,7 @@
                 statusEl.textContent = err.message || 'Payment failed. Please try again.';
                 statusEl.className = 'book-status error';
                 btn.disabled = false;
-                btn.textContent = 'Pay $100 Deposit & Book';
+                btn.textContent = 'Pay ' + depositLabel + ' Deposit & Book';
             }
         });
 

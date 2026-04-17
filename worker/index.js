@@ -116,7 +116,8 @@ async function handleBookInstallation(request, env) {
       estimateTotal, // cents
       estimateSummary, // text summary
       notes, // special requests
-      saveCard, // boolean — save card for future second deposit
+      saveCard, // boolean — save card for future remaining balance
+      depositAmount, // cents — defaults to 10000 ($100) if not provided
     } = body;
 
     // Validate required fields
@@ -138,7 +139,7 @@ async function handleBookInstallation(request, env) {
       email_address: email,
       phone_number: phone,
       address: { address_line_1: address },
-      note: `Fence estimate: $${(estimateTotal / 100).toLocaleString()}. ${notes || ""}`.trim(),
+      note: `Fence estimate: $${(estimateTotal / 100).toLocaleString()}. Deposit: $${((depositAmount || 10000) / 100).toFixed(2)}. ${notes || ""}`.trim(),
     });
     const customerId = customerRes.customer.id;
 
@@ -159,18 +160,21 @@ async function handleBookInstallation(request, env) {
       paymentSourceId = savedCardId; // charge the saved card instead of the consumed nonce
     }
 
-    // 3. Charge the $100 deposit
+    // 3. Charge the deposit (default $100, or 50% of estimate if chosen)
+    const depAmountCents = depositAmount && depositAmount > 0 ? depositAmount : 10000;
+    const depAmountDollars = (depAmountCents / 100).toFixed(2);
+
     const paymentRes = await squareRequest(env, "POST", "/v2/payments", {
       idempotency_key: idempotencyKey + "-pay",
       source_id: paymentSourceId,
       amount_money: {
-        amount: 10000, // $100.00 in cents
+        amount: depAmountCents,
         currency: "CAD",
       },
       autocomplete: true,
       customer_id: customerId,
       reference_id: `pf-deposit-${Date.now()}`,
-      note: `Fence installation deposit — ${fullName} @ ${address}`,
+      note: `Fence installation deposit ($${depAmountDollars}) — ${fullName} @ ${address}`,
     });
     const paymentId = paymentRes.payment.id;
 
@@ -180,7 +184,7 @@ async function handleBookInstallation(request, env) {
       `Fence Installation — ${fullName}`
     );
     const calDetails = encodeURIComponent(
-      `Customer: ${fullName}\nPhone: ${phone}\nEmail: ${email}\nAddress: ${address}\n\nEstimate: $${(estimateTotal / 100).toLocaleString()}\nDeposit Paid: $100.00 (Square #${paymentId})\n${savedCardId ? "Card saved for 2nd deposit\n" : ""}${notes ? "\nNotes: " + notes : ""}`
+      `Customer: ${fullName}\nPhone: ${phone}\nEmail: ${email}\nAddress: ${address}\n\nEstimate: $${(estimateTotal / 100).toLocaleString()}\nDeposit Paid: $${depAmountDollars} (Square #${paymentId})\n${savedCardId ? "Card saved for remaining balance\n" : ""}${notes ? "\nNotes: " + notes : ""}`
     );
     const calLocation = encodeURIComponent(address);
     const googleCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${calTitle}&dates=${startDate}/${startDate}&details=${calDetails}&location=${calLocation}`;
@@ -195,7 +199,8 @@ async function handleBookInstallation(request, env) {
       savedCardId,
       cardSaved: !!savedCardId,
       googleCalendarUrl: googleCalUrl,
-      message: "Deposit of $100 processed successfully!",
+      depositAmount: depAmountCents,
+      message: `Deposit of $${depAmountDollars} processed successfully!`,
     });
   } catch (err) {
     console.error("[BOOKING]", err.message);
