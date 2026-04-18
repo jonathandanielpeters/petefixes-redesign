@@ -189,13 +189,14 @@
 
         /* Canvas Area */
         .config-canvas-area { background: var(--gray-50); display: flex; flex-direction: column; position: relative; touch-action: none; padding-bottom: 52px; }
-        .canvas-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; background: var(--white); border-bottom: 1px solid var(--gray-100); flex-shrink: 0; }
-        .canvas-toolbar-left { display: flex; align-items: center; gap: 12px; }
-        .canvas-toolbar-right { display: flex; align-items: center; gap: 8px; }
+        .canvas-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--white); border-bottom: 1px solid var(--gray-100); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; gap: 12px; }
+        .canvas-toolbar::-webkit-scrollbar { display: none; }
+        .canvas-toolbar-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .canvas-toolbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
         .canvas-mode-toggle { display: flex; background: var(--gray-50); border-radius: 980px; padding: 3px; }
-        .canvas-mode-btn { padding: 6px 14px; font-size: 12px; font-weight: 500; color: var(--gray-400); background: transparent; border: none; border-radius: 980px; cursor: pointer; transition: all var(--transition); }
+        .canvas-mode-btn { padding: 5px 12px; font-size: 11px; font-weight: 500; color: var(--gray-400); background: transparent; border: none; border-radius: 980px; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
         .canvas-mode-btn.active { background: var(--white); color: var(--black); box-shadow: var(--shadow-sm); }
-        .canvas-tool-btn { display: flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 500; color: var(--gray-500); background: var(--gray-50); border: 1.5px solid transparent; border-radius: 980px; cursor: pointer; transition: all var(--transition); }
+        .canvas-tool-btn { display: flex; align-items: center; gap: 5px; padding: 6px 10px; font-size: 11px; font-weight: 500; color: var(--gray-500); background: var(--gray-50); border: 1.5px solid transparent; border-radius: 980px; cursor: pointer; transition: all var(--transition); white-space: nowrap; }
         .canvas-tool-btn:hover { border-color: var(--gray-200); background: var(--white); }
         .canvas-tool-btn.active { border-color: var(--accent); background: var(--accent-light); color: var(--black); }
         .canvas-tool-btn.active-gate { border-color: #4a90d9; background: rgba(74,144,217,0.1); color: #4a90d9; }
@@ -206,14 +207,13 @@
         .zoom-btn:hover { background: var(--white); color: var(--black); box-shadow: var(--shadow-sm); }
         .zoom-level { font-size: 11px; font-weight: 600; color: var(--gray-500); min-width: 40px; text-align: center; cursor: pointer; }
         .zoom-level:hover { color: var(--accent); }
-        .canvas-hint { font-size: 12px; color: var(--gray-400); font-style: italic; }
+        .canvas-hint { font-size: 11px; color: var(--gray-400); font-style: italic; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
         .canvas-wrapper { flex: 1; position: relative; overflow: hidden; }
         #fenceCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
-        /* Floating action buttons — top right of canvas */
+        /* Floating action buttons — hidden (redundant with toolbar) */
         .canvas-float-actions {
-            position: absolute; top: 10px; right: 10px; z-index: 12;
-            display: flex; gap: 6px; align-items: center;
+            display: none;
         }
         .canvas-float-btn {
             width: 34px; height: 34px; border-radius: 8px;
@@ -273,7 +273,7 @@
         .map-search-overlay {
             position: absolute; inset: 0; background: rgba(250,250,253,0.95); backdrop-filter: blur(8px);
             display: none; z-index: 10;
-            padding: 20px; padding-bottom: 56px;
+            padding: 20px; padding-bottom: 60px;
         }
         .map-search-overlay.visible {
             display: flex; align-items: center; justify-content: center;
