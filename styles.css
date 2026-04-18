@@ -118,6 +118,70 @@ a {
     border-bottom: 1px solid var(--gray-100);
 }
 
+/* Transparent nav for hero pages (homepage) */
+.nav-header.nav-transparent {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.nav-header.nav-transparent .logo-pete {
+    color: #fff;
+}
+
+.nav-header.nav-transparent .logo-fixes {
+    color: rgba(255,255,255,0.6);
+}
+
+.nav-header.nav-transparent .nav-links > li > a,
+.nav-header.nav-transparent .nav-links > li > .nav-dropdown-trigger {
+    color: rgba(255,255,255,0.85);
+}
+
+.nav-header.nav-transparent .nav-links > li > a:hover,
+.nav-header.nav-transparent .nav-links > li > .nav-dropdown-trigger:hover,
+.nav-header.nav-transparent .nav-links > li:hover > .nav-dropdown-trigger {
+    color: #fff;
+}
+
+.nav-header.nav-transparent .nav-phone {
+    color: var(--accent);
+}
+
+.nav-header.nav-transparent .nav-toggle span {
+    background: #fff;
+}
+
+/* When scrolled, revert to normal frosted glass */
+.nav-header.nav-transparent.scrolled {
+    background: rgba(251, 251, 253, 0.92);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.nav-header.nav-transparent.scrolled .logo-pete {
+    color: var(--black);
+}
+
+.nav-header.nav-transparent.scrolled .logo-fixes {
+    color: var(--gray-400);
+}
+
+.nav-header.nav-transparent.scrolled .nav-links > li > a,
+.nav-header.nav-transparent.scrolled .nav-links > li > .nav-dropdown-trigger {
+    color: var(--gray-600);
+}
+
+.nav-header.nav-transparent.scrolled .nav-links > li > a:hover,
+.nav-header.nav-transparent.scrolled .nav-links > li > .nav-dropdown-trigger:hover,
+.nav-header.nav-transparent.scrolled .nav-links > li:hover > .nav-dropdown-trigger {
+    color: var(--black);
+}
+
+.nav-header.nav-transparent.scrolled .nav-toggle span {
+    background: var(--black);
+}
+
 .nav-container {
     max-width: 1120px;
     margin: 0 auto;
@@ -390,20 +454,32 @@ a {
    ======================================== */
 
 .hero {
-    padding: 120px 0 48px;
-    background: var(--white);
+    position: relative;
+    padding: 180px 0 120px;
+    background: url('images/gate-swing-estate-pillars.jpg') center 40% / cover no-repeat;
+    min-height: 90vh;
+    display: flex;
+    align-items: center;
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,0.3) 100%);
+    z-index: 1;
 }
 
 .hero > .hero-content {
+    position: relative;
+    z-index: 2;
     max-width: 1120px;
     margin: 0 auto;
     padding: 0 24px;
 }
 
 .hero-visual {
-    max-width: 1120px;
-    margin: 48px auto 0;
-    padding: 0 24px;
+    display: none;
 }
 
 .hero-eyebrow {
@@ -420,8 +496,9 @@ a {
     font-weight: 700;
     line-height: 1.04;
     letter-spacing: -0.04em;
-    color: var(--black);
+    color: #fff;
     margin-bottom: 24px;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.3);
 }
 
 .hero-accent {
@@ -430,7 +507,7 @@ a {
 
 .hero-subtitle {
     font-size: 19px;
-    color: var(--gray-500);
+    color: rgba(255,255,255,0.85);
     line-height: 1.5;
     max-width: 600px;
     margin-bottom: 36px;
@@ -440,6 +517,16 @@ a {
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
+}
+
+.hero .btn-secondary {
+    color: #fff;
+    border-color: rgba(255,255,255,0.45);
+}
+
+.hero .btn-secondary:hover {
+    background: rgba(255,255,255,0.12);
+    border-color: #fff;
 }
 
 .hero-image-wrapper {
@@ -1596,8 +1683,13 @@ a.contact-value:hover {
     }
 
     .hero {
-        padding: 120px 0 60px;
-        min-height: auto;
+        padding: 140px 0 80px;
+        min-height: 80vh;
+        background-position: center center;
+    }
+
+    .hero::before {
+        background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.5) 100%);
     }
 
     .hero-title {
