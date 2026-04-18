@@ -4193,7 +4193,7 @@
             const entry = { img: new Image(), loaded: false, error: false };
             entry.img.crossOrigin = 'anonymous';
             entry.img.onload = () => { entry.loaded = true; drawCanvas(); };
-            entry.img.onerror = () => { entry.error = true; };
+            entry.img.onerror = () => { entry.error = true; drawCanvas(); };
             tileCache[key] = entry;
             ensureGoogleSession(style).then(token => {
                 entry.img.src = 'https://tile.googleapis.com/v1/2dtiles/' + z + '/' + x + '/' + y +
@@ -4259,6 +4259,8 @@
 
             const maxTile = Math.pow(2, z);
 
+            let tileCount = 0, tileLoaded = 0, tileErrored = 0;
+
             for (let dy = -tilesUp; dy < tilesDown; dy++) {
                 for (let dx = -tilesLeft; dx < tilesRight; dx++) {
                     const tx = baseTileX + dx;
@@ -4268,11 +4270,14 @@
                     const screenY = centerTileScreenY + dy * tilePixelSize;
                     if (screenX + tilePixelSize < 0 || screenX > canvasW || screenY + tilePixelSize < 0 || screenY > canvasH) continue;
 
+                    tileCount++;
                     const tile = getTile(z, tx, ty); // kicks off fetch if needed
                     if (tile.loaded) {
+                        tileLoaded++;
                         ctx.drawImage(tile.img, screenX, screenY, tilePixelSize + 0.5, tilePixelSize + 0.5);
                         continue;
                     }
+                    if (tile.error) tileErrored++;
 
                     // Pyramid fallback — keeps the canvas filled during z-transitions so zoom feels smooth.
                     // 1) Try parent levels (zoom-in case: we already have coarser tiles cached).
@@ -4304,6 +4309,19 @@
                         }
                     }
                 }
+            }
+
+            // Show status messages when tiles aren't loaded
+            if (tileCount > 0 && tileLoaded === 0) {
+                ctx.fillStyle = '#888';
+                ctx.font = '13px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                if (tileErrored > 0) {
+                    ctx.fillText('Map tiles failed to load — try switching to Streets view', canvasW / 2, 30);
+                } else {
+                    ctx.fillText('Loading satellite imagery…', canvasW / 2, 30);
+                }
+                ctx.textAlign = 'start';
             }
 
             // Semi-transparent grid overlay in map mode
