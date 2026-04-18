@@ -431,6 +431,14 @@
             background: rgba(0,0,0,0.1); pointer-events: auto;
         }
 
+        /* Narrow desktop: collapse tool buttons to icon-only */
+        @media (max-width: 1400px) {
+            .canvas-tool-btn { font-size: 0; padding: 7px; gap: 0; min-width: 30px; min-height: 30px; justify-content: center; }
+            .canvas-tool-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+            .canvas-mode-btn { padding: 5px 10px; font-size: 10px; }
+            .canvas-hint { display: none; }
+        }
+
         @media (max-width: 1024px) { .configurator { grid-template-columns: 260px 1fr; } .pricing-bar { left: 260px; } }
 
         /* Mobile: floating icon sidebar over canvas */
@@ -4205,10 +4213,17 @@
 
         function drawMapTiles() {
             ctx.clearRect(0, 0, canvasW, canvasH);
-            ctx.fillStyle = mapStyle === 'roadmap' ? '#e8e8ea' : '#2d2d2d';
+            ctx.fillStyle = mapStyle === 'roadmap' ? '#e8e8ea' : '#e5e5e5';
             ctx.fillRect(0, 0, canvasW, canvasH);
 
-            if (!mapState.lat || !mapState.lng) return;
+            if (!mapState.lat || !mapState.lng) {
+                ctx.fillStyle = '#999';
+                ctx.font = '14px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('Enter an address to load satellite imagery', canvasW / 2, canvasH / 2);
+                ctx.textAlign = 'start';
+                return;
+            }
 
             const z = bestTileZoom(mapState.lat, state.zoom);
             const mpp = metersPerPixel(mapState.lat, z); // metres per tile pixel
