@@ -4079,13 +4079,7 @@
                 } else if (isPending && !usedByFence && !usedByGate) {
                     ctx.strokeStyle = '#c8a55a'; ctx.lineWidth = 2;
                     ctx.beginPath(); ctx.arc(sp.x, sp.y, POINT_RADIUS + 3, 0, Math.PI * 2); ctx.stroke();
-                } else if (isHouseTerminal) {
-                    // Terminal post at house — orange diamond marker
-                    ctx.fillStyle = '#e07020';
-                    ctx.beginPath(); ctx.arc(sp.x, sp.y, 4.5, 0, Math.PI * 2); ctx.fill();
-                    ctx.strokeStyle = '#e07020'; ctx.lineWidth = 2;
-                    ctx.beginPath(); ctx.arc(sp.x, sp.y, POINT_RADIUS + 3, 0, Math.PI * 2); ctx.stroke();
-                } else if (isCorner) {
+                } else if (isCorner || isHouseTerminal) {
                     ctx.fillStyle = pointAccent;
                     ctx.beginPath(); ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2); ctx.fill();
                 } else {
@@ -4099,7 +4093,7 @@
                 const lx = sp.x - lw / 2, ly = sp.y - POINT_RADIUS - 8;
                 ctx.fillStyle = 'rgba(255,255,255,0.88)';
                 ctx.beginPath(); ctx.roundRect(lx - 3, ly - 10, lw + 6, 13, 3); ctx.fill();
-                ctx.fillStyle = isCorner ? pointAccent : (isPending ? '#c8a55a' : pc);
+                ctx.fillStyle = (isCorner || isHouseTerminal) ? pointAccent : (isPending ? '#c8a55a' : pc);
                 ctx.textAlign = 'center';
                 ctx.fillText(label, sp.x, ly);
                 ctx.textAlign = 'start';
@@ -6513,11 +6507,20 @@
         }
 
         async function sendEstimateEmails(email, fullName, subject, customerHtml, internalSubject, internalHtml) {
-            // Use Resend worker if configured, otherwise EmailJS
+            // Try Resend worker first if configured; fall back to EmailJS on any error.
+            var resendErr = null;
             if (getEmailApiUrl()) {
-                return await sendViaResendWorker(email, fullName, subject, customerHtml, internalSubject, internalHtml);
+                try {
+                    return await sendViaResendWorker(email, fullName, subject, customerHtml, internalSubject, internalHtml);
+                } catch (err) {
+                    console.warn('[EMAIL] Resend worker failed, falling back to EmailJS:', err);
+                    resendErr = err;
+                }
             }
-            return await sendViaEmailJS(email, fullName, subject, customerHtml, internalSubject, internalHtml);
+            if (typeof emailjs !== 'undefined') {
+                return await sendViaEmailJS(email, fullName, subject, customerHtml, internalSubject, internalHtml);
+            }
+            throw resendErr || new Error('No email transport available');
         }
 
         // --- Save Estimate Button ---
