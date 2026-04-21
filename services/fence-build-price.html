@@ -4982,10 +4982,157 @@
 
         function updatePricing() {
             const price = calculatePrice();
+            // V2 override: if config has populated chainlinkV2 + labour2, use the recipe engine
+            const v2 = calculateV2Project();
+            const total = v2 ? v2.total : price.total;
             document.getElementById('totalLength').textContent = price.totalLengthFt.toFixed(1) + ' ft';
             document.getElementById('totalGates').textContent = price.totalGates;
             document.getElementById('totalPosts').textContent = price.totalPosts;
-            document.getElementById('totalPrice').textContent = '$' + price.total.toLocaleString();
+            document.getElementById('totalPrice').textContent = '$' + total.toLocaleString();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CHAINLINK V2 — Port of admin's recipe engine for pricing calculations
+        // ═══════════════════════════════════════════════════════════════════
+        function v2ResolveMaterial(recipeItem, ctx) {
+            const cl2 = PCFG.chainlinkV2;
+            if (!cl2 || !recipeItem || !recipeItem.materialName) return null;
+            const candidates = cl2.materials.filter(m => m.name === recipeItem.materialName);
+            if (candidates.length === 0) return null;
+            // Color match (prefer exact, fall back to 'any', then any)
+            const wantColor = ctx.color;
+            let byColor = candidates.filter(m => m.color === wantColor);
+            if (byColor.length === 0) byColor = candidates.filter(m => m.color === 'any');
+            if (byColor.length === 0) byColor = candidates;
+            // Size match based on mode
+            const mode = recipeItem.sizeMatch || 'any';
+            let bySize;
+            if (mode === 'matchHeight') {
+                const target = String(ctx.height) + 'ft';
+                bySize = byColor.filter(m => m.size === target);
+            } else if (mode === 'matchPostSize') {
+                const target = ctx.postSize ? ctx.postSize + '"' : '';
+                bySize = byColor.filter(m => m.size === target);
+                if (bySize.length === 0 && ctx.postSize) bySize = byColor.filter(m => m.size === ctx.postSize);
+            } else if (mode === 'matchHeightAndPostSize') {
+                const hTok = String(ctx.height) + 'ft';
+                const pTokQ = ctx.postSize ? ctx.postSize + '"' : '';
+                const pTok = ctx.postSize || '';
+                bySize = byColor.filter(m => {
+                    const s = (m.size || '').toLowerCase();
+                    return s.includes(hTok.toLowerCase()) && (!pTok || s.includes(pTokQ.toLowerCase()) || s.includes(pTok.toLowerCase()));
+                });
+            } else if (mode === 'fixed') {
+                bySize = byColor.filter(m => m.size === (recipeItem.materialSize || ''));
+            } else {
+                bySize = byColor;
+            }
+            return bySize[0] || null;
+        }
+
+        function v2ResolveQty(recipeItem, ctx) {
+            if (!recipeItem) return 0;
+            if (recipeItem.qtyMode === 'byHeight') {
+                return (recipeItem.qtyByHeight && recipeItem.qtyByHeight[String(ctx.height)]) || 0;
+            }
+            return recipeItem.qty || 0;
+        }
+
+        // Compute full project cost using V2 chainlink recipes + labour2.
+        // Returns null if V2 isn't set up with real costs — caller falls through to legacy.
+        function calculateV2Project() {
+            const cl2 = PCFG.chainlinkV2;
+            const lab = PCFG.labour2;
+            if (!cl2 || !cl2.materials || cl2.materials.length === 0) return null;
+            if (!cl2.materials.some(m => (m.cost || 0) > 0)) return null; // no real prices yet
+
+            // Only handle chainlink lines via V2; other fence types stay on legacy.
+            const clLines = state.lines.filter(l => {
+                const s = getStyleForLine(l);
+                return s.fenceType === 'chainlink';
+            });
+            const nonCl = state.lines.length - clLines.length;
+            // If the project has non-chainlink lines, V2 can't price them yet — fall through
+            if (nonCl > 0) return null;
+            if (clLines.length === 0 && state.gates.length === 0) return null;
+
+            // Build context from the first chainlink line's style
+            const firstStyle = clLines.length > 0 ? getStyleForLine(clLines[0]) : activeStyle();
+            const ctx = {
+                height: firstStyle.height,
+                color: firstStyle.chainlinkColor || 'galvanized',
+                postSize: firstStyle.chainlinkPostSize || '2-3/8'
+            };
+
+            // Tally posts + total feet
+            const endIds = new Set();
+            const cornerIds = new Set();
+            let linePostCount = 0;
+            let totalFt = 0;
+
+            clLines.forEach(line => {
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                totalFt += getLineLengthFt(p1, p2);
+                linePostCount += Math.max(0, calculatePostsForLine(p1, p2, line).length - 2);
+                [p1, p2].forEach(p => {
+                    if (isCornerPost(p.id)) cornerIds.add(p.id);
+                    else endIds.add(p.id);
+                });
+            });
+
+            const endCount = endIds.size;
+            const cornerCount = cornerIds.size;
+
+            let matCost = 0, matSell = 0;
+            function apply(recipe, multiplier) {
+                if (!recipe) return;
+                for (const item of recipe) {
+                    if (!item.materialName) continue;
+                    const mat = v2ResolveMaterial(item, ctx);
+                    if (!mat) continue;
+                    const qty = v2ResolveQty(item, ctx) * multiplier;
+                    if (qty <= 0) continue;
+                    matCost += (mat.cost || 0) * qty;
+                    matSell += (mat.sellPrice || 0) * qty;
+                }
+            }
+            apply(cl2.recipes.endPost,    endCount);
+            apply(cl2.recipes.cornerPost, cornerCount);
+            apply(cl2.recipes.linePost,   linePostCount);
+            apply(cl2.recipes.perFoot,    totalFt);
+
+            // Gates
+            const gatesByType = {};
+            state.gates.forEach(g => { gatesByType[g.gateType] = (gatesByType[g.gateType] || 0) + 1; });
+            Object.entries(gatesByType).forEach(([gt, count]) => {
+                const gateRecipe = (cl2.recipes.gates || {})[gt];
+                if (gateRecipe) apply(gateRecipe, count);
+            });
+
+            // Labour
+            const totalPosts = endCount + cornerCount + linePostCount;
+            const hookups = endCount + cornerCount;
+            let labourCost = 0, labourCharge = 0;
+            if (lab && lab.tasks) {
+                const counts = { perJob: 1, perPost: totalPosts, perFoot: totalFt, perHookup: hookups, perGate: state.gates.length };
+                let minutes = 0;
+                for (const t of Object.values(lab.tasks)) {
+                    const units = counts[t.unit || 'perJob'] || 0;
+                    minutes += (t.minutes || 0) * units * (t.employees || 1);
+                }
+                const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                minutes += (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+                const hours = minutes / 60;
+                labourCost = hours * (lab.costPerHour || 0);
+                labourCharge = hours * (lab.chargePerHour || 0);
+                const cushion = labourCharge * ((lab.cushioningPct || 0) / 100);
+                labourCharge += cushion;
+            }
+
+            const total = Math.round(matSell + labourCharge);
+            return { total, matCost, matSell, labourCost, labourCharge, endCount, cornerCount, linePostCount, totalFt };
         }
 
 
