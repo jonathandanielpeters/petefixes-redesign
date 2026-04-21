@@ -1266,12 +1266,13 @@ a{color:var(--accent);text-decoration:none}
   <p class="section-subtitle">Hourly rates, travel/setup overhead, and per-task time estimates. The fence pricing tool uses these to compute a profitable labour charge on top of material cost.</p>
 
   <div class="card">
-    <div class="card-title">Hourly Rates</div>
-    <div class="card-desc">What you pay labour vs. what you charge the customer. Difference is your labour margin before cushioning.</div>
+    <div class="card-title">Hourly Rates &amp; Overhead</div>
+    <div class="card-desc">What you pay labour vs. what you charge the customer. Break % is the downtime overhead (coffee/lunch) added on top of working time.</div>
     <div class="card-row">
-      <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty()"></div>
-      <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty()"></div>
-      <div class="field"><label>Extra cushioning %</label><input type="number" id="lab2-cushion" step="1" min="0" value="15" oninput="markDirty()"></div>
+      <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty();updateLabourPreview()"></div>
+      <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty();updateLabourPreview()"></div>
+      <div class="field"><label>Break % (on work time)</label><input type="number" id="lab2-break-pct" step="0.5" min="0" value="12" oninput="markDirty();updateLabourPreview()" title="Downtime overhead — coffee breaks, lunch, etc. Added to task time only, not travel/load-up."></div>
+      <div class="field"><label>Extra cushioning %</label><input type="number" id="lab2-cushion" step="1" min="0" value="15" oninput="markDirty();updateLabourPreview()"></div>
     </div>
   </div>
 
@@ -1292,7 +1293,7 @@ a{color:var(--accent);text-decoration:none}
 
   <div class="card">
     <div class="card-title">Task Times</div>
-    <div class="card-desc">For each task in a job, how many minutes it takes per unit and how many employees are involved. Unit: <strong>per job</strong> = once, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count.</div>
+    <div class="card-desc">For each task in a job, how many minutes it takes per unit and how many employees are involved. Unit: <strong>per job</strong> = once, <strong>per line</strong> = × distinct fence line segment, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count. Add your own tasks at the bottom.</div>
     <div class="table-scroll">
       <table class="data-table" id="lab2-tasks-table">
         <thead>
@@ -1301,11 +1302,13 @@ a{color:var(--accent);text-decoration:none}
             <th style="min-width:80px">Minutes</th>
             <th style="min-width:80px">Employees</th>
             <th style="min-width:100px">Unit</th>
+            <th style="width:30px"></th>
           </tr>
         </thead>
         <tbody id="lab2-tasks-body"></tbody>
       </table>
     </div>
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="addCustomLabourTask()">+ Add custom task</button></div>
   </div>
 
   <div class="pricing-preview" style="flex-direction:column;align-items:stretch;gap:8px">
@@ -5228,8 +5231,8 @@ const LAB2_TASK_DEFS = [
   { key: 'tyingFence',        label: 'Tying the fence',                 unit: 'perFoot',   minutes: 0.5, employees: 1 },
   { key: 'touchUps',          label: 'Touch ups',                       unit: 'perJob',    minutes: 20,  employees: 1 }
 ];
-const LAB2_UNITS = ['perJob', 'perPost', 'perFoot', 'perHookup', 'perGate'];
-const LAB2_UNIT_LABEL = { perJob: 'per job', perPost: 'per post', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
+const LAB2_UNITS = ['perJob', 'perLine', 'perPost', 'perFoot', 'perHookup', 'perGate'];
+const LAB2_UNIT_LABEL = { perJob: 'per job', perLine: 'per line', perPost: 'per post', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
 
 function ensureLab2() {
   if (!config.labour2) {
@@ -5237,15 +5240,19 @@ function ensureLab2() {
       costPerHour: 25,
       chargePerHour: 85,
       cushioningPct: 15,
+      breakPct: 12,
       shopAddress: '',
       sampleCustomerAddress: '',
       travelMinOneWay: 25,
       loadUpMin: 30,
-      tasks: {}
+      tasks: {},
+      customTaskOrder: []
     };
   }
   if (!config.labour2.tasks) config.labour2.tasks = {};
-  // Seed any missing task defaults
+  if (config.labour2.breakPct == null) config.labour2.breakPct = 12;
+  if (!config.labour2.customTaskOrder) config.labour2.customTaskOrder = [];
+  // Seed any missing predefined task defaults
   for (const def of LAB2_TASK_DEFS) {
     if (!config.labour2.tasks[def.key]) {
       config.labour2.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
@@ -5254,20 +5261,63 @@ function ensureLab2() {
   return config.labour2;
 }
 
+function addCustomLabourTask() {
+  const lab = ensureLab2();
+  const id = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  lab.tasks[id] = { minutes: 0, employees: 1, unit: 'perJob', label: 'Custom task', custom: true };
+  lab.customTaskOrder.push(id);
+  renderLabourTasks();
+  markDirty();
+  // Focus the label of the new row
+  setTimeout(() => {
+    const el = document.querySelector(`input[data-task-label="${id}"]`);
+    if (el) { el.focus(); el.select(); }
+  }, 50);
+}
+
+function deleteCustomLabourTask(key) {
+  const lab = ensureLab2();
+  if (!lab.tasks[key] || !lab.tasks[key].custom) return;
+  delete lab.tasks[key];
+  lab.customTaskOrder = (lab.customTaskOrder || []).filter(x => x !== key);
+  renderLabourTasks();
+  markDirty();
+  updateLabourPreview();
+  refreshSamplePrices();
+}
+
 function renderLabourTasks() {
   const body = document.getElementById('lab2-tasks-body');
   if (!body) return;
   const lab = ensureLab2();
-  body.innerHTML = LAB2_TASK_DEFS.map(def => {
+  let html = '';
+  // Predefined tasks first (fixed labels)
+  for (const def of LAB2_TASK_DEFS) {
     const t = lab.tasks[def.key] || {};
     const unitOpts = LAB2_UNITS.map(u => `<option value="${u}"${t.unit === u ? ' selected' : ''}>${LAB2_UNIT_LABEL[u]}</option>`).join('');
-    return `<tr>
+    html += `<tr>
       <td class="cell-label">${clEscHtml(def.label)}</td>
-      <td><input type="number" value="${t.minutes || 0}" step="0.5" min="0" oninput="updateLab2Task('${def.key}','minutes',this.value)" style="width:72px;text-align:right"></td>
+      <td><input type="number" value="${t.minutes || 0}" step="0.1" min="0" oninput="updateLab2Task('${def.key}','minutes',this.value)" style="width:72px;text-align:right"></td>
       <td><input type="number" value="${t.employees || 1}" step="1" min="1" oninput="updateLab2Task('${def.key}','employees',this.value)" style="width:56px;text-align:right"></td>
       <td><select onchange="updateLab2Task('${def.key}','unit',this.value)" style="width:96px">${unitOpts}</select></td>
+      <td></td>
     </tr>`;
-  }).join('');
+  }
+  // Custom tasks (editable label + delete button)
+  const customKeys = lab.customTaskOrder || [];
+  for (const key of customKeys) {
+    const t = lab.tasks[key];
+    if (!t) continue;
+    const unitOpts = LAB2_UNITS.map(u => `<option value="${u}"${t.unit === u ? ' selected' : ''}>${LAB2_UNIT_LABEL[u]}</option>`).join('');
+    html += `<tr>
+      <td><input type="text" data-task-label="${key}" value="${clEscAttr(t.label || '')}" placeholder="Custom task name" oninput="updateLab2Task('${key}','label',this.value)" style="width:100%"></td>
+      <td><input type="number" value="${t.minutes || 0}" step="0.1" min="0" oninput="updateLab2Task('${key}','minutes',this.value)" style="width:72px;text-align:right"></td>
+      <td><input type="number" value="${t.employees || 1}" step="1" min="1" oninput="updateLab2Task('${key}','employees',this.value)" style="width:56px;text-align:right"></td>
+      <td><select onchange="updateLab2Task('${key}','unit',this.value)" style="width:96px">${unitOpts}</select></td>
+      <td><button class="btn-icon-danger" onclick="deleteCustomLabourTask('${key}')" title="Delete this custom task">&times;</button></td>
+    </tr>`;
+  }
+  body.innerHTML = html;
 }
 
 function updateLab2Task(key, field, value) {
@@ -5289,6 +5339,7 @@ function loadLabourUI() {
   setV('lab2-cost-hour', lab.costPerHour);
   setV('lab2-charge-hour', lab.chargePerHour);
   setV('lab2-cushion', lab.cushioningPct);
+  setV('lab2-break-pct', lab.breakPct);
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
   setV('lab2-travel-min', lab.travelMinOneWay);
@@ -5304,46 +5355,66 @@ function collectLabourUI() {
   lab.costPerHour = gn('lab2-cost-hour');
   lab.chargePerHour = gn('lab2-charge-hour');
   lab.cushioningPct = gn('lab2-cushion');
+  lab.breakPct = gn('lab2-break-pct');
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
   lab.travelMinOneWay = gn('lab2-travel-min');
   lab.loadUpMin = gn('lab2-load-min');
 }
 
-// Compute labour minutes for a given job context (posts, feet, hookups, gates).
+// Compute labour minutes for a given job context (posts, feet, hookups, gates, lines).
 // Returns { minutes, cost, charge, withCushioning, breakdown }.
 function computeLabour(ctx) {
   const lab = ensureLab2();
   const counts = {
     perJob:    1,
+    perLine:   ctx.lines || 0,
     perPost:   ctx.totalPosts || 0,
     perFoot:   ctx.lengthFt || 0,
     perHookup: ctx.hookups || 0,
     perGate:   ctx.gates || 0
   };
   const breakdown = [];
-  let totalMinutes = 0;
+
+  // All task entries — predefined + custom
+  const allTasks = [];
   for (const def of LAB2_TASK_DEFS) {
     const t = lab.tasks[def.key] || def;
+    allTasks.push({ key: def.key, label: def.label, task: t });
+  }
+  for (const key of (lab.customTaskOrder || [])) {
+    const t = lab.tasks[key];
+    if (!t) continue;
+    allTasks.push({ key, label: t.label || 'Custom task', task: t });
+  }
+
+  let workMinutes = 0;
+  for (const entry of allTasks) {
+    const t = entry.task;
     const units = counts[t.unit || 'perJob'] || 0;
     const m = (t.minutes || 0) * units * (t.employees || 1);
-    if (m > 0) breakdown.push({ label: def.label, minutes: m, units, employees: t.employees, unit: t.unit });
-    totalMinutes += m;
+    if (m > 0) breakdown.push({ label: entry.label, minutes: m, units, employees: t.employees, unit: t.unit });
+    workMinutes += m;
   }
-  // Travel (round trip × employees, assume setupDiscussion employees count)
+
+  // Breaks apply to work time only (not travel/load-up — those are already downtime)
+  const breakMinutes = workMinutes * ((lab.breakPct || 0) / 100);
+  if (breakMinutes > 0) breakdown.push({ label: 'Breaks (' + (lab.breakPct || 0) + '%)', minutes: breakMinutes });
+
+  // Travel (round trip × crew size)
   const crewSize = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
   const travelMin = (lab.travelMinOneWay || 0) * 2 * crewSize;
   const loadMin = (lab.loadUpMin || 0) * crewSize;
   if (travelMin > 0) breakdown.push({ label: 'Travel (round trip × ' + crewSize + ')', minutes: travelMin });
   if (loadMin > 0)   breakdown.push({ label: 'Load up × ' + crewSize,                 minutes: loadMin });
-  totalMinutes += travelMin + loadMin;
 
+  const totalMinutes = workMinutes + breakMinutes + travelMin + loadMin;
   const hours = totalMinutes / 60;
   const cost = hours * (lab.costPerHour || 0);
   const charge = hours * (lab.chargePerHour || 0);
   const cushion = charge * ((lab.cushioningPct || 0) / 100);
   const withCushioning = charge + cushion;
-  return { minutes: totalMinutes, hours, cost, charge, withCushioning, cushion, breakdown };
+  return { minutes: totalMinutes, workMinutes, breakMinutes, hours, cost, charge, withCushioning, cushion, breakdown };
 }
 
 // Fetch driving time from shop → customer via our worker's /api/distance endpoint.
@@ -5386,16 +5457,17 @@ async function calcDistanceFromShop() {
 }
 
 function updateLabourPreview() {
-  // Sample: 200ft straight fence, 6ft chain link
+  // Sample: 200ft straight fence, 6ft chain link, 1 line segment
   const lengthFt = 200;
   const totalPosts = Math.ceil(lengthFt / 8) + 1;
-  const ctx = { lengthFt, totalPosts, hookups: 2, gates: 0 };
+  const ctx = { lengthFt, totalPosts, hookups: 2, gates: 0, lines: 1 };
   const r = computeLabour(ctx);
   const chargeEl = document.getElementById('lab2-preview-charge');
   const detailEl = document.getElementById('lab2-preview-detail');
   if (chargeEl) chargeEl.textContent = '$' + r.withCushioning.toFixed(0);
   if (detailEl) {
-    detailEl.innerHTML = r.hours.toFixed(1) + ' hrs · labour cost $' + r.cost.toFixed(0) +
+    const brk = (r.breakMinutes / 60).toFixed(1);
+    detailEl.innerHTML = r.hours.toFixed(1) + ' hrs total · work ' + (r.workMinutes / 60).toFixed(1) + ' hrs + breaks ' + brk + ' hrs + travel/load · cost $' + r.cost.toFixed(0) +
       ' · charge $' + r.charge.toFixed(0) + ' · +' + ((config.labour2.cushioningPct || 0)) + '% cushion ($' + r.cushion.toFixed(0) + ')';
   }
 }
@@ -5450,7 +5522,8 @@ function computeFenceSample(spec) {
   }
 
   // Labour
-  const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates });
+  const lineCount = spec.lines != null ? spec.lines : 1;
+  const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates, lines: lineCount });
 
   const totalCost = matCost + lab.cost;
   const totalCharge = matSell + lab.withCushioning;
@@ -5494,9 +5567,9 @@ function refreshSamplePrices() {
   const container = document.getElementById('cl-sample-prices');
   if (!container) return;
   const samples = [
-    { title: '16ft straight line fence',                       spec: { lengthFt: 16,  corners: 0, gates: 0 } },
-    { title: '200ft straight line fence',                      spec: { lengthFt: 200, corners: 0, gates: 0 } },
-    { title: '200ft 3-sided fence with 1 single-swing gate',   spec: { lengthFt: 200, corners: 2, gates: 1, gateType: 'single-swing' } }
+    { title: '16ft straight line fence',                       spec: { lengthFt: 16,  corners: 0, gates: 0, lines: 1 } },
+    { title: '200ft straight line fence',                      spec: { lengthFt: 200, corners: 0, gates: 0, lines: 1 } },
+    { title: '200ft 3-sided fence with 1 single-swing gate',   spec: { lengthFt: 200, corners: 2, gates: 1, gateType: 'single-swing', lines: 3 } }
   ];
   container.innerHTML = samples.map(s => renderSamplePriceCard(s.title, s.spec)).join('');
 }

@@ -5114,17 +5114,21 @@
             // Labour
             const totalPosts = endCount + cornerCount + linePostCount;
             const hookups = endCount + cornerCount;
+            const lineCount = clLines.length;
             let labourCost = 0, labourCharge = 0;
             if (lab && lab.tasks) {
-                const counts = { perJob: 1, perPost: totalPosts, perFoot: totalFt, perHookup: hookups, perGate: state.gates.length };
-                let minutes = 0;
+                const counts = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: hookups, perGate: state.gates.length };
+                let workMinutes = 0;
                 for (const t of Object.values(lab.tasks)) {
                     const units = counts[t.unit || 'perJob'] || 0;
-                    minutes += (t.minutes || 0) * units * (t.employees || 1);
+                    workMinutes += (t.minutes || 0) * units * (t.employees || 1);
                 }
+                // Breaks apply to work time only
+                const breakMinutes = workMinutes * ((lab.breakPct || 0) / 100);
                 const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
-                minutes += (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
-                const hours = minutes / 60;
+                const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+                const totalMinutes = workMinutes + breakMinutes + overhead;
+                const hours = totalMinutes / 60;
                 labourCost = hours * (lab.costPerHour || 0);
                 labourCharge = hours * (lab.chargePerHour || 0);
                 const cushion = labourCharge * ((lab.cushioningPct || 0) / 100);
