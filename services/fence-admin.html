@@ -4516,9 +4516,10 @@ function renderClRecipeList(component, gateType, containerId) {
         <option value="">— select material —</option>
         ${nameOpts}
       </select>
-      <select class="recipe-sizemode" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','sizeMatch',this.value)" title="How to pick the right size variant at calc time" style="width:140px">
+      <select class="recipe-sizemode" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','sizeMatch',this.value)" title="How to pick the right size variant at calc time" style="width:180px">
         <option value="matchHeight"${sizeMatch === 'matchHeight' ? ' selected' : ''}>Match fence height</option>
         <option value="matchPostSize"${sizeMatch === 'matchPostSize' ? ' selected' : ''}>Match post size</option>
+        <option value="matchHeightAndPostSize"${sizeMatch === 'matchHeightAndPostSize' ? ' selected' : ''}>Match height + post size</option>
         <option value="fixed"${sizeMatch === 'fixed' ? ' selected' : ''}>Specific size…</option>
         <option value="any"${sizeMatch === 'any' ? ' selected' : ''}>Any size</option>
       </select>
@@ -4683,6 +4684,19 @@ function resolveClMaterial(recipeItem, context) {
     bySize = byColor.filter(m => m.size === target);
     // fallback: try without quote (some materials stored as '2-3/8' vs '2-3/8"')
     if (bySize.length === 0 && context.postSize) bySize = byColor.filter(m => m.size === context.postSize);
+  } else if (mode === 'matchHeightAndPostSize') {
+    // Size string must contain BOTH the fence height token AND the post-size token.
+    // Matching is whitespace-insensitive so materials can be named "4ft 2-3/8"" or
+    // "2-3/8" 4ft" or "4ft / 2-3/8"" — they all resolve the same.
+    const hTok = String(context.height) + 'ft';
+    const pTokWithQuote = context.postSize ? context.postSize + '"' : '';
+    const pTokNoQuote = context.postSize || '';
+    bySize = byColor.filter(m => {
+      const s = (m.size || '').toLowerCase();
+      const hasH = s.includes(hTok.toLowerCase());
+      const hasP = !pTokNoQuote || s.includes(pTokWithQuote.toLowerCase()) || s.includes(pTokNoQuote.toLowerCase());
+      return hasH && hasP;
+    });
   } else if (mode === 'fixed') {
     bySize = byColor.filter(m => m.size === (recipeItem.materialSize || ''));
   } else { // 'any'
