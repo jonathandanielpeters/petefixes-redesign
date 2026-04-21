@@ -257,6 +257,7 @@ a{color:var(--accent);text-decoration:none}
   <div class="sidebar-nav-item" data-section="vinylPricing" onclick="showSection('vinylPricing')"><span class="nav-icon">&#9634;</span>Vinyl Pricing</div>
   <div class="sidebar-nav-item" data-section="gatePricing" onclick="showSection('gatePricing')"><span class="nav-icon">&#128682;</span>Gate Pricing</div>
   <div class="sidebar-nav-item" data-section="postHardware" onclick="showSection('postHardware')"><span class="nav-icon">&#128297;</span>Post Hardware</div>
+  <div class="sidebar-nav-item" data-section="labour" onclick="showSection('labour')"><span class="nav-icon">&#9889;</span>Labour Calculator</div>
 
   <div class="sidebar-section-label">Extras</div>
   <div class="sidebar-nav-item" data-section="branding" onclick="showSection('branding')"><span class="nav-icon">&#127912;</span>Branding &amp; Email</div>
@@ -561,11 +562,16 @@ a{color:var(--accent);text-decoration:none}
   <div class="card">
     <div class="card-title">Materials — Master List</div>
     <div class="card-desc">One card per material type (Tension Band, Post, Brace Band, etc.). Each card shows a cost matrix of size × color variants. Change the markup once at the top of a card and the sell price for all variants updates automatically. Sell Price = Cost × (1 + Markup/100).</div>
-    <div style="margin:10px 0 8px">
+    <div style="margin:10px 0 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="addClMaterial()">+ Add Material</button>
-      <button class="btn btn-sm" style="margin-left:6px" onclick="seedClStandardMaterials(true)" title="Add Pete's standard chain link material list (posts, caps, bands, bars, etc.) — only adds missing rows, won't duplicate">+ Seed Pete's standard materials</button>
-      <button class="btn btn-sm" style="margin-left:6px" onclick="consolidateClPostMaterials()" title="End Posts, Corner Posts, and Line Posts are physically the same post — only the brackets/attachments differ. This merges all three into 'Post' and updates recipe references.">⇒ Consolidate End/Corner/Line Post</button>
-      <button class="btn btn-sm" style="margin-left:6px" onclick="clMigrateFromLegacy(true)" title="Re-import costs from the legacy pricing data (won't overwrite existing rows)">↻ Re-import from legacy</button>
+      <button class="btn btn-sm" onclick="seedClStandardMaterials(true)" title="Add Pete's standard chain link material list — only adds missing rows, won't duplicate">+ Seed standards</button>
+      <button class="btn btn-sm" onclick="consolidateClPostMaterials()" title="Merge End/Corner/Line Post entries into 'Post' (they're physically the same part)">⇒ Consolidate Posts</button>
+      <button class="btn btn-sm" onclick="clMigrateFromLegacy(true)" title="Re-import costs from legacy pricing fields">↻ Re-import legacy</button>
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px;color:var(--gray-500)">
+        Master markup:
+        <input type="number" id="cl-master-markup" value="70" step="1" min="0" style="width:50px;padding:3px 5px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:4px;text-align:right">%
+        <button class="btn btn-sm" onclick="applyClMasterMarkup()" title="Override every material group's markup % with this value">Apply to all</button>
+      </span>
     </div>
     <div id="cl-materials-body"></div>
   </div>
@@ -749,6 +755,14 @@ a{color:var(--accent);text-decoration:none}
   <div class="pricing-preview">
     <div><div class="preview-label">Sample: 50ft 6ft Chainlink (Galvanized)</div><div class="preview-detail">Material cost before markup (uses legacy pricing until recipe engine is wired in)</div></div>
     <div class="preview-value" id="preview-chainlink-val">--</div>
+  </div>
+
+  <!-- Sample Fence Prices -->
+  <div class="card" id="cl-sample-prices-card">
+    <div class="card-title">Sample Fence Prices</div>
+    <div class="card-desc">Live preview using your Materials, Recipes, and Labour Calculator settings. Updates every time you edit a cost or markup. Every sample uses 6ft galvanized with 2-3/8" posts and 8ft post spacing.</div>
+    <div id="cl-sample-prices"></div>
+    <button class="btn btn-sm" style="margin-top:10px" onclick="refreshSamplePrices()">↻ Refresh samples</button>
   </div>
 </div>
 
@@ -1245,6 +1259,60 @@ a{color:var(--accent);text-decoration:none}
 <!-- sec-hourlyRate removed — replaced by unified Pricing section -->
 
 <!-- sec-perFootRates and sec-surcharges removed — replaced by unified Pricing section -->
+
+<!-- ────── Labour Calculator ────── -->
+<div class="section" id="sec-labour">
+  <h2 class="section-title">Labour Calculator</h2>
+  <p class="section-subtitle">Hourly rates, travel/setup overhead, and per-task time estimates. The fence pricing tool uses these to compute a profitable labour charge on top of material cost.</p>
+
+  <div class="card">
+    <div class="card-title">Hourly Rates</div>
+    <div class="card-desc">What you pay labour vs. what you charge the customer. Difference is your labour margin before cushioning.</div>
+    <div class="card-row">
+      <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty()"></div>
+      <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty()"></div>
+      <div class="field"><label>Extra cushioning %</label><input type="number" id="lab2-cushion" step="1" min="0" value="15" oninput="markDirty()"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Travel &amp; Setup</div>
+    <div class="card-desc">Shop location + travel/load-up time. Travel time is round-trip; cost is multiplied by how many employees on the job.</div>
+    <div class="card-row">
+      <div class="field" style="flex:2"><label>Shop address</label><input type="text" id="lab2-shop-addr" placeholder="123 Main St, Winnipeg" oninput="markDirty()"></div>
+      <div class="field" style="flex:2"><label>Sample customer address (for distance test)</label><input type="text" id="lab2-cust-addr" placeholder="456 Elm St, Winnipeg" oninput="markDirty()"></div>
+      <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty()"></div>
+      <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty()"></div>
+    </div>
+    <div class="card-desc" style="margin-top:8px;font-size:11px;color:var(--gray-400)">Tip: auto-distance from the Google Maps API is coming in the next update. For now enter travel time manually based on the typical customer distance.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Task Times</div>
+    <div class="card-desc">For each task in a job, how many minutes it takes per unit and how many employees are involved. Unit: <strong>per job</strong> = once, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count.</div>
+    <div class="table-scroll">
+      <table class="data-table" id="lab2-tasks-table">
+        <thead>
+          <tr>
+            <th style="min-width:200px">Task</th>
+            <th style="min-width:80px">Minutes</th>
+            <th style="min-width:80px">Employees</th>
+            <th style="min-width:100px">Unit</th>
+          </tr>
+        </thead>
+        <tbody id="lab2-tasks-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="pricing-preview" style="flex-direction:column;align-items:stretch;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span class="preview-label">Sample labour — 200ft straight fence, 6ft chain link</span>
+      <span class="preview-value" id="lab2-preview-charge">--</span>
+    </div>
+    <div class="preview-detail" id="lab2-preview-detail">Fill in task times to calculate.</div>
+  </div>
+</div>
 
 <!-- ────── 12. Branding & Email ────── -->
 <div class="section" id="sec-branding">
@@ -5119,6 +5187,308 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     if (document.getElementById('cl-materials-body')) loadChainlinkV2UI();
   }, 100);
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// MASTER MARKUP + LABOUR + SAMPLE FENCE PRICES
+// ═══════════════════════════════════════════════════════════════════
+
+// Apply one master markup value to every chain link material group.
+function applyClMasterMarkup() {
+  const input = document.getElementById('cl-master-markup');
+  const mk = parseFloat(input && input.value) || 0;
+  const cl2 = ensureCl2();
+  if (cl2.materials.length === 0) { toast('No materials to update.', 'info'); return; }
+  if (!confirm('Apply ' + mk + '% markup to every one of the ' + cl2.materials.length + ' chain link material variants? This replaces per-group markup values.')) return;
+  cl2.materials.forEach(m => {
+    m.markup = mk;
+    m.sellPrice = +(m.cost * (1 + mk / 100)).toFixed(2);
+  });
+  renderClMaterials();
+  refreshSamplePrices();
+  markDirty();
+  toast('Applied ' + mk + '% markup to ' + cl2.materials.length + ' material variants.', 'success');
+}
+
+// ── Labour Calculator ──
+const LAB2_TASK_DEFS = [
+  { key: 'setupDiscussion',   label: 'Set up / discussing job',         unit: 'perJob',    minutes: 30,  employees: 2 },
+  { key: 'markingPosts',      label: 'Marking posts',                   unit: 'perPost',   minutes: 2,   employees: 1 },
+  { key: 'stringLines',       label: 'Running string lines',            unit: 'perJob',    minutes: 20,  employees: 2 },
+  { key: 'materialHandling',  label: 'Material handling',               unit: 'perJob',    minutes: 30,  employees: 2 },
+  { key: 'postInstallation',  label: 'Post installation',               unit: 'perPost',   minutes: 15,  employees: 2 },
+  { key: 'heightsAndCutting', label: 'Setting heights & cutting',       unit: 'perPost',   minutes: 3,   employees: 1 },
+  { key: 'cappingPosts',      label: 'Capping posts',                   unit: 'perPost',   minutes: 1,   employees: 1 },
+  { key: 'stretchingMesh',    label: 'Stretching mesh',                 unit: 'perJob',    minutes: 30,  employees: 2 },
+  { key: 'hookupTime',        label: 'Hookup (end/corner posts)',       unit: 'perHookup', minutes: 20,  employees: 1 },
+  { key: 'installGate',       label: 'Installing a gate',               unit: 'perGate',   minutes: 60,  employees: 2 },
+  { key: 'tyingFence',        label: 'Tying the fence',                 unit: 'perFoot',   minutes: 0.5, employees: 1 },
+  { key: 'touchUps',          label: 'Touch ups',                       unit: 'perJob',    minutes: 20,  employees: 1 }
+];
+const LAB2_UNITS = ['perJob', 'perPost', 'perFoot', 'perHookup', 'perGate'];
+const LAB2_UNIT_LABEL = { perJob: 'per job', perPost: 'per post', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
+
+function ensureLab2() {
+  if (!config.labour2) {
+    config.labour2 = {
+      costPerHour: 25,
+      chargePerHour: 85,
+      cushioningPct: 15,
+      shopAddress: '',
+      sampleCustomerAddress: '',
+      travelMinOneWay: 25,
+      loadUpMin: 30,
+      tasks: {}
+    };
+  }
+  if (!config.labour2.tasks) config.labour2.tasks = {};
+  // Seed any missing task defaults
+  for (const def of LAB2_TASK_DEFS) {
+    if (!config.labour2.tasks[def.key]) {
+      config.labour2.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
+    }
+  }
+  return config.labour2;
+}
+
+function renderLabourTasks() {
+  const body = document.getElementById('lab2-tasks-body');
+  if (!body) return;
+  const lab = ensureLab2();
+  body.innerHTML = LAB2_TASK_DEFS.map(def => {
+    const t = lab.tasks[def.key] || {};
+    const unitOpts = LAB2_UNITS.map(u => `<option value="${u}"${t.unit === u ? ' selected' : ''}>${LAB2_UNIT_LABEL[u]}</option>`).join('');
+    return `<tr>
+      <td class="cell-label">${clEscHtml(def.label)}</td>
+      <td><input type="number" value="${t.minutes || 0}" step="0.5" min="0" oninput="updateLab2Task('${def.key}','minutes',this.value)" style="width:72px;text-align:right"></td>
+      <td><input type="number" value="${t.employees || 1}" step="1" min="1" oninput="updateLab2Task('${def.key}','employees',this.value)" style="width:56px;text-align:right"></td>
+      <td><select onchange="updateLab2Task('${def.key}','unit',this.value)" style="width:96px">${unitOpts}</select></td>
+    </tr>`;
+  }).join('');
+}
+
+function updateLab2Task(key, field, value) {
+  const lab = ensureLab2();
+  if (!lab.tasks[key]) lab.tasks[key] = { minutes: 0, employees: 1, unit: 'perJob' };
+  if (field === 'minutes' || field === 'employees') {
+    lab.tasks[key][field] = parseFloat(value) || 0;
+  } else {
+    lab.tasks[key][field] = value;
+  }
+  markDirty();
+  updateLabourPreview();
+  refreshSamplePrices();
+}
+
+function loadLabourUI() {
+  const lab = ensureLab2();
+  const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setV('lab2-cost-hour', lab.costPerHour);
+  setV('lab2-charge-hour', lab.chargePerHour);
+  setV('lab2-cushion', lab.cushioningPct);
+  setV('lab2-shop-addr', lab.shopAddress || '');
+  setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
+  setV('lab2-travel-min', lab.travelMinOneWay);
+  setV('lab2-load-min', lab.loadUpMin);
+  renderLabourTasks();
+  updateLabourPreview();
+}
+
+function collectLabourUI() {
+  const lab = ensureLab2();
+  const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const gn = id => parseFloat(g(id)) || 0;
+  lab.costPerHour = gn('lab2-cost-hour');
+  lab.chargePerHour = gn('lab2-charge-hour');
+  lab.cushioningPct = gn('lab2-cushion');
+  lab.shopAddress = g('lab2-shop-addr');
+  lab.sampleCustomerAddress = g('lab2-cust-addr');
+  lab.travelMinOneWay = gn('lab2-travel-min');
+  lab.loadUpMin = gn('lab2-load-min');
+}
+
+// Compute labour minutes for a given job context (posts, feet, hookups, gates).
+// Returns { minutes, cost, charge, withCushioning, breakdown }.
+function computeLabour(ctx) {
+  const lab = ensureLab2();
+  const counts = {
+    perJob:    1,
+    perPost:   ctx.totalPosts || 0,
+    perFoot:   ctx.lengthFt || 0,
+    perHookup: ctx.hookups || 0,
+    perGate:   ctx.gates || 0
+  };
+  const breakdown = [];
+  let totalMinutes = 0;
+  for (const def of LAB2_TASK_DEFS) {
+    const t = lab.tasks[def.key] || def;
+    const units = counts[t.unit || 'perJob'] || 0;
+    const m = (t.minutes || 0) * units * (t.employees || 1);
+    if (m > 0) breakdown.push({ label: def.label, minutes: m, units, employees: t.employees, unit: t.unit });
+    totalMinutes += m;
+  }
+  // Travel (round trip × employees, assume setupDiscussion employees count)
+  const crewSize = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+  const travelMin = (lab.travelMinOneWay || 0) * 2 * crewSize;
+  const loadMin = (lab.loadUpMin || 0) * crewSize;
+  if (travelMin > 0) breakdown.push({ label: 'Travel (round trip × ' + crewSize + ')', minutes: travelMin });
+  if (loadMin > 0)   breakdown.push({ label: 'Load up × ' + crewSize,                 minutes: loadMin });
+  totalMinutes += travelMin + loadMin;
+
+  const hours = totalMinutes / 60;
+  const cost = hours * (lab.costPerHour || 0);
+  const charge = hours * (lab.chargePerHour || 0);
+  const cushion = charge * ((lab.cushioningPct || 0) / 100);
+  const withCushioning = charge + cushion;
+  return { minutes: totalMinutes, hours, cost, charge, withCushioning, cushion, breakdown };
+}
+
+function updateLabourPreview() {
+  // Sample: 200ft straight fence, 6ft chain link
+  const lengthFt = 200;
+  const totalPosts = Math.ceil(lengthFt / 8) + 1;
+  const ctx = { lengthFt, totalPosts, hookups: 2, gates: 0 };
+  const r = computeLabour(ctx);
+  const chargeEl = document.getElementById('lab2-preview-charge');
+  const detailEl = document.getElementById('lab2-preview-detail');
+  if (chargeEl) chargeEl.textContent = '$' + r.withCushioning.toFixed(0);
+  if (detailEl) {
+    detailEl.innerHTML = r.hours.toFixed(1) + ' hrs · labour cost $' + r.cost.toFixed(0) +
+      ' · charge $' + r.charge.toFixed(0) + ' · +' + ((config.labour2.cushioningPct || 0)) + '% cushion ($' + r.cushion.toFixed(0) + ')';
+  }
+}
+
+// ── Sample Fence Price Calculator ──
+// Compute full job quote (materials + labour) for a given fence spec.
+function computeFenceSample(spec) {
+  const cl2 = ensureCl2();
+  const ctx = {
+    height: spec.height || 6,
+    color: spec.color || 'galvanized',
+    postSize: spec.postSize || '2-3/8'
+  };
+  const spacing = spec.postSpacing || 8;
+
+  // Post counts
+  const gates = spec.gates || 0;
+  const corners = spec.corners || 0;
+  // Ends = gate sides + open ends. Simplified: 2 open ends + 2 per gate break.
+  const endPosts = spec.endPosts != null ? spec.endPosts : (2 + gates * 2);
+  const totalPosts = Math.max(endPosts + corners + 1, Math.ceil(spec.lengthFt / spacing) + 1);
+  const linePosts = Math.max(0, totalPosts - endPosts - corners);
+  const hookups = endPosts + corners;
+
+  let matCost = 0, matSell = 0;
+  const lines = [];
+
+  function apply(recipeList, multiplier, label) {
+    if (!recipeList || multiplier === 0) return;
+    for (const item of recipeList) {
+      if (!item.materialName) continue;
+      const mat = resolveClMaterial(item, ctx);
+      if (!mat) continue;
+      const qty = resolveClQty(item, ctx) * multiplier;
+      if (qty <= 0) continue;
+      matCost += (mat.cost || 0) * qty;
+      matSell += (mat.sellPrice || 0) * qty;
+      lines.push({ section: label, name: mat.name, size: mat.size, color: mat.color, qty, unitCost: mat.cost, unitSell: mat.sellPrice });
+    }
+  }
+
+  apply(cl2.recipes.endPost,    endPosts,  'End Post × ' + endPosts);
+  apply(cl2.recipes.cornerPost, corners,   'Corner Post × ' + corners);
+  apply(cl2.recipes.linePost,   linePosts, 'Line Post × ' + linePosts);
+  apply(cl2.recipes.perFoot,    spec.lengthFt, 'Per Foot × ' + spec.lengthFt + 'ft');
+
+  // Gates — default to single-swing if not specified
+  if (gates > 0) {
+    const gateType = spec.gateType || 'single-swing';
+    const gateRecipe = (cl2.recipes.gates || {})[gateType] || [];
+    apply(gateRecipe, gates, gateType + ' × ' + gates);
+  }
+
+  // Labour
+  const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates });
+
+  const totalCost = matCost + lab.cost;
+  const totalCharge = matSell + lab.withCushioning;
+  const profit = totalCharge - totalCost;
+  const profitPct = totalCost > 0 ? (profit / totalCharge) * 100 : 0;
+
+  return {
+    spec, endPosts, cornerPosts: corners, linePosts, totalPosts, hookups, gates,
+    matCost, matSell,
+    labourHours: lab.hours, labourCost: lab.cost, labourCharge: lab.withCushioning,
+    totalCost, totalCharge, profit, profitPct,
+    matLines: lines
+  };
+}
+
+function renderSamplePriceCard(title, spec) {
+  const r = computeFenceSample(spec);
+  const money = n => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return `<div style="padding:10px;background:var(--gray-50);border:1px solid var(--gray-100);border-radius:6px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--black)">${clEscHtml(title)}</div>
+        <div style="font-size:10px;color:var(--gray-400)">${r.spec.lengthFt}ft · ${r.endPosts} end / ${r.cornerPosts} corner / ${r.linePosts} line posts · ${r.gates} gate${r.gates === 1 ? '' : 's'} · ${r.labourHours.toFixed(1)} hrs labour</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-0.02em">${money(r.totalCharge)}</div>
+        <div style="font-size:10px;color:var(--gray-400)">customer total</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;font-size:11px">
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Material cost</div><div style="font-weight:600">${money(r.matCost)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Material sell</div><div style="font-weight:600">${money(r.matSell)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Labour cost</div><div style="font-weight:600">${money(r.labourCost)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Labour charge</div><div style="font-weight:600">${money(r.labourCharge)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Profit</div><div style="font-weight:700;color:${r.profit >= 0 ? '#27ae60' : '#c44'}">${money(r.profit)} (${r.profitPct.toFixed(0)}%)</div></div>
+    </div>
+  </div>`;
+}
+
+function refreshSamplePrices() {
+  const container = document.getElementById('cl-sample-prices');
+  if (!container) return;
+  const samples = [
+    { title: '16ft straight line fence',                       spec: { lengthFt: 16,  corners: 0, gates: 0 } },
+    { title: '200ft straight line fence',                      spec: { lengthFt: 200, corners: 0, gates: 0 } },
+    { title: '200ft 3-sided fence with 1 single-swing gate',   spec: { lengthFt: 200, corners: 2, gates: 1, gateType: 'single-swing' } }
+  ];
+  container.innerHTML = samples.map(s => renderSamplePriceCard(s.title, s.spec)).join('');
+}
+
+// Hook load/save pipeline — showSection wrap already exists; also fire on direct load
+(function wrapShowSectionForLabour() {
+  if (typeof showSection !== 'function') return;
+  const _orig = window.showSection;
+  window.showSection = function(name) {
+    _orig(name);
+    if (name === 'labour') loadLabourUI();
+    if (name === 'chainlinkPricing') refreshSamplePrices();
+  };
+})();
+
+// Save labour settings via existing saveConfig flow — collect right before save
+(function hookLabourSave() {
+  if (typeof collectForm === 'function') {
+    const _orig = window.collectForm;
+    window.collectForm = function() {
+      _orig();
+      try { collectLabourUI(); } catch (e) { console.warn('[labour] collect failed:', e); }
+    };
+  }
+})();
+
+// Also refresh samples on page load after config is ready
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    try {
+      if (document.getElementById('lab2-tasks-body')) loadLabourUI();
+      if (document.getElementById('cl-sample-prices')) refreshSamplePrices();
+    } catch (e) { console.warn('[init]', e); }
+  }, 300);
 });
 
 // ───── Warn on close with unsaved changes ─────
