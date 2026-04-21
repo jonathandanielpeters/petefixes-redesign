@@ -1,0 +1,21 @@
+# Wrangler build artifacts and auth caches (never commit — may contain tokens)
+.wrangler/
+**/.wrangler/
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Environment
+.env
+.env.local
+.dev.vars
