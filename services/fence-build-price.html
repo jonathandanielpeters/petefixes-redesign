@@ -5123,16 +5123,18 @@
                     const units = counts[t.unit || 'perJob'] || 0;
                     workMinutes += (t.minutes || 0) * units * (t.employees || 1);
                 }
-                // Breaks apply to work time only
-                const breakMinutes = workMinutes * ((lab.breakPct || 0) / 100);
+                // Breaks: (work min / workday min) × break min per day
+                const hoursPerDay = lab.hoursPerDay || 8;
+                const breakMinPerDay = lab.breakMinPerDay || 0;
+                const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
+                    ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
+                    : 0;
                 const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
                 const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
                 const hours = totalMinutes / 60;
                 labourCost = hours * (lab.costPerHour || 0);
                 labourCharge = hours * (lab.chargePerHour || 0);
-                const cushion = labourCharge * ((lab.cushioningPct || 0) / 100);
-                labourCharge += cushion;
             }
 
             const total = Math.round(matSell + labourCharge);

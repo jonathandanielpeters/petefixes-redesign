@@ -1266,13 +1266,13 @@ a{color:var(--accent);text-decoration:none}
   <p class="section-subtitle">Hourly rates, travel/setup overhead, and per-task time estimates. The fence pricing tool uses these to compute a profitable labour charge on top of material cost.</p>
 
   <div class="card">
-    <div class="card-title">Hourly Rates &amp; Overhead</div>
-    <div class="card-desc">What you pay labour vs. what you charge the customer. Break % is the downtime overhead (coffee/lunch) added on top of working time.</div>
+    <div class="card-title">Hourly Rates &amp; Break Time</div>
+    <div class="card-desc">What you pay labour vs. what you charge the customer. Break minutes per workday (coffee breaks + lunch) scale with job size based on hours worked.</div>
     <div class="card-row">
       <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty();updateLabourPreview()"></div>
       <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty();updateLabourPreview()"></div>
-      <div class="field"><label>Break % (on work time)</label><input type="number" id="lab2-break-pct" step="0.5" min="0" value="12" oninput="markDirty();updateLabourPreview()" title="Downtime overhead — coffee breaks, lunch, etc. Added to task time only, not travel/load-up."></div>
-      <div class="field"><label>Extra cushioning %</label><input type="number" id="lab2-cushion" step="1" min="0" value="15" oninput="markDirty();updateLabourPreview()"></div>
+      <div class="field"><label>Break time per workday (min)</label><input type="number" id="lab2-break-min-per-day" step="5" min="0" value="60" oninput="markDirty();updateLabourPreview()" title="Total paid break + lunch time per employee per workday. E.g. 60 min = 2×15-min coffee breaks + 30-min lunch."></div>
+      <div class="field"><label>Hours per workday</label><input type="number" id="lab2-hours-per-day" step="0.5" min="1" value="8" oninput="markDirty();updateLabourPreview()" title="Typical workday length. Used to prorate break time: a 4-hour job gets half the per-day break time."></div>
     </div>
   </div>
 
@@ -5289,8 +5289,8 @@ function ensureLab2() {
     config.labour2 = {
       costPerHour: 25,
       chargePerHour: 85,
-      cushioningPct: 15,
-      breakPct: 12,
+      breakMinPerDay: 60,
+      hoursPerDay: 8,
       shopAddress: '',
       sampleCustomerAddress: '',
       travelMinOneWay: 25,
@@ -5300,7 +5300,18 @@ function ensureLab2() {
     };
   }
   if (!config.labour2.tasks) config.labour2.tasks = {};
-  if (config.labour2.breakPct == null) config.labour2.breakPct = 12;
+  // Migrate legacy fields to new shape
+  if (config.labour2.breakMinPerDay == null) {
+    // If legacy breakPct exists, convert to minutes/day assuming 8hr day
+    if (config.labour2.breakPct != null) {
+      config.labour2.breakMinPerDay = Math.round(config.labour2.breakPct * 4.8); // 8hr × 60min × pct/100
+    } else {
+      config.labour2.breakMinPerDay = 60;
+    }
+  }
+  if (config.labour2.hoursPerDay == null) config.labour2.hoursPerDay = 8;
+  delete config.labour2.breakPct;
+  delete config.labour2.cushioningPct;
   if (!config.labour2.customTaskOrder) config.labour2.customTaskOrder = [];
   // Seed any missing predefined task defaults
   for (const def of LAB2_TASK_DEFS) {
@@ -5388,8 +5399,8 @@ function loadLabourUI() {
   const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
   setV('lab2-cost-hour', lab.costPerHour);
   setV('lab2-charge-hour', lab.chargePerHour);
-  setV('lab2-cushion', lab.cushioningPct);
-  setV('lab2-break-pct', lab.breakPct);
+  setV('lab2-break-min-per-day', lab.breakMinPerDay);
+  setV('lab2-hours-per-day', lab.hoursPerDay);
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
   setV('lab2-travel-min', lab.travelMinOneWay);
@@ -5404,8 +5415,8 @@ function collectLabourUI() {
   const gn = id => parseFloat(g(id)) || 0;
   lab.costPerHour = gn('lab2-cost-hour');
   lab.chargePerHour = gn('lab2-charge-hour');
-  lab.cushioningPct = gn('lab2-cushion');
-  lab.breakPct = gn('lab2-break-pct');
+  lab.breakMinPerDay = gn('lab2-break-min-per-day');
+  lab.hoursPerDay = gn('lab2-hours-per-day') || 8;
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
   lab.travelMinOneWay = gn('lab2-travel-min');
@@ -5447,9 +5458,14 @@ function computeLabour(ctx) {
     workMinutes += m;
   }
 
-  // Breaks apply to work time only (not travel/load-up — those are already downtime)
-  const breakMinutes = workMinutes * ((lab.breakPct || 0) / 100);
-  if (breakMinutes > 0) breakdown.push({ label: 'Breaks (' + (lab.breakPct || 0) + '%)', minutes: breakMinutes });
+  // Breaks scale with time worked — (work minutes / workday minutes) × break minutes per day.
+  // workMinutes is person-minutes (already multiplied by crew), so breakMinutes is also person-minutes.
+  const hoursPerDay = lab.hoursPerDay || 8;
+  const breakMinPerDay = lab.breakMinPerDay || 0;
+  const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
+    ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
+    : 0;
+  if (breakMinutes > 0) breakdown.push({ label: 'Breaks (' + breakMinPerDay + ' min/' + hoursPerDay + 'hr day, prorated)', minutes: breakMinutes });
 
   // Travel (round trip × crew size)
   const crewSize = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
@@ -5462,9 +5478,8 @@ function computeLabour(ctx) {
   const hours = totalMinutes / 60;
   const cost = hours * (lab.costPerHour || 0);
   const charge = hours * (lab.chargePerHour || 0);
-  const cushion = charge * ((lab.cushioningPct || 0) / 100);
-  const withCushioning = charge + cushion;
-  return { minutes: totalMinutes, workMinutes, breakMinutes, hours, cost, charge, withCushioning, cushion, breakdown };
+  // withCushioning kept as a field for backward compat with callers, but equal to charge now
+  return { minutes: totalMinutes, workMinutes, breakMinutes, hours, cost, charge, withCushioning: charge, breakdown };
 }
 
 // Fetch driving time from shop → customer via our worker's /api/distance endpoint.
@@ -5514,11 +5529,10 @@ function updateLabourPreview() {
   const r = computeLabour(ctx);
   const chargeEl = document.getElementById('lab2-preview-charge');
   const detailEl = document.getElementById('lab2-preview-detail');
-  if (chargeEl) chargeEl.textContent = '$' + r.withCushioning.toFixed(0);
+  if (chargeEl) chargeEl.textContent = '$' + r.charge.toFixed(0);
   if (detailEl) {
     const brk = (r.breakMinutes / 60).toFixed(1);
-    detailEl.innerHTML = r.hours.toFixed(1) + ' hrs total · work ' + (r.workMinutes / 60).toFixed(1) + ' hrs + breaks ' + brk + ' hrs + travel/load · cost $' + r.cost.toFixed(0) +
-      ' · charge $' + r.charge.toFixed(0) + ' · +' + ((config.labour2.cushioningPct || 0)) + '% cushion ($' + r.cushion.toFixed(0) + ')';
+    detailEl.innerHTML = r.hours.toFixed(1) + ' hrs total · work ' + (r.workMinutes / 60).toFixed(1) + ' hrs + breaks ' + brk + ' hrs + travel/load · cost $' + r.cost.toFixed(0) + ' · charge $' + r.charge.toFixed(0);
   }
 }
 
@@ -5576,14 +5590,14 @@ function computeFenceSample(spec) {
   const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates, lines: lineCount });
 
   const totalCost = matCost + lab.cost;
-  const totalCharge = matSell + lab.withCushioning;
+  const totalCharge = matSell + lab.charge;
   const profit = totalCharge - totalCost;
   const profitPct = totalCost > 0 ? (profit / totalCharge) * 100 : 0;
 
   return {
     spec, endPosts, cornerPosts: corners, linePosts, totalPosts, hookups, gates,
     matCost, matSell,
-    labourHours: lab.hours, labourCost: lab.cost, labourCharge: lab.withCushioning,
+    labourHours: lab.hours, labourCost: lab.cost, labourCharge: lab.charge,
     totalCost, totalCharge, profit, profitPct,
     matLines: lines
   };
@@ -5635,7 +5649,7 @@ function renderSamplePriceCard(title, spec) {
       <div style="padding:7px 9px;background:var(--white);border:1px solid var(--gray-100);border-radius:5px">
         <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);font-weight:700;margin-bottom:4px">Labour · ${r.labourHours.toFixed(1)} hrs</div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Work</span><span>${workHrs.toFixed(1)} hrs</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Breaks (${lab.breakPct || 0}%)</span><span>${breakHrs.toFixed(1)} hrs</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Breaks (${lab.breakMinPerDay || 0} min/${lab.hoursPerDay || 8}hr day)</span><span>${breakHrs.toFixed(1)} hrs</span></div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Travel + load</span><span>${(travelHrs + loadHrs).toFixed(1)} hrs</span></div>
         <div style="display:flex;justify-content:space-between;margin-top:3px"><span style="color:var(--gray-500)">Cost</span><span style="font-weight:600">${money(r.labourCost)}</span></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--gray-500)">Margin</span><span style="font-weight:600;color:#27ae60">+${money(labMargin)}</span></div>
