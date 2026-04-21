@@ -147,6 +147,28 @@ a{color:var(--accent);text-decoration:none}
 .pricing-preview .preview-value{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
 .pricing-preview .preview-detail{font-size:11px;color:var(--gray-400)}
 
+/* ───── Chainlink V2 Materials Grid ───── */
+.cl-mat-group{margin:14px 0;padding:12px 14px;background:var(--white);border:1.5px solid var(--gray-100);border-radius:8px}
+.cl-mat-group-header{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--gray-100)}
+.cl-mat-name-input{font-size:14px;font-weight:700;padding:5px 8px;border:1.5px solid var(--gray-200);border-radius:4px;min-width:180px}
+.cl-mat-name-input:focus{outline:none;border-color:var(--accent)}
+.cl-mat-type-select,.cl-mat-markup-input{font-size:11px;padding:4px 6px;border:1.5px solid var(--gray-200);border-radius:4px}
+.cl-mat-markup-wrap{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
+.cl-mat-markup-input{width:54px;text-align:right}
+.cl-mat-grid{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+.cl-mat-grid th{text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);padding:4px 8px;border-bottom:2px solid var(--gray-100);white-space:nowrap}
+.cl-mat-grid td{padding:4px 6px;border-bottom:1px solid var(--gray-50);vertical-align:middle}
+.cl-mat-grid input[type="text"],.cl-mat-grid input[type="number"]{padding:4px 6px;font-size:11px;border:1.5px solid var(--gray-100);border-radius:4px;background:var(--white);transition:border-color var(--transition)}
+.cl-mat-grid input:focus{outline:none;border-color:var(--accent)}
+.cl-mat-grid .size-cell input{width:80px}
+.cl-mat-grid .cost-cell{min-width:110px}
+.cl-mat-grid .cost-input{width:70px;text-align:right}
+.cl-mat-grid .sell-price{display:inline-block;margin-left:6px;font-size:10px;font-weight:600;color:var(--accent)}
+.cl-mat-grid .add-variant-btn{width:26px;height:26px;border:1.5px dashed var(--gray-200);background:var(--white);color:var(--gray-400);border-radius:4px;cursor:pointer;font-size:14px;line-height:1;padding:0}
+.cl-mat-grid .add-variant-btn:hover{border-color:var(--accent);color:var(--accent)}
+.cl-mat-add-size{margin-top:6px}
+.cl-mat-empty{padding:20px;text-align:center;color:var(--gray-400);font-style:italic}
+
 /* ───── Chainlink V2 Recipe UI ───── */
 .cl-recipe-group{margin:16px 0;padding:12px 14px;background:var(--white);border:1.5px solid var(--gray-100);border-radius:8px}
 .cl-recipe-title{font-size:13px;font-weight:700;color:var(--black);margin-bottom:4px}
@@ -531,29 +553,13 @@ a{color:var(--accent);text-decoration:none}
   <!-- Materials Master List -->
   <div class="card">
     <div class="card-title">Materials — Master List</div>
-    <div class="card-desc">Every chain link material with cost, markup %, and auto-calculated sell price. Add one row per color variant (e.g. Tension Band galvanized + Tension Band black). Sell Price = Cost × (1 + Markup/100).</div>
+    <div class="card-desc">One card per material type (Tension Band, Post, Brace Band, etc.). Each card shows a cost matrix of size × color variants. Change the markup once at the top of a card and the sell price for all variants updates automatically. Sell Price = Cost × (1 + Markup/100).</div>
     <div style="margin:10px 0 8px">
       <button class="btn btn-sm" onclick="addClMaterial()">+ Add Material</button>
       <button class="btn btn-sm" style="margin-left:6px" onclick="seedClStandardMaterials(true)" title="Add Pete's standard chain link material list (posts, caps, bands, bars, etc.) — only adds missing rows, won't duplicate">+ Seed Pete's standard materials</button>
       <button class="btn btn-sm" style="margin-left:6px" onclick="clMigrateFromLegacy(true)" title="Re-import costs from the legacy pricing data (won't overwrite existing rows)">↻ Re-import from legacy</button>
     </div>
-    <div class="table-scroll">
-      <table class="data-table" id="cl-materials-table">
-        <thead>
-          <tr>
-            <th style="min-width:140px">Name</th>
-            <th style="min-width:80px">Size</th>
-            <th style="min-width:90px">Color</th>
-            <th style="min-width:85px">Type</th>
-            <th style="text-align:right;min-width:70px">Cost $</th>
-            <th style="text-align:right;min-width:60px">Markup %</th>
-            <th style="text-align:right;min-width:70px">Sell $</th>
-            <th style="width:30px"></th>
-          </tr>
-        </thead>
-        <tbody id="cl-materials-body"></tbody>
-      </table>
-    </div>
+    <div id="cl-materials-body"></div>
   </div>
 
   <!-- Build Recipes -->
@@ -4292,65 +4298,259 @@ function ensureCl2() {
   return config.chainlinkV2;
 }
 
-// ── Material CRUD ──
+// ── Material CRUD (grouped view — one "group" per material Name) ──
+
+// Creates a new empty material group. User fills in name + first size + costs.
 function addClMaterial() {
   const cl2 = ensureCl2();
-  cl2.materials.push({
-    id: clNewId('mat'),
-    name: '', size: '', color: 'galvanized', type: 'other',
-    cost: 0, markup: 70, sellPrice: 0
+  // Add two empty SKUs (galvanized + black) so the new group renders as a complete row.
+  const tmpName = '__new__' + Date.now();
+  ['galvanized', 'black'].forEach(color => {
+    cl2.materials.push({
+      id: clNewId('mat'),
+      name: tmpName, size: '', color, type: 'other',
+      cost: 0, markup: 70, sellPrice: 0
+    });
   });
   renderClMaterials();
+  // Focus the name input of the new group so user can type
+  setTimeout(() => {
+    const el = document.querySelector(`.cl-mat-name-input[data-group="${tmpName}"]`);
+    if (el) { el.focus(); el.select(); }
+  }, 50);
   markDirty();
 }
 
-function deleteClMaterial(id) {
+// Delete an entire material group (all variants with the given name)
+function deleteClMaterialGroup(name) {
+  if (!confirm('Delete all variants of "' + name + '"? This removes them from the list and any recipes that reference this material name will lose their link.')) return;
   const cl2 = ensureCl2();
-  cl2.materials = cl2.materials.filter(m => m.id !== id);
+  cl2.materials = cl2.materials.filter(m => m.name !== name);
   renderClMaterials();
   renderAllClRecipes();
   markDirty();
 }
 
-function updateClMaterial(id, field, value) {
+// Rename a material group. Updates all variants AND any recipe references so recipes stay linked.
+function renameClMaterialGroup(oldName, newName) {
   const cl2 = ensureCl2();
-  const m = cl2.materials.find(x => x.id === id);
-  if (!m) return;
-  if (field === 'cost' || field === 'markup') {
-    m[field] = parseFloat(value) || 0;
-    m.sellPrice = +(m.cost * (1 + m.markup / 100)).toFixed(2);
-    const sellEl = document.getElementById('cl-mat-sell-' + id);
-    if (sellEl) sellEl.textContent = '$' + m.sellPrice.toFixed(2);
-  } else {
-    m[field] = value;
-    // Name/size changes affect recipe dropdowns
-    if (field === 'name' || field === 'size') renderAllClRecipes();
+  newName = (newName || '').trim();
+  if (!newName) { alert('Material name cannot be empty.'); renderClMaterials(); return; }
+  if (newName === oldName) return;
+  // Check for name collision — materials with same name can coexist but they'd merge.
+  const collision = cl2.materials.some(m => m.name === newName && m.name !== oldName);
+  if (collision) {
+    if (!confirm('A material named "' + newName + '" already exists. Merging will combine variants.')) {
+      renderClMaterials(); return;
+    }
   }
+  // Update material rows
+  cl2.materials.forEach(m => { if (m.name === oldName) m.name = newName; });
+  // Update recipe references
+  function updateItems(list) {
+    if (!list) return;
+    for (const item of list) {
+      if (item.materialName === oldName) item.materialName = newName;
+    }
+  }
+  const recipes = cl2.recipes || {};
+  updateItems(recipes.endPost);
+  updateItems(recipes.cornerPost);
+  updateItems(recipes.linePost);
+  updateItems(recipes.perFoot);
+  Object.values(recipes.gates || {}).forEach(updateItems);
+  renderClMaterials();
+  renderAllClRecipes();
   markDirty();
 }
 
+// Update shared type for all variants in a group
+function updateClMaterialGroupType(name, type) {
+  const cl2 = ensureCl2();
+  cl2.materials.forEach(m => { if (m.name === name) m.type = type; });
+  markDirty();
+}
+
+// Update shared markup for all variants in a group — recomputes every sell price
+function updateClMaterialGroupMarkup(name, markup) {
+  const cl2 = ensureCl2();
+  const mk = parseFloat(markup) || 0;
+  cl2.materials.forEach(m => {
+    if (m.name === name) {
+      m.markup = mk;
+      m.sellPrice = +(m.cost * (1 + mk / 100)).toFixed(2);
+      const sellEl = document.getElementById('cl-sell-' + m.id);
+      if (sellEl) sellEl.textContent = '$' + m.sellPrice.toFixed(2);
+    }
+  });
+  markDirty();
+}
+
+// Add a new size row to an existing group (auto-creates galvanized + black variants)
+function addClMaterialSize(name) {
+  const cl2 = ensureCl2();
+  const existing = cl2.materials.find(m => m.name === name);
+  const type = existing ? existing.type : 'other';
+  const markup = existing ? existing.markup : 70;
+  // Determine existing colors in this group (preserve them when adding a row)
+  const colors = [...new Set(cl2.materials.filter(m => m.name === name).map(m => m.color))];
+  const colorsToAdd = colors.length > 0 ? colors : ['galvanized', 'black'];
+  colorsToAdd.forEach(color => {
+    cl2.materials.push({
+      id: clNewId('mat'),
+      name, size: '', color, type,
+      cost: 0, markup, sellPrice: 0
+    });
+  });
+  renderClMaterials();
+  markDirty();
+  // Focus the new size input
+  setTimeout(() => {
+    const rows = document.querySelectorAll(`.cl-mat-group[data-group="${clEscAttr(name)}"] .size-cell input`);
+    if (rows.length) { rows[rows.length - 1].focus(); rows[rows.length - 1].select(); }
+  }, 50);
+}
+
+// Rename a size within a group (updates all color variants of that size)
+function renameClMaterialSize(name, oldSize, newSize) {
+  const cl2 = ensureCl2();
+  cl2.materials.forEach(m => {
+    if (m.name === name && (m.size || '') === oldSize) m.size = newSize;
+  });
+  markDirty();
+  // Full re-render so the row is regrouped correctly
+  renderClMaterials();
+}
+
+// Delete all variants for a given name+size
+function deleteClMaterialSize(name, size) {
+  const cl2 = ensureCl2();
+  cl2.materials = cl2.materials.filter(m => !(m.name === name && (m.size || '') === size));
+  renderClMaterials();
+  markDirty();
+}
+
+// Single-cell cost edit. Recomputes sell price for this SKU.
+function updateClVariantCost(id, cost) {
+  const cl2 = ensureCl2();
+  const m = cl2.materials.find(x => x.id === id);
+  if (!m) return;
+  m.cost = parseFloat(cost) || 0;
+  m.sellPrice = +(m.cost * (1 + (m.markup || 0) / 100)).toFixed(2);
+  const sellEl = document.getElementById('cl-sell-' + id);
+  if (sellEl) sellEl.textContent = '$' + m.sellPrice.toFixed(2);
+  markDirty();
+}
+
+// Add a missing color variant for an existing name+size
+function addClVariant(name, size, color) {
+  const cl2 = ensureCl2();
+  const sibling = cl2.materials.find(m => m.name === name);
+  const type = sibling ? sibling.type : 'other';
+  const markup = sibling ? sibling.markup : 70;
+  cl2.materials.push({
+    id: clNewId('mat'),
+    name, size, color, type,
+    cost: 0, markup, sellPrice: 0
+  });
+  renderClMaterials();
+  markDirty();
+}
+
+// ── Grouped render ──
 function renderClMaterials() {
   const cl2 = ensureCl2();
   const body = document.getElementById('cl-materials-body');
   if (!body) return;
+
   if (cl2.materials.length === 0) {
-    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);padding:20px;font-style:italic">No materials yet. Click "+ Add Material" to start, or "↻ Re-import from legacy" to pull in your existing pricing.</td></tr>';
+    body.innerHTML = '<div class="cl-mat-empty">No materials yet. Click "+ Add Material" for an empty card, or "+ Seed Pete\'s standard materials" to auto-fill the common chain link parts list.</div>';
     return;
   }
-  body.innerHTML = cl2.materials.map(m => {
-    const typeOpts = CL_MATERIAL_TYPES.map(t => `<option value="${t}"${m.type === t ? ' selected' : ''}>${t}</option>`).join('');
-    const colorOpts = CL_COLORS.map(c => `<option value="${c}"${m.color === c ? ' selected' : ''}>${c}</option>`).join('');
-    return `<tr>
-      <td><input type="text" value="${clEscAttr(m.name)}" oninput="updateClMaterial('${m.id}','name',this.value)" placeholder="e.g. Tension Band"></td>
-      <td><input type="text" value="${clEscAttr(m.size)}" oninput="updateClMaterial('${m.id}','size',this.value)" placeholder='2-3/8"' style="width:74px"></td>
-      <td><select onchange="updateClMaterial('${m.id}','color',this.value)" style="width:90px">${colorOpts}</select></td>
-      <td><select onchange="updateClMaterial('${m.id}','type',this.value)" style="width:82px">${typeOpts}</select></td>
-      <td><input type="number" value="${m.cost || 0}" step="0.01" min="0" oninput="updateClMaterial('${m.id}','cost',this.value)" style="width:68px;text-align:right"></td>
-      <td><input type="number" value="${m.markup || 0}" step="1" min="0" oninput="updateClMaterial('${m.id}','markup',this.value)" style="width:54px;text-align:right"></td>
-      <td style="text-align:right;font-weight:600;color:var(--accent)" id="cl-mat-sell-${m.id}">$${(m.sellPrice || 0).toFixed(2)}</td>
-      <td><button class="btn-icon-danger" onclick="deleteClMaterial('${m.id}')" title="Delete material">&times;</button></td>
-    </tr>`;
-  }).join('');
+
+  // Group by Name (preserve first-encountered order so newly-added groups appear at end, not reshuffled)
+  const groupOrder = [];
+  const byName = {};
+  for (const m of cl2.materials) {
+    if (!(m.name in byName)) { byName[m.name] = []; groupOrder.push(m.name); }
+    byName[m.name].push(m);
+  }
+
+  let html = '';
+  for (const name of groupOrder) {
+    const variants = byName[name];
+    // Column colors = union of all colors used in this group, with galv+black always shown first
+    const colorSet = new Set(variants.map(v => v.color));
+    const colors = [];
+    if (colorSet.has('galvanized')) colors.push('galvanized');
+    if (colorSet.has('black')) colors.push('black');
+    for (const c of ['green', 'any']) if (colorSet.has(c) && !colors.includes(c)) colors.push(c);
+    if (colors.length === 0) colors.push('galvanized', 'black');
+
+    // Unique sizes in order of first appearance
+    const sizeOrder = [];
+    const seenSize = new Set();
+    for (const v of variants) {
+      const s = v.size || '';
+      if (!seenSize.has(s)) { seenSize.add(s); sizeOrder.push(s); }
+    }
+
+    const groupType = variants[0].type || 'other';
+    const groupMarkup = variants[0].markup || 0;
+    const typeOpts = CL_MATERIAL_TYPES.map(t => `<option value="${t}"${groupType === t ? ' selected' : ''}>${t}</option>`).join('');
+
+    // Title: if "__new__" prefix, show as placeholder
+    const isNewUnnamed = name.startsWith('__new__');
+    const displayName = isNewUnnamed ? '' : name;
+
+    html += `<div class="cl-mat-group" data-group="${clEscAttr(name)}">
+      <div class="cl-mat-group-header">
+        <input class="cl-mat-name-input" data-group="${clEscAttr(name)}" value="${clEscAttr(displayName)}" placeholder="Material name (e.g. Tension Band)" onchange="renameClMaterialGroup('${clEscAttr(name)}', this.value)">
+        <select class="cl-mat-type-select" onchange="updateClMaterialGroupType('${clEscAttr(name)}', this.value)" title="Material category">${typeOpts}</select>
+        <div class="cl-mat-markup-wrap">
+          Markup %
+          <input type="number" class="cl-mat-markup-input" value="${groupMarkup}" step="1" min="0" onchange="updateClMaterialGroupMarkup('${clEscAttr(name)}', this.value)" title="Markup applied to every variant in this group">
+        </div>
+        <div style="flex:1"></div>
+        <button class="btn-icon-danger" onclick="deleteClMaterialGroup('${clEscAttr(name)}')" title="Delete this entire material group">&times;</button>
+      </div>
+
+      <table class="cl-mat-grid">
+        <thead>
+          <tr>
+            <th style="width:110px">Size</th>
+            ${colors.map(c => `<th>${clEscHtml(c)}</th>`).join('')}
+            <th style="width:30px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sizeOrder.map(size => {
+            return `<tr>
+              <td class="size-cell"><input type="text" value="${clEscAttr(size)}" placeholder='(no size)' onchange="renameClMaterialSize('${clEscAttr(name)}', '${clEscAttr(size)}', this.value)"></td>
+              ${colors.map(color => {
+                const v = variants.find(x => (x.size || '') === size && x.color === color);
+                if (v) {
+                  return `<td class="cost-cell">
+                    <input type="number" class="cost-input" value="${v.cost || 0}" step="0.01" min="0" onchange="updateClVariantCost('${v.id}', this.value)" title="Material cost">
+                    <span class="sell-price" id="cl-sell-${v.id}">$${(v.sellPrice || 0).toFixed(2)}</span>
+                  </td>`;
+                } else {
+                  return `<td class="cost-cell"><button class="add-variant-btn" onclick="addClVariant('${clEscAttr(name)}', '${clEscAttr(size)}', '${color}')" title="Add ${color} variant">+</button></td>`;
+                }
+              }).join('')}
+              <td><button class="btn-icon-danger" onclick="deleteClMaterialSize('${clEscAttr(name)}', '${clEscAttr(size)}')" title="Delete this size row">&times;</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="cl-mat-add-size">
+        <button class="btn btn-sm" onclick="addClMaterialSize('${clEscAttr(name)}')">+ Add size</button>
+      </div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
 }
 
 // ── Material Groups (for recipe dropdowns) ──
