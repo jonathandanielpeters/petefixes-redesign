@@ -4353,6 +4353,7 @@ function renderClMaterials() {
 }
 
 // ── Material Groups (for recipe dropdowns) ──
+// Returns unique name+size combos (old API, still used for fixed-size picker)
 function getClMaterialGroups() {
   const cl2 = ensureCl2();
   const groups = {};
@@ -4362,6 +4363,32 @@ function getClMaterialGroups() {
     if (!groups[key]) groups[key] = { name: m.name, size: m.size || '', type: m.type };
   }
   return Object.values(groups).sort((a, b) => (a.name + a.size).localeCompare(b.name + b.size));
+}
+
+// Returns unique material names (one entry per name, collapsed across sizes/colors)
+function getClMaterialNames() {
+  const cl2 = ensureCl2();
+  const seen = {};
+  const names = [];
+  for (const m of cl2.materials) {
+    if (!m.name || seen[m.name]) continue;
+    seen[m.name] = true;
+    // Find all distinct sizes for this name
+    const sizes = [...new Set(cl2.materials.filter(x => x.name === m.name).map(x => x.size || '').filter(Boolean))];
+    names.push({ name: m.name, type: m.type, sizes });
+  }
+  return names.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Returns unique sizes across all materials (for the "fixed size" dropdown)
+function getClMaterialSizes(filterName) {
+  const cl2 = ensureCl2();
+  const sizes = new Set();
+  for (const m of cl2.materials) {
+    if (filterName && m.name !== filterName) continue;
+    if (m.size) sizes.add(m.size);
+  }
+  return [...sizes].sort();
 }
 
 // ── Recipe CRUD ──
@@ -4377,9 +4404,15 @@ function getRecipeList(component, gateType) {
 function addClRecipeItem(component, gateType) {
   const list = getRecipeList(component, gateType);
   if (!list) return;
+  // sizeMatch = how to resolve size at calc time:
+  //   'matchHeight'   — pick the variant matching customer's fence height (4ft/5ft/6ft)
+  //   'matchPostSize' — pick the variant matching customer's post size (2-3/8"/1-7/8")
+  //   'fixed'         — use whatever materialSize is set to, regardless of customer config
+  //   'any'           — use any material with matching Name (picks first match; good for size-less items)
   list.push({
     id: clNewId('item'),
     materialName: '', materialSize: '',
+    sizeMatch: 'matchHeight',  // default — will be changed based on component
     qtyMode: 'fixed',
     qty: 1,
     qtyByHeight: { 4: 1, 5: 1, 6: 1 }
@@ -4401,10 +4434,17 @@ function updateClRecipeItem(component, gateType, itemId, field, value) {
   const list = getRecipeList(component, gateType);
   const item = list && list.find(x => x.id === itemId);
   if (!item) return;
-  if (field === 'material') {
-    const parts = value.split('::');
-    item.materialName = parts[0] || '';
-    item.materialSize = parts[1] || '';
+  if (field === 'materialName') {
+    item.materialName = value;
+  } else if (field === 'sizeMatch') {
+    item.sizeMatch = value;
+    // If switching away from "fixed", size dropdown is hidden so reset it
+    if (value !== 'fixed') item.materialSize = '';
+    renderAllClRecipes();
+    markDirty();
+    return;
+  } else if (field === 'materialSize') {
+    item.materialSize = value;
   } else if (field === 'qty') {
     item.qty = parseFloat(value) || 0;
   } else if (field === 'qtyH4' || field === 'qtyH5' || field === 'qtyH6') {
@@ -4413,7 +4453,7 @@ function updateClRecipeItem(component, gateType, itemId, field, value) {
     item.qtyByHeight[h] = parseFloat(value) || 0;
   } else if (field === 'qtyMode') {
     item.qtyMode = value;
-    renderAllClRecipes(); // re-render because inputs change
+    renderAllClRecipes();
     markDirty();
     return;
   }
@@ -4424,27 +4464,40 @@ function renderClRecipeList(component, gateType, containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
   const list = getRecipeList(component, gateType) || [];
-  const groups = getClMaterialGroups();
+  const names = getClMaterialNames();
 
   if (list.length === 0) {
     container.innerHTML = '<div class="cl-recipe-empty">No materials assigned. Click "+ Add Material" below.</div>';
     return;
   }
 
-  if (groups.length === 0) {
+  if (names.length === 0) {
     container.innerHTML = '<div class="cl-recipe-empty" style="color:#c44">Add materials to the Master List above before assigning to recipes.</div>';
     return;
   }
 
   const gt = gateType || '';
   container.innerHTML = list.map(item => {
-    const selKey = (item.materialName || '') + '::' + (item.materialSize || '');
-    const opts = groups.map(g => {
-      const k = g.name + '::' + g.size;
-      const label = g.name + (g.size ? ' (' + g.size + ')' : '');
-      return `<option value="${clEscAttr(k)}"${selKey === k ? ' selected' : ''}>${clEscHtml(label)}</option>`;
+    // Default sizeMatch if missing (for legacy items)
+    const sizeMatch = item.sizeMatch || 'matchHeight';
+
+    // Material Name picker — unique names only
+    const nameOpts = names.map(n => {
+      return `<option value="${clEscAttr(n.name)}"${item.materialName === n.name ? ' selected' : ''}>${clEscHtml(n.name)}</option>`;
     }).join('');
 
+    // Size picker — shown only when sizeMatch='fixed'
+    let sizePickerHtml = '';
+    if (sizeMatch === 'fixed') {
+      const availableSizes = getClMaterialSizes(item.materialName);
+      const sizeOpts = availableSizes.map(s => `<option value="${clEscAttr(s)}"${item.materialSize === s ? ' selected' : ''}>${clEscHtml(s)}</option>`).join('');
+      sizePickerHtml = `<select class="recipe-fixed-size" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','materialSize',this.value)" title="Specific size">
+        <option value="">(any size)</option>
+        ${sizeOpts}
+      </select>`;
+    }
+
+    // Qty inputs — fixed or by-height
     let qtyInputs;
     if (item.qtyMode === 'byHeight') {
       const h4 = (item.qtyByHeight && item.qtyByHeight[4]) || 0;
@@ -4458,13 +4511,20 @@ function renderClRecipeList(component, gateType, containerId) {
     }
 
     return `<div class="cl-recipe-row">
-      <select class="recipe-material" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','material',this.value)">
+      <select class="recipe-material" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','materialName',this.value)" title="Material name (color is auto-matched to customer's fence color)">
         <option value="">— select material —</option>
-        ${opts}
+        ${nameOpts}
       </select>
-      <select class="recipe-mode" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','qtyMode',this.value)">
+      <select class="recipe-sizemode" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','sizeMatch',this.value)" title="How to pick the right size variant at calc time" style="width:140px">
+        <option value="matchHeight"${sizeMatch === 'matchHeight' ? ' selected' : ''}>Match fence height</option>
+        <option value="matchPostSize"${sizeMatch === 'matchPostSize' ? ' selected' : ''}>Match post size</option>
+        <option value="fixed"${sizeMatch === 'fixed' ? ' selected' : ''}>Specific size…</option>
+        <option value="any"${sizeMatch === 'any' ? ' selected' : ''}>Any size</option>
+      </select>
+      ${sizePickerHtml}
+      <select class="recipe-mode" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','qtyMode',this.value)" title="Qty mode">
         <option value="fixed"${item.qtyMode === 'fixed' ? ' selected' : ''}>Fixed qty</option>
-        <option value="byHeight"${item.qtyMode === 'byHeight' ? ' selected' : ''}>By height</option>
+        <option value="byHeight"${item.qtyMode === 'byHeight' ? ' selected' : ''}>Qty by height</option>
       </select>
       ${qtyInputs}
       <button class="btn-icon-danger" onclick="deleteClRecipeItem('${component}','${gt}','${item.id}')" title="Remove from recipe">&times;</button>
@@ -4551,37 +4611,41 @@ function clMigrateFromLegacy(force) {
     addMat('Fence Tie', '', c, 'wire', (old.fenceTies && old.fenceTies[c]) || 0);
   });
 
-  // Seed default recipes if empty
+  // Seed default recipes if empty. sizeMatch controls how size is resolved at calc time:
+  //   matchPostSize → size follows customer's post size pick (2-3/8" vs 1-7/8")
+  //   matchHeight   → size follows customer's fence height (4ft/5ft/6ft)
+  //   any           → for size-less materials (fence ties, nuts/bolts)
+  //   fixed         → use the exact materialSize value regardless
   if (cl2.recipes.endPost.length === 0) {
     cl2.recipes.endPost = [
-      { id: clNewId('item'), materialName: 'End Post', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Tension Band', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
-      { id: clNewId('item'), materialName: 'Tension Bar', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Nuts & Bolts', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
-      { id: clNewId('item'), materialName: 'Rail End', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
+      { id: clNewId('item'), materialName: 'End Post',     sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Tension Band', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
+      { id: clNewId('item'), materialName: 'Tension Bar',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Nuts & Bolts', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
+      { id: clNewId('item'), materialName: 'Rail End',     sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
     ];
   }
   if (cl2.recipes.cornerPost.length === 0) {
     cl2.recipes.cornerPost = [
-      { id: clNewId('item'), materialName: 'Corner Post', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Tension Band', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
-      { id: clNewId('item'), materialName: 'Tension Bar', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } },
-      { id: clNewId('item'), materialName: 'Nuts & Bolts', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
-      { id: clNewId('item'), materialName: 'Rail End', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } }
+      { id: clNewId('item'), materialName: 'Corner Post',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Tension Band', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
+      { id: clNewId('item'), materialName: 'Tension Bar',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } },
+      { id: clNewId('item'), materialName: 'Nuts & Bolts', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
+      { id: clNewId('item'), materialName: 'Rail End',     sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } }
     ];
   }
   if (cl2.recipes.linePost.length === 0) {
     cl2.recipes.linePost = [
-      { id: clNewId('item'), materialName: 'Line Post', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Center Band', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Fence Tie', materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } }
+      { id: clNewId('item'), materialName: 'Line Post',    sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Center Band',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Fence Tie',    sizeMatch: 'any',           materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } }
     ];
   }
   if (cl2.recipes.perFoot.length === 0) {
     cl2.recipes.perFoot = [
-      { id: clNewId('item'), materialName: 'Chain Link Fabric', materialSize: '', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Top Rail', materialSize: "10'", qtyMode: 'fixed', qty: 0.1, qtyByHeight: { 4: 0.1, 5: 0.1, 6: 0.1 } },
-      { id: clNewId('item'), materialName: 'Fence Tie', materialSize: '', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
+      { id: clNewId('item'), materialName: 'Chain Link Fabric', sizeMatch: 'matchHeight', materialSize: '',    qtyMode: 'fixed', qty: 1,   qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Top Rail',          sizeMatch: 'fixed',       materialSize: "10'", qtyMode: 'fixed', qty: 0.1, qtyByHeight: { 4: 0.1, 5: 0.1, 6: 0.1 } },
+      { id: clNewId('item'), materialName: 'Fence Tie',         sizeMatch: 'any',         materialSize: '',    qtyMode: 'fixed', qty: 1,   qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
     ];
   }
 
@@ -4590,6 +4654,57 @@ function clMigrateFromLegacy(force) {
   markDirty();
   if (force) toast('Re-imported ' + cl2.materials.length + ' materials + seeded default recipes.', 'success');
   console.log('[Chainlink V2] Migration complete:', cl2.materials.length, 'materials');
+}
+
+// ── Resolver: given a recipe item + customer context, find the exact material SKU ──
+// Used by Phase 2 pricing calculator. Returns the matched material object, or null.
+//   context = { height: 6, color: 'galvanized', postSize: '2-3/8' }
+function resolveClMaterial(recipeItem, context) {
+  const cl2 = ensureCl2();
+  if (!recipeItem || !recipeItem.materialName) return null;
+  const candidates = cl2.materials.filter(m => m.name === recipeItem.materialName);
+  if (candidates.length === 0) return null;
+
+  // Filter by color (prefer exact match; fall back to 'any')
+  const wantColor = context.color;
+  let byColor = candidates.filter(m => m.color === wantColor);
+  if (byColor.length === 0) byColor = candidates.filter(m => m.color === 'any');
+  if (byColor.length === 0) byColor = candidates; // no color match — use anything
+
+  // Filter by size based on sizeMatch mode
+  const mode = recipeItem.sizeMatch || 'any';
+  let bySize;
+  if (mode === 'matchHeight') {
+    const target = String(context.height) + 'ft';
+    bySize = byColor.filter(m => m.size === target);
+  } else if (mode === 'matchPostSize') {
+    const target = context.postSize ? context.postSize + '"' : '';
+    bySize = byColor.filter(m => m.size === target);
+    // fallback: try without quote (some materials stored as '2-3/8' vs '2-3/8"')
+    if (bySize.length === 0 && context.postSize) bySize = byColor.filter(m => m.size === context.postSize);
+  } else if (mode === 'fixed') {
+    bySize = byColor.filter(m => m.size === (recipeItem.materialSize || ''));
+  } else { // 'any'
+    bySize = byColor;
+  }
+
+  return bySize[0] || null;
+}
+
+// Compute qty for a recipe item given customer height
+function resolveClQty(recipeItem, context) {
+  if (!recipeItem) return 0;
+  if (recipeItem.qtyMode === 'byHeight') {
+    const h = String(context.height);
+    return (recipeItem.qtyByHeight && recipeItem.qtyByHeight[h]) || 0;
+  }
+  return recipeItem.qty || 0;
+}
+
+// Expose for fence-build-price.html to consume later
+if (typeof window !== 'undefined') {
+  window.resolveClMaterial = resolveClMaterial;
+  window.resolveClQty = resolveClQty;
 }
 
 // Hook into load/save pipeline — called after loadConfig() runs
