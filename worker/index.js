@@ -212,6 +212,53 @@ async function handleBookInstallation(request, env) {
 }
 
 // ── Worker entry point ──────────────────────────────────────────────
+// ── Distance Matrix handler (proxies Google Maps API, bypasses CORS) ──
+async function handleDistance(request, env) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+  if (request.method !== "GET") {
+    return corsResponse({ ok: false, error: "Method not allowed" }, 405);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const origin = url.searchParams.get("origin");
+    const destination = url.searchParams.get("destination");
+    if (!origin || !destination) {
+      return corsResponse({ ok: false, error: "Both 'origin' and 'destination' query params required" }, 400);
+    }
+
+    // Google Maps API key — same one used for Map Tiles on fence-build-price.
+    // Must have Distance Matrix API enabled in Google Cloud Console.
+    const apiKey = env.GOOGLE_MAPS_API_KEY || "AIzaSyBE17zClisJ1P4AYoBgyepsAA2SA3g2QNo";
+    const gUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=driving&units=metric&key=${apiKey}`;
+
+    const gRes = await fetch(gUrl);
+    const gData = await gRes.json();
+    if (gData.status !== "OK") {
+      return corsResponse({ ok: false, error: "Google API: " + gData.status + (gData.error_message ? " — " + gData.error_message : "") }, 502);
+    }
+    const row = gData.rows && gData.rows[0];
+    const el = row && row.elements && row.elements[0];
+    if (!el || el.status !== "OK") {
+      return corsResponse({ ok: false, error: "Google API element: " + (el ? el.status : "no element") }, 404);
+    }
+
+    return corsResponse({
+      ok: true,
+      minutes: Math.ceil(el.duration.value / 60),
+      km: +(el.distance.value / 1000).toFixed(1),
+      durationText: el.duration.text,
+      distanceText: el.distance.text,
+      originResolved: gData.origin_addresses && gData.origin_addresses[0],
+      destinationResolved: gData.destination_addresses && gData.destination_addresses[0],
+    });
+  } catch (err) {
+    return corsResponse({ ok: false, error: err.message || "Distance lookup failed" }, 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -219,6 +266,9 @@ export default {
     // API routes
     if (url.pathname === "/api/book-installation") {
       return handleBookInstallation(request, env);
+    }
+    if (url.pathname === "/api/distance") {
+      return handleDistance(request, env);
     }
 
     // Only enforce auth on protected paths

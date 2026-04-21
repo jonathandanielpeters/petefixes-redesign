@@ -1284,7 +1284,10 @@ a{color:var(--accent);text-decoration:none}
       <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty()"></div>
       <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty()"></div>
     </div>
-    <div class="card-desc" style="margin-top:8px;font-size:11px;color:var(--gray-400)">Tip: auto-distance from the Google Maps API is coming in the next update. For now enter travel time manually based on the typical customer distance.</div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="calcDistanceFromShop()" id="lab2-distance-btn" title="Calculate driving time between shop and customer address using Google Maps. Auto-fills the travel time field.">📍 Auto-calc driving time</button>
+      <span id="lab2-distance-status" style="font-size:11px;color:var(--gray-400)"></span>
+    </div>
   </div>
 
   <div class="card">
@@ -5341,6 +5344,45 @@ function computeLabour(ctx) {
   const cushion = charge * ((lab.cushioningPct || 0) / 100);
   const withCushioning = charge + cushion;
   return { minutes: totalMinutes, hours, cost, charge, withCushioning, cushion, breakdown };
+}
+
+// Fetch driving time from shop → customer via our worker's /api/distance endpoint.
+async function calcDistanceFromShop() {
+  const shop = (document.getElementById('lab2-shop-addr')?.value || '').trim();
+  const cust = (document.getElementById('lab2-cust-addr')?.value || '').trim();
+  const statusEl = document.getElementById('lab2-distance-status');
+  const btn = document.getElementById('lab2-distance-btn');
+  if (!shop || !cust) {
+    if (statusEl) { statusEl.textContent = 'Enter both shop and customer addresses first.'; statusEl.style.color = '#c44'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Calculating…'; }
+  if (statusEl) { statusEl.textContent = ''; statusEl.style.color = 'var(--gray-400)'; }
+
+  try {
+    const url = '/api/distance?origin=' + encodeURIComponent(shop) + '&destination=' + encodeURIComponent(cust);
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Unknown error');
+    // Fill travel time field
+    const tInput = document.getElementById('lab2-travel-min');
+    if (tInput) { tInput.value = data.minutes; tInput.dispatchEvent(new Event('input')); }
+    if (statusEl) {
+      statusEl.textContent = '✓ ' + data.durationText + ' · ' + data.distanceText + ' (round trip = ' + (data.minutes * 2) + ' min)';
+      statusEl.style.color = '#27ae60';
+    }
+    markDirty();
+    updateLabourPreview();
+    refreshSamplePrices();
+  } catch (e) {
+    console.error('[distance]', e);
+    if (statusEl) {
+      statusEl.textContent = '✗ ' + e.message + '. If this says "REQUEST_DENIED", enable Distance Matrix API on your Google Cloud key.';
+      statusEl.style.color = '#c44';
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📍 Auto-calc driving time'; }
+  }
 }
 
 function updateLabourPreview() {
