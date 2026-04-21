@@ -5132,9 +5132,18 @@
                 const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
                 const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
-                const hours = totalMinutes / 60;
-                labourCost = hours * (lab.costPerHour || 0);
-                labourCharge = hours * (lab.chargePerHour || 0);
+                const totalHours = totalMinutes / 60;
+                // Overtime split: person-hours above threshold paid at premium.
+                const otThreshold = lab.overtimeAfterHours || 8;
+                const otCostMult = lab.otCostMult || 1;
+                const otChargeMult = lab.otChargeMult || 1;
+                const perPersonHrs = totalHours / crew;
+                const regPerPerson = Math.min(perPersonHrs, otThreshold);
+                const otPerPerson = Math.max(0, perPersonHrs - otThreshold);
+                const regHrs = regPerPerson * crew;
+                const otHrs = otPerPerson * crew;
+                labourCost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
+                labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
             }
 
             const total = Math.round(matSell + labourCharge);

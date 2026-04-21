@@ -257,7 +257,6 @@ a{color:var(--accent);text-decoration:none}
   <div class="sidebar-nav-item" data-section="vinylPricing" onclick="showSection('vinylPricing')"><span class="nav-icon">&#9634;</span>Vinyl Pricing</div>
   <div class="sidebar-nav-item" data-section="gatePricing" onclick="showSection('gatePricing')"><span class="nav-icon">&#128682;</span>Gate Pricing</div>
   <div class="sidebar-nav-item" data-section="postHardware" onclick="showSection('postHardware')"><span class="nav-icon">&#128297;</span>Post Hardware</div>
-  <div class="sidebar-nav-item" data-section="labour" onclick="showSection('labour')"><span class="nav-icon">&#9889;</span>Labour Calculator</div>
 
   <div class="sidebar-section-label">Extras</div>
   <div class="sidebar-nav-item" data-section="branding" onclick="showSection('branding')"><span class="nav-icon">&#127912;</span>Branding &amp; Email</div>
@@ -755,6 +754,76 @@ a{color:var(--accent);text-decoration:none}
   <div class="pricing-preview">
     <div><div class="preview-label">Sample: 50ft 6ft Chainlink (Galvanized)</div><div class="preview-detail">Material cost before markup (uses legacy pricing until recipe engine is wired in)</div></div>
     <div class="preview-value" id="preview-chainlink-val">--</div>
+  </div>
+
+  <!-- ══ Labour (moved into Chainlink since it's all chain-link-related tasks) ══ -->
+  <div class="card" style="background:#fafafd;border-left:4px solid var(--accent)">
+    <div class="card-title" style="display:flex;align-items:center;gap:8px"><span>⚡</span>Labour</div>
+    <div class="card-desc">Hourly rates, break time, overtime rules, travel, and per-task time estimates. These feed into the Sample Fence Prices below and the customer-facing quotes.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Hourly Rates &amp; Break Time</div>
+    <div class="card-desc">What you pay labour vs. what you charge the customer. Break minutes per workday (coffee breaks + lunch) scale with job size based on hours worked.</div>
+    <div class="card-row">
+      <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty();updateLabourPreview();refreshSamplePrices()"></div>
+      <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty();updateLabourPreview();refreshSamplePrices()"></div>
+      <div class="field"><label>Break time per workday (min)</label><input type="number" id="lab2-break-min-per-day" step="5" min="0" value="60" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Total paid break + lunch time per employee per workday. E.g. 60 min = 2×15-min coffee breaks + 30-min lunch."></div>
+      <div class="field"><label>Hours per workday</label><input type="number" id="lab2-hours-per-day" step="0.5" min="1" value="8" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Typical workday length. Used to prorate break time: a 4-hour job gets half the per-day break time."></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Overtime</div>
+    <div class="card-desc">Hours worked per employee per day above the threshold are paid at a premium rate (typically 1.5× in Manitoba). If a job will span multiple days, increase "Hours per workday" above so the calculator knows the work is spread across shifts.</div>
+    <div class="card-row">
+      <div class="field"><label>Overtime after hrs/person/day</label><input type="number" id="lab2-ot-after" step="0.5" min="0" value="8" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Hours per employee per day before overtime kicks in. MB legal threshold is 8 hours/day."></div>
+      <div class="field"><label>OT cost multiplier (you pay)</label><input type="number" id="lab2-ot-cost-mult" step="0.05" min="1" value="1.5" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Legal requirement is usually 1.5× regular rate for overtime hours."></div>
+      <div class="field"><label>OT charge multiplier (customer pays)</label><input type="number" id="lab2-ot-charge-mult" step="0.05" min="1" value="1.5" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="How much to mark up the customer's charge rate on overtime hours. 1.5× matches cost; higher = better margin on OT work; 1.0× = you eat the OT cost."></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Travel &amp; Setup</div>
+    <div class="card-desc">Shop location + travel/load-up time. Travel time is round-trip; cost is multiplied by how many employees on the job.</div>
+    <div class="card-row">
+      <div class="field" style="flex:2"><label>Shop address</label><input type="text" id="lab2-shop-addr" placeholder="123 Main St, Winnipeg" oninput="markDirty()"></div>
+      <div class="field" style="flex:2"><label>Sample customer address (for distance test)</label><input type="text" id="lab2-cust-addr" placeholder="456 Elm St, Winnipeg" oninput="markDirty()"></div>
+      <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty();refreshSamplePrices()"></div>
+      <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty();refreshSamplePrices()"></div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="calcDistanceFromShop()" id="lab2-distance-btn" title="Calculate driving time between shop and customer address using Google Maps. Auto-fills the travel time field.">📍 Auto-calc driving time</button>
+      <span id="lab2-distance-status" style="font-size:11px;color:var(--gray-400)"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Task Times</div>
+    <div class="card-desc">For each task in a job, how many minutes it takes per unit and how many employees are involved. Unit: <strong>per job</strong> = once, <strong>per line</strong> = × distinct fence line segment, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count. Add your own tasks at the bottom.</div>
+    <div class="table-scroll">
+      <table class="data-table" id="lab2-tasks-table">
+        <thead>
+          <tr>
+            <th style="min-width:200px">Task</th>
+            <th style="min-width:80px">Minutes</th>
+            <th style="min-width:80px">Employees</th>
+            <th style="min-width:100px">Unit</th>
+            <th style="width:30px"></th>
+          </tr>
+        </thead>
+        <tbody id="lab2-tasks-body"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px"><button class="btn btn-sm" onclick="addCustomLabourTask()">+ Add custom task</button></div>
+
+    <div class="pricing-preview" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span class="preview-label">Sample labour — 200ft straight fence, 6ft chain link</span>
+        <span class="preview-value" id="lab2-preview-charge">--</span>
+      </div>
+      <div class="preview-detail" id="lab2-preview-detail">Fill in task times to calculate.</div>
+    </div>
   </div>
 
   <!-- Sample Fence Prices -->
@@ -1261,65 +1330,6 @@ a{color:var(--accent);text-decoration:none}
 <!-- sec-perFootRates and sec-surcharges removed — replaced by unified Pricing section -->
 
 <!-- ────── Labour Calculator ────── -->
-<div class="section" id="sec-labour">
-  <h2 class="section-title">Labour Calculator</h2>
-  <p class="section-subtitle">Hourly rates, travel/setup overhead, and per-task time estimates. The fence pricing tool uses these to compute a profitable labour charge on top of material cost.</p>
-
-  <div class="card">
-    <div class="card-title">Hourly Rates &amp; Break Time</div>
-    <div class="card-desc">What you pay labour vs. what you charge the customer. Break minutes per workday (coffee breaks + lunch) scale with job size based on hours worked.</div>
-    <div class="card-row">
-      <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty();updateLabourPreview()"></div>
-      <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty();updateLabourPreview()"></div>
-      <div class="field"><label>Break time per workday (min)</label><input type="number" id="lab2-break-min-per-day" step="5" min="0" value="60" oninput="markDirty();updateLabourPreview()" title="Total paid break + lunch time per employee per workday. E.g. 60 min = 2×15-min coffee breaks + 30-min lunch."></div>
-      <div class="field"><label>Hours per workday</label><input type="number" id="lab2-hours-per-day" step="0.5" min="1" value="8" oninput="markDirty();updateLabourPreview()" title="Typical workday length. Used to prorate break time: a 4-hour job gets half the per-day break time."></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Travel &amp; Setup</div>
-    <div class="card-desc">Shop location + travel/load-up time. Travel time is round-trip; cost is multiplied by how many employees on the job.</div>
-    <div class="card-row">
-      <div class="field" style="flex:2"><label>Shop address</label><input type="text" id="lab2-shop-addr" placeholder="123 Main St, Winnipeg" oninput="markDirty()"></div>
-      <div class="field" style="flex:2"><label>Sample customer address (for distance test)</label><input type="text" id="lab2-cust-addr" placeholder="456 Elm St, Winnipeg" oninput="markDirty()"></div>
-      <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty()"></div>
-      <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty()"></div>
-    </div>
-    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="calcDistanceFromShop()" id="lab2-distance-btn" title="Calculate driving time between shop and customer address using Google Maps. Auto-fills the travel time field.">📍 Auto-calc driving time</button>
-      <span id="lab2-distance-status" style="font-size:11px;color:var(--gray-400)"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Task Times</div>
-    <div class="card-desc">For each task in a job, how many minutes it takes per unit and how many employees are involved. Unit: <strong>per job</strong> = once, <strong>per line</strong> = × distinct fence line segment, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count. Add your own tasks at the bottom.</div>
-    <div class="table-scroll">
-      <table class="data-table" id="lab2-tasks-table">
-        <thead>
-          <tr>
-            <th style="min-width:200px">Task</th>
-            <th style="min-width:80px">Minutes</th>
-            <th style="min-width:80px">Employees</th>
-            <th style="min-width:100px">Unit</th>
-            <th style="width:30px"></th>
-          </tr>
-        </thead>
-        <tbody id="lab2-tasks-body"></tbody>
-      </table>
-    </div>
-    <div style="margin-top:8px"><button class="btn btn-sm" onclick="addCustomLabourTask()">+ Add custom task</button></div>
-  </div>
-
-  <div class="pricing-preview" style="flex-direction:column;align-items:stretch;gap:8px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline">
-      <span class="preview-label">Sample labour — 200ft straight fence, 6ft chain link</span>
-      <span class="preview-value" id="lab2-preview-charge">--</span>
-    </div>
-    <div class="preview-detail" id="lab2-preview-detail">Fill in task times to calculate.</div>
-  </div>
-</div>
-
 <!-- ────── 12. Branding & Email ────── -->
 <div class="section" id="sec-branding">
   <h2 class="section-title">Branding &amp; Email</h2>
@@ -5291,6 +5301,9 @@ function ensureLab2() {
       chargePerHour: 85,
       breakMinPerDay: 60,
       hoursPerDay: 8,
+      overtimeAfterHours: 8,
+      otCostMult: 1.5,
+      otChargeMult: 1.5,
       shopAddress: '',
       sampleCustomerAddress: '',
       travelMinOneWay: 25,
@@ -5302,14 +5315,16 @@ function ensureLab2() {
   if (!config.labour2.tasks) config.labour2.tasks = {};
   // Migrate legacy fields to new shape
   if (config.labour2.breakMinPerDay == null) {
-    // If legacy breakPct exists, convert to minutes/day assuming 8hr day
     if (config.labour2.breakPct != null) {
-      config.labour2.breakMinPerDay = Math.round(config.labour2.breakPct * 4.8); // 8hr × 60min × pct/100
+      config.labour2.breakMinPerDay = Math.round(config.labour2.breakPct * 4.8);
     } else {
       config.labour2.breakMinPerDay = 60;
     }
   }
   if (config.labour2.hoursPerDay == null) config.labour2.hoursPerDay = 8;
+  if (config.labour2.overtimeAfterHours == null) config.labour2.overtimeAfterHours = 8;
+  if (config.labour2.otCostMult == null) config.labour2.otCostMult = 1.5;
+  if (config.labour2.otChargeMult == null) config.labour2.otChargeMult = 1.5;
   delete config.labour2.breakPct;
   delete config.labour2.cushioningPct;
   if (!config.labour2.customTaskOrder) config.labour2.customTaskOrder = [];
@@ -5401,6 +5416,9 @@ function loadLabourUI() {
   setV('lab2-charge-hour', lab.chargePerHour);
   setV('lab2-break-min-per-day', lab.breakMinPerDay);
   setV('lab2-hours-per-day', lab.hoursPerDay);
+  setV('lab2-ot-after', lab.overtimeAfterHours);
+  setV('lab2-ot-cost-mult', lab.otCostMult);
+  setV('lab2-ot-charge-mult', lab.otChargeMult);
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
   setV('lab2-travel-min', lab.travelMinOneWay);
@@ -5417,6 +5435,9 @@ function collectLabourUI() {
   lab.chargePerHour = gn('lab2-charge-hour');
   lab.breakMinPerDay = gn('lab2-break-min-per-day');
   lab.hoursPerDay = gn('lab2-hours-per-day') || 8;
+  lab.overtimeAfterHours = gn('lab2-ot-after') || 8;
+  lab.otCostMult = gn('lab2-ot-cost-mult') || 1;
+  lab.otChargeMult = gn('lab2-ot-charge-mult') || 1;
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
   lab.travelMinOneWay = gn('lab2-travel-min');
@@ -5475,11 +5496,29 @@ function computeLabour(ctx) {
   if (loadMin > 0)   breakdown.push({ label: 'Load up × ' + crewSize,                 minutes: loadMin });
 
   const totalMinutes = workMinutes + breakMinutes + travelMin + loadMin;
-  const hours = totalMinutes / 60;
-  const cost = hours * (lab.costPerHour || 0);
-  const charge = hours * (lab.chargePerHour || 0);
-  // withCushioning kept as a field for backward compat with callers, but equal to charge now
-  return { minutes: totalMinutes, workMinutes, breakMinutes, hours, cost, charge, withCushioning: charge, breakdown };
+  const totalHours = totalMinutes / 60;
+
+  // Split into regular vs overtime hours (per person).
+  // totalMinutes is person-minutes; divide by crew to get per-person wall-clock hours.
+  const otThreshold = lab.overtimeAfterHours || 8;
+  const otCostMult = lab.otCostMult || 1;
+  const otChargeMult = lab.otChargeMult || 1;
+  const perPersonHrs = totalHours / crewSize;
+  const regPerPerson = Math.min(perPersonHrs, otThreshold);
+  const otPerPerson = Math.max(0, perPersonHrs - otThreshold);
+  const regHrs = regPerPerson * crewSize;
+  const otHrs = otPerPerson * crewSize;
+
+  const cost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
+  const charge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+
+  if (otHrs > 0) breakdown.push({ label: 'OVERTIME — ' + otHrs.toFixed(1) + ' hrs × ' + otCostMult + 'x cost / ' + otChargeMult + 'x charge', minutes: otHrs * 60 });
+
+  return {
+    minutes: totalMinutes, workMinutes, breakMinutes,
+    hours: totalHours, regHrs, otHrs, perPersonHrs,
+    cost, charge, withCushioning: charge, breakdown
+  };
 }
 
 // Fetch driving time from shop → customer via our worker's /api/distance endpoint.
@@ -5651,6 +5690,7 @@ function renderSamplePriceCard(title, spec) {
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Work</span><span>${workHrs.toFixed(1)} hrs</span></div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Breaks (${lab.breakMinPerDay || 0} min/${lab.hoursPerDay || 8}hr day)</span><span>${breakHrs.toFixed(1)} hrs</span></div>
         <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)"><span>Travel + load</span><span>${(travelHrs + loadHrs).toFixed(1)} hrs</span></div>
+        ${(labDetail.otHrs || 0) > 0 ? `<div style="display:flex;justify-content:space-between;font-size:10px;color:#d2691e;font-weight:600"><span>OT (${(lab.otCostMult || 1).toFixed(2)}× cost / ${(lab.otChargeMult || 1).toFixed(2)}× charge)</span><span>${labDetail.otHrs.toFixed(1)} hrs</span></div>` : ''}
         <div style="display:flex;justify-content:space-between;margin-top:3px"><span style="color:var(--gray-500)">Cost</span><span style="font-weight:600">${money(r.labourCost)}</span></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--gray-500)">Margin</span><span style="font-weight:600;color:#27ae60">+${money(labMargin)}</span></div>
         <div style="display:flex;justify-content:space-between;border-top:1px solid var(--gray-100);margin-top:3px;padding-top:3px"><span style="font-weight:700">Charge</span><span style="font-weight:700">${money(r.labourCharge)}</span></div>
@@ -5684,8 +5724,10 @@ function refreshSamplePrices() {
   const _orig = window.showSection;
   window.showSection = function(name) {
     _orig(name);
-    if (name === 'labour') loadLabourUI();
-    if (name === 'chainlinkPricing') refreshSamplePrices();
+    if (name === 'chainlinkPricing') {
+      loadLabourUI();
+      refreshSamplePrices();
+    }
   };
 })();
 
