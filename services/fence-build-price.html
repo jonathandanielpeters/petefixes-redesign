@@ -634,8 +634,8 @@
                 <label class="config-label">Corner & End Post Size</label>
                 <span class="config-hint" style="font-size:11px;color:var(--gray-400);display:block;margin-top:-4px;margin-bottom:6px">Excludes line posts</span>
                 <div class="config-pills" id="chainlinkPostSizePills">
-                    <div class="config-pill" data-clpostsize="2-3/8">2 3/8"</div>
-                    <div class="config-pill active" data-clpostsize="1-7/8">1 7/8"</div>
+                    <div class="config-pill active" data-clpostsize="2-3/8">2 3/8"</div>
+                    <div class="config-pill" data-clpostsize="1-7/8">1 7/8"</div>
                 </div>
             </div>
             <div class="config-section" data-show-for="wood" id="woodTypeSection">
@@ -1263,7 +1263,7 @@
         // ============================================
         function createDefaultStyle() {
             return {
-                fenceType: 'chainlink', height: 6, chainlinkColor: 'galvanized', chainlinkPostSize: '1-7/8',
+                fenceType: 'chainlink', height: 6, chainlinkColor: 'galvanized', chainlinkPostSize: '2-3/8',
                 woodBuildType: 'full', postSpacing: 8,
                 woodType: 'pressure-treated', boardSize: '1x6', orientation: 'vertical', boardSpan: '8', ornamentalColor: 'black',
                 weldedWireColor: 'galvanized',
@@ -1287,7 +1287,7 @@
                 hzStaggerJoints: null, hzSpanSections: null,
                 bundleId: null,
                 // Post installation
-                postInstallMethod: null, mudRemoval: false
+                postInstallMethod: 'directDriven', mudRemoval: false
             };
         }
         const state = {
@@ -1309,7 +1309,7 @@
             fenceType: { get() { return activeStyle().fenceType; }, set(v) { activeStyle().fenceType = v; } },
             height: { get() { return activeStyle().height; }, set(v) { activeStyle().height = v; } },
             chainlinkColor: { get() { return activeStyle().chainlinkColor; }, set(v) { activeStyle().chainlinkColor = v; } },
-            chainlinkPostSize: { get() { return activeStyle().chainlinkPostSize || '1-7/8'; }, set(v) { activeStyle().chainlinkPostSize = v; } },
+            chainlinkPostSize: { get() { return activeStyle().chainlinkPostSize || '2-3/8'; }, set(v) { activeStyle().chainlinkPostSize = v; } },
             woodBuildType: { get() { return activeStyle().woodBuildType || 'full'; }, set(v) { activeStyle().woodBuildType = v; } },
             postSpacing: { get() { return activeStyle().postSpacing || 8; }, set(v) { activeStyle().postSpacing = parseInt(v) || 8; } },
             woodType: { get() { return activeStyle().woodType; }, set(v) { activeStyle().woodType = v; } },
@@ -2247,7 +2247,7 @@
             }
             if (style.fenceType === 'chainlink') {
                 const cl = cfgChainlink();
-                const ps = style.chainlinkPostSize || '1-7/8';
+                const ps = style.chainlinkPostSize || '2-3/8';
                 const color = style.chainlinkColor || 'galvanized';
                 const lengthPrice = getPostLengthPrice('chainlink', h, style);
                 const linePrice = (cl.posts && cl.posts[ps] && cl.posts[ps].line && cl.posts[ps].line[color]) || lengthPrice || cl.postCost || 25;
@@ -2310,7 +2310,7 @@
             if (style.fenceType === 'chainlink') {
                 const cl = cfgChainlink();
                 const color = style.chainlinkColor || 'galvanized';
-                const ps = style.chainlinkPostSize || '1-7/8';
+                const ps = style.chainlinkPostSize || '2-3/8';
                 const h = style.height;
                 // Mesh per foot
                 let perFt = (cl.base && cl.base[h]) || 14.44;
@@ -2489,7 +2489,7 @@
                 if (s.fenceType === 'chainlink') {
                     const cl = cfgChainlink();
                     const color = s.chainlinkColor || 'galvanized';
-                    const ps = s.chainlinkPostSize || '1-7/8';
+                    const ps = s.chainlinkPostSize || '2-3/8';
                     const h = s.height;
 
                     // 1. Mesh: per foot pricing
@@ -3448,15 +3448,8 @@
         function renderStyleSwitcher() {
             const container = document.getElementById('styleSwitcher');
             const styles = state.fenceStyles;
-            container.style.display = styles.length > 1 ? 'flex' : 'none';
-            if (styles.length <= 1 && !container.querySelector('.style-add-btn')) {
-                // Still render add button even when 1 style
-                container.style.display = 'flex';
-                container.innerHTML = '<div class="style-tab active" data-style-idx="0"><span class="style-tab-dot" style="background:' + STYLE_COLORS[0] + '"></span><span class="style-tab-label">Style 1</span><div class="style-tab-type">' + STYLE_NAMES[styles[0].fenceType] + ' ' + styles[0].height + '\'</div></div>' +
-                    '<button class="style-add-btn" id="addStyleBtn" title="Add fence style">+</button>';
-                bindStyleEvents(container);
-                return;
-            }
+            // Always visible — shows style tabs + add button whether 1 style or many.
+            container.style.display = 'flex';
             let html = '';
             styles.forEach((s, i) => {
                 const active = i === state.activeStyleIdx;
@@ -3536,7 +3529,7 @@
             document.querySelectorAll('#heightPills [data-height]').forEach(p => p.classList.toggle('active', parseInt(p.dataset.height) === s.height));
             // Chainlink
             document.querySelectorAll('#chainlinkColorPills [data-color]').forEach(p => p.classList.toggle('active', p.dataset.color === s.chainlinkColor));
-            document.querySelectorAll('#chainlinkPostSizePills [data-clpostsize]').forEach(p => p.classList.toggle('active', p.dataset.clpostsize === (s.chainlinkPostSize || '1-7/8')));
+            document.querySelectorAll('#chainlinkPostSizePills [data-clpostsize]').forEach(p => p.classList.toggle('active', p.dataset.clpostsize === (s.chainlinkPostSize || '2-3/8')));
             // Wood options
             document.querySelectorAll('#woodTypePills [data-wood]').forEach(p => p.classList.toggle('active', p.dataset.wood === s.woodType));
             document.querySelectorAll('#boardSizePills [data-board]').forEach(p => p.classList.toggle('active', p.dataset.board === s.boardSize));
