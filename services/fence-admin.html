@@ -147,6 +147,25 @@ a{color:var(--accent);text-decoration:none}
 .pricing-preview .preview-value{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
 .pricing-preview .preview-detail{font-size:11px;color:var(--gray-400)}
 
+/* ───── Chainlink V2 Recipe UI ───── */
+.cl-recipe-group{margin:16px 0;padding:12px 14px;background:var(--white);border:1.5px solid var(--gray-100);border-radius:8px}
+.cl-recipe-title{font-size:13px;font-weight:700;color:var(--black);margin-bottom:4px}
+.cl-recipe-desc{font-size:11px;color:var(--gray-400);margin-bottom:10px;line-height:1.4}
+.cl-recipe-list{margin-bottom:8px}
+.cl-recipe-row{display:flex;gap:6px;align-items:center;padding:5px 0;border-bottom:1px dashed var(--gray-50);flex-wrap:wrap}
+.cl-recipe-row:last-child{border-bottom:none}
+.cl-recipe-row select,.cl-recipe-row input{padding:4px 6px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:4px;color:var(--black);background:var(--white)}
+.cl-recipe-row select:focus,.cl-recipe-row input:focus{outline:none;border-color:var(--accent)}
+.cl-recipe-row .recipe-material{flex:1;min-width:180px}
+.cl-recipe-row .recipe-mode{width:90px}
+.cl-recipe-row .recipe-qty{width:70px;text-align:right}
+.cl-recipe-row .recipe-qty-label{font-size:10px;color:var(--gray-400);font-weight:600}
+.cl-recipe-empty{padding:10px;color:var(--gray-400);font-size:12px;font-style:italic;text-align:center}
+.btn-icon-danger{width:22px;height:22px;border:1.5px solid #fcc;background:#fff0f0;color:#d44;border-radius:4px;cursor:pointer;font-size:14px;line-height:1;padding:0;font-weight:700}
+.btn-icon-danger:hover{background:#ffe0e0}
+.cl-gate-recipe{margin:10px 0;padding:10px 12px;background:var(--gray-50);border-radius:6px}
+.cl-gate-recipe-title{font-size:12px;font-weight:600;color:var(--black);margin-bottom:6px}
+
 /* ───── Toast ───── */
 .toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
 .toast{padding:12px 20px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--white);box-shadow:var(--shadow-lg);transform:translateX(120%);transition:transform 0.3s ease;display:flex;align-items:center;gap:8px}
@@ -504,165 +523,216 @@ a{color:var(--accent);text-decoration:none}
 
 <!-- sec-markupMargins removed — absorbed into sec-pricing -->
 
-<!-- ────── 5. Chainlink Pricing ────── -->
+<!-- ────── 5. Chainlink Pricing (V2) ────── -->
 <div class="section" id="sec-chainlinkPricing">
   <h2 class="section-title">Chainlink Pricing</h2>
-  <p class="section-subtitle">Mesh per foot, top rails (10' lengths), posts by type/size, and hookup hardware for chain-link fencing.</p>
+  <p class="section-subtitle">Master material list + build recipes. The fence drawing tool uses these recipes to calculate the parts needed for each post type, per foot of fence, and per gate type. Color variants (galvanized/black) are matched automatically to the customer's selection.</p>
 
+  <!-- Materials Master List -->
   <div class="card">
-    <div class="card-title">Mesh Cost per Foot (by Height)</div>
-    <div class="card-desc">Material cost per linear foot for chain-link mesh.</div>
+    <div class="card-title">Materials — Master List</div>
+    <div class="card-desc">Every chain link material with cost, markup %, and auto-calculated sell price. Add one row per color variant (e.g. Tension Band galvanized + Tension Band black). Sell Price = Cost × (1 + Markup/100).</div>
+    <div style="margin:10px 0 8px">
+      <button class="btn btn-sm" onclick="addClMaterial()">+ Add Material</button>
+      <button class="btn btn-sm" style="margin-left:6px" onclick="clMigrateFromLegacy(true)" title="Re-import materials from the legacy pricing data (will not overwrite existing rows)">↻ Re-import from legacy</button>
+    </div>
     <div class="table-scroll">
-      <table class="data-table">
-        <thead><tr><th>Height (ft)</th><th>Cost / ft ($)</th></tr></thead>
-        <tbody>
-          <tr><td class="cell-label">4 ft</td><td><input type="number" id="cfg-cl-base-4" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">5 ft</td><td><input type="number" id="cfg-cl-base-5" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">6 ft</td><td><input type="number" id="cfg-cl-base-6" min="0" step="0.01" oninput="markDirty()"></td></tr>
-        </tbody>
+      <table class="data-table" id="cl-materials-table">
+        <thead>
+          <tr>
+            <th style="min-width:140px">Name</th>
+            <th style="min-width:80px">Size</th>
+            <th style="min-width:90px">Color</th>
+            <th style="min-width:85px">Type</th>
+            <th style="text-align:right;min-width:70px">Cost $</th>
+            <th style="text-align:right;min-width:60px">Markup %</th>
+            <th style="text-align:right;min-width:70px">Sell $</th>
+            <th style="width:30px"></th>
+          </tr>
+        </thead>
+        <tbody id="cl-materials-body"></tbody>
       </table>
     </div>
   </div>
 
+  <!-- Build Recipes -->
   <div class="card">
-    <div class="card-title">Mesh Color Modifiers ($/ft added)</div>
-    <div class="card-desc">Extra cost per foot for colored mesh coating.</div>
-    <div class="card-row">
-      <div class="field"><label>Galvanized</label><input type="number" id="cfg-cl-color-galvanized" min="0" step="0.01" oninput="markDirty()"></div>
-      <div class="field"><label>Black</label><input type="number" id="cfg-cl-color-black" min="0" step="0.01" oninput="markDirty()"></div>
+    <div class="card-title">Build Recipes — Parts list per component</div>
+    <div class="card-desc">For each type of post (end, corner, line), per linear foot of fence, and per gate type, define which materials are used and at what quantity. Use "By Height" when the quantity changes for 4/5/6 ft fences (e.g. tension bands). Color is matched automatically to the customer's fence color.</div>
+
+    <div style="margin:16px 0 10px;padding:10px 12px;background:#fffaed;border:1px solid #f0e4bf;border-radius:6px;font-size:12px;color:#7a6520">
+      <strong>Note:</strong> This pricing engine is the new chainlink system. Your fence tool will be wired to use it in the next update. Until then, the existing fence tool continues to use the legacy pricing fields (preserved below this section for safety).
+    </div>
+
+    <!-- End Post -->
+    <div class="cl-recipe-group">
+      <div class="cl-recipe-title">End Post Assembly</div>
+      <div class="cl-recipe-desc">Parts needed per end post (where a fence run terminates). Multiplied by the number of end posts in the customer's drawing.</div>
+      <div id="cl-recipe-endPost" class="cl-recipe-list"></div>
+      <button class="btn btn-sm" onclick="addClRecipeItem('endPost')">+ Add Material to End Post</button>
+    </div>
+
+    <!-- Corner Post -->
+    <div class="cl-recipe-group">
+      <div class="cl-recipe-title">Corner Post Assembly</div>
+      <div class="cl-recipe-desc">Parts needed per corner post (two fence runs meeting at an angle). Multiplied by the number of corner posts.</div>
+      <div id="cl-recipe-cornerPost" class="cl-recipe-list"></div>
+      <button class="btn btn-sm" onclick="addClRecipeItem('cornerPost')">+ Add Material to Corner Post</button>
+    </div>
+
+    <!-- Line Post -->
+    <div class="cl-recipe-group">
+      <div class="cl-recipe-title">Line Post Assembly</div>
+      <div class="cl-recipe-desc">Parts needed per line post (interior posts along a straight run). Multiplied by the number of line posts.</div>
+      <div id="cl-recipe-linePost" class="cl-recipe-list"></div>
+      <button class="btn btn-sm" onclick="addClRecipeItem('linePost')">+ Add Material to Line Post</button>
+    </div>
+
+    <!-- Per Linear Foot -->
+    <div class="cl-recipe-group">
+      <div class="cl-recipe-title">Per Linear Foot of Fence</div>
+      <div class="cl-recipe-desc">Materials applied per foot of fence length (e.g. fabric at 1/ft, top rail at 0.1/ft = one 10ft rail per 10 ft, fence ties at 1/ft).</div>
+      <div id="cl-recipe-perFoot" class="cl-recipe-list"></div>
+      <button class="btn btn-sm" onclick="addClRecipeItem('perFoot')">+ Add Material Per Foot</button>
+    </div>
+
+    <!-- Gate Recipes -->
+    <div class="cl-recipe-group">
+      <div class="cl-recipe-title">Gate Hardware — By Gate Type</div>
+      <div class="cl-recipe-desc">Different gate types need different hardware attachments. Each gate in the customer's drawing pulls the parts list for its type.</div>
+      <div id="cl-gate-recipes"></div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">Privacy Inserts (Chainlink Only)</div>
-    <div class="card-desc">Sold in full bags only. Customer can choose supply-only or supply + install.</div>
-    <div class="card-row">
-      <div class="field"><label>Bag Length (ft)</label><input type="number" id="cfg-cl-pi-bagLength" min="1" step="1" oninput="markDirty()"></div>
-      <div class="field"><label>Cost per Bag ($)</label><input type="number" id="cfg-cl-pi-bagCost" min="0" step="0.01" oninput="markDirty()"></div>
-      <div class="field"><label>Sell Price per Bag ($)</label><input type="number" id="cfg-cl-pi-bagPrice" min="0" step="0.01" oninput="markDirty()"></div>
-      <div class="field"><label>Install Rate ($/ft)</label><input type="number" id="cfg-cl-pi-installPerFt" min="0" step="0.01" oninput="markDirty()"></div>
-    </div>
-    <div class="card-row" style="margin-top:8px;border-top:1px solid var(--gray-100);padding-top:12px">
-      <div class="field"><label>Legacy Privacy Mod ($/ft)</label><input type="number" id="cfg-cl-privacyMod" min="0" step="0.01" oninput="markDirty()"></div>
-      <div class="field"><label>Legacy Post Cost ($)</label><input type="number" id="cfg-cl-postCost" min="0" step="0.01" oninput="markDirty()"></div>
-    </div>
-  </div>
+  <!-- Legacy (preserved for backward compat with fence-build-price.html) -->
+  <details class="card" style="margin-top:20px">
+    <summary style="cursor:pointer;font-weight:700;color:var(--gray-500)">Legacy pricing fields (kept for backward compat — will be removed once recipe engine is wired in)</summary>
+    <div style="margin-top:12px">
+      <div class="card-desc" style="margin-bottom:12px">These fields are what the fence drawing tool currently reads. They'll be replaced by the recipe engine above. Don't edit unless you're fixing legacy pricing.</div>
 
-  <div class="card">
-    <div class="card-title">Top Rail (10' lengths)</div>
-    <div class="card-desc">Price per 10-foot top rail pipe. Full lengths only &mdash; e.g. 22' fence needs 3 rails.</div>
-    <div class="card-row">
-      <div class="field"><label>Galvanized</label><input type="number" id="cfg-cl-topRail-galvanized" min="0" step="0.01" oninput="markDirty()"></div>
-      <div class="field"><label>Black</label><input type="number" id="cfg-cl-topRail-black" min="0" step="0.01" oninput="markDirty()"></div>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Mesh Cost per Foot</div>
+        <div class="card-row">
+          <div class="field"><label>4 ft</label><input type="number" id="cfg-cl-base-4" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>5 ft</label><input type="number" id="cfg-cl-base-5" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>6 ft</label><input type="number" id="cfg-cl-base-6" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Galv modifier</label><input type="number" id="cfg-cl-color-galvanized" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Black modifier</label><input type="number" id="cfg-cl-color-black" min="0" step="0.01" oninput="markDirty()"></div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Posts &mdash; 2 3/8" (default)</div>
-    <div class="card-desc">Individual post costs by type for standard 2 3/8" diameter posts.</div>
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead><tr><th>Post Type</th><th>Galvanized ($)</th><th>Black ($)</th></tr></thead>
-        <tbody>
-          <tr><td class="cell-label">End</td><td><input type="number" id="cfg-cl-post-238-end-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-post-238-end-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Corner</td><td><input type="number" id="cfg-cl-post-238-corner-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-post-238-corner-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Line</td><td><input type="number" id="cfg-cl-post-238-line-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-post-238-line-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Privacy Inserts</div>
+        <div class="card-row">
+          <div class="field"><label>Bag Length (ft)</label><input type="number" id="cfg-cl-pi-bagLength" min="1" step="1" oninput="markDirty()"></div>
+          <div class="field"><label>Cost / Bag</label><input type="number" id="cfg-cl-pi-bagCost" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Sell / Bag</label><input type="number" id="cfg-cl-pi-bagPrice" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Install $/ft</label><input type="number" id="cfg-cl-pi-installPerFt" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Legacy Mod</label><input type="number" id="cfg-cl-privacyMod" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Legacy Post $</label><input type="number" id="cfg-cl-postCost" min="0" step="0.01" oninput="markDirty()"></div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Posts &mdash; 1 7/8" (downgrade)</div>
-    <div class="card-desc">Post costs for lighter 1 7/8" diameter posts.</div>
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead><tr><th>Post Type</th><th>Galvanized ($)</th><th>Black ($)</th></tr></thead>
-        <tbody>
-          <tr><td class="cell-label">End</td><td><input type="number" id="cfg-cl-post-178-end-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-post-178-end-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Corner</td><td><input type="number" id="cfg-cl-post-178-corner-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-post-178-corner-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Line</td><td><input type="number" id="cfg-cl-post-178-line-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-post-178-line-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Top Rail (10' lengths)</div>
+        <div class="card-row">
+          <div class="field"><label>Galvanized</label><input type="number" id="cfg-cl-topRail-galvanized" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Black</label><input type="number" id="cfg-cl-topRail-black" min="0" step="0.01" oninput="markDirty()"></div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Hookup Hardware &mdash; 2 3/8"</div>
-    <div class="card-desc">Individual hardware item pricing. Ends need 1 hookup set, corners need 2. For 4' fences: 3 tension bands per hookup; for 5'/6': 4 tension bands.</div>
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead><tr><th>Item</th><th>Galvanized ($)</th><th>Black ($)</th></tr></thead>
-        <tbody>
-          <tr><td class="cell-label">Tension Band</td><td><input type="number" id="cfg-cl-hw-238-tensionBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-tensionBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Tension Bar</td><td><input type="number" id="cfg-cl-hw-238-tensionBar-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-tensionBar-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Nuts &amp; Bolts</td><td><input type="number" id="cfg-cl-hw-238-nutsBolts-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-nutsBolts-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Rail End</td><td><input type="number" id="cfg-cl-hw-238-railEnd-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-railEnd-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Center Band</td><td><input type="number" id="cfg-cl-hw-238-centerBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-centerBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Posts — 2 3/8"</div>
+        <div class="card-row">
+          <div class="field"><label>End Galv</label><input type="number" id="cfg-cl-post-238-end-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>End Black</label><input type="number" id="cfg-cl-post-238-end-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Corner Galv</label><input type="number" id="cfg-cl-post-238-corner-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Corner Black</label><input type="number" id="cfg-cl-post-238-corner-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Line Galv</label><input type="number" id="cfg-cl-post-238-line-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Line Black</label><input type="number" id="cfg-cl-post-238-line-black" min="0" step="0.01" oninput="markDirty()"></div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Hookup Hardware &mdash; 1 7/8"</div>
-    <div class="card-desc">Hardware pricing for 1 7/8" post size. Band sizes change with post diameter.</div>
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead><tr><th>Item</th><th>Galvanized ($)</th><th>Black ($)</th></tr></thead>
-        <tbody>
-          <tr><td class="cell-label">Tension Band</td><td><input type="number" id="cfg-cl-hw-178-tensionBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-tensionBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Tension Bar</td><td><input type="number" id="cfg-cl-hw-178-tensionBar-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-tensionBar-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Nuts &amp; Bolts</td><td><input type="number" id="cfg-cl-hw-178-nutsBolts-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-nutsBolts-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Rail End</td><td><input type="number" id="cfg-cl-hw-178-railEnd-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-railEnd-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">Center Band</td><td><input type="number" id="cfg-cl-hw-178-centerBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-centerBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Posts — 1 7/8"</div>
+        <div class="card-row">
+          <div class="field"><label>End Galv</label><input type="number" id="cfg-cl-post-178-end-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>End Black</label><input type="number" id="cfg-cl-post-178-end-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Corner Galv</label><input type="number" id="cfg-cl-post-178-corner-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Corner Black</label><input type="number" id="cfg-cl-post-178-corner-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Line Galv</label><input type="number" id="cfg-cl-post-178-line-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Line Black</label><input type="number" id="cfg-cl-post-178-line-black" min="0" step="0.01" oninput="markDirty()"></div>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Tension Bands per Hookup Set</div>
-    <div class="card-desc">Number of tension bands needed per hookup set, by fence height.</div>
-    <div class="card-row">
-      <div class="field"><label>4 ft</label><input type="number" id="cfg-cl-tb-4" min="1" step="1" value="3" oninput="markDirty()"></div>
-      <div class="field"><label>5 ft</label><input type="number" id="cfg-cl-tb-5" min="1" step="1" value="4" oninput="markDirty()"></div>
-      <div class="field"><label>6 ft</label><input type="number" id="cfg-cl-tb-6" min="1" step="1" value="4" oninput="markDirty()"></div>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Hookup Hardware — 2 3/8"</div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Item</th><th>Galv $</th><th>Black $</th></tr></thead>
+            <tbody>
+              <tr><td class="cell-label">Tension Band</td><td><input type="number" id="cfg-cl-hw-238-tensionBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-tensionBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Tension Bar</td><td><input type="number" id="cfg-cl-hw-238-tensionBar-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-tensionBar-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Nuts &amp; Bolts</td><td><input type="number" id="cfg-cl-hw-238-nutsBolts-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-nutsBolts-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Rail End</td><td><input type="number" id="cfg-cl-hw-238-railEnd-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-railEnd-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Center Band</td><td><input type="number" id="cfg-cl-hw-238-centerBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-centerBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Tension Band Pricing by Height</div>
-    <div class="card-desc">Different fence heights use different length tension bands. Price each size separately.</div>
-    <div class="table-scroll">
-      <table class="data-table">
-        <thead><tr><th>Height</th><th>Band Length</th><th>Galvanized ($)</th><th>Black ($)</th></tr></thead>
-        <tbody>
-          <tr><td class="cell-label">4 ft</td><td><input type="text" id="cfg-cl-tbh-4-label" value="36 in" oninput="markDirty()" style="width:80px"></td><td><input type="number" id="cfg-cl-tbh-4-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-tbh-4-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">5 ft</td><td><input type="text" id="cfg-cl-tbh-5-label" value="48 in" oninput="markDirty()" style="width:80px"></td><td><input type="number" id="cfg-cl-tbh-5-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-tbh-5-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-          <tr><td class="cell-label">6 ft</td><td><input type="text" id="cfg-cl-tbh-6-label" value="60 in" oninput="markDirty()" style="width:80px"></td><td><input type="number" id="cfg-cl-tbh-6-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-tbh-6-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Hookup Hardware — 1 7/8"</div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Item</th><th>Galv $</th><th>Black $</th></tr></thead>
+            <tbody>
+              <tr><td class="cell-label">Tension Band</td><td><input type="number" id="cfg-cl-hw-178-tensionBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-tensionBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Tension Bar</td><td><input type="number" id="cfg-cl-hw-178-tensionBar-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-tensionBar-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Nuts &amp; Bolts</td><td><input type="number" id="cfg-cl-hw-178-nutsBolts-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-nutsBolts-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Rail End</td><td><input type="number" id="cfg-cl-hw-178-railEnd-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-railEnd-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+              <tr><td class="cell-label">Center Band</td><td><input type="number" id="cfg-cl-hw-178-centerBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-centerBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-  <div class="card">
-    <div class="card-title">Fence Ties</div>
-    <div class="card-desc">Tie wire used to attach mesh to posts and rails. Qty = 1 per foot of fence + a set number per post (varies by height).</div>
-    <div class="card-row">
-      <div class="field"><label>Galvanized ($ each)</label><input type="number" id="cfg-cl-tie-galv" min="0" step="0.01" oninput="markDirty()"></div>
-      <div class="field"><label>Black ($ each)</label><input type="number" id="cfg-cl-tie-black" min="0" step="0.01" oninput="markDirty()"></div>
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Tension Bands per Hookup + Pricing by Height</div>
+        <div class="card-row">
+          <div class="field"><label>Bands 4ft</label><input type="number" id="cfg-cl-tb-4" min="1" step="1" value="3" oninput="markDirty()"></div>
+          <div class="field"><label>Bands 5ft</label><input type="number" id="cfg-cl-tb-5" min="1" step="1" value="4" oninput="markDirty()"></div>
+          <div class="field"><label>Bands 6ft</label><input type="number" id="cfg-cl-tb-6" min="1" step="1" value="4" oninput="markDirty()"></div>
+        </div>
+        <div class="card-row" style="margin-top:8px">
+          <div class="field"><label>4ft label</label><input type="text" id="cfg-cl-tbh-4-label" value="36 in" oninput="markDirty()"></div>
+          <div class="field"><label>4ft Galv $</label><input type="number" id="cfg-cl-tbh-4-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>4ft Black $</label><input type="number" id="cfg-cl-tbh-4-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>5ft label</label><input type="text" id="cfg-cl-tbh-5-label" value="48 in" oninput="markDirty()"></div>
+          <div class="field"><label>5ft Galv $</label><input type="number" id="cfg-cl-tbh-5-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>5ft Black $</label><input type="number" id="cfg-cl-tbh-5-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>6ft label</label><input type="text" id="cfg-cl-tbh-6-label" value="60 in" oninput="markDirty()"></div>
+          <div class="field"><label>6ft Galv $</label><input type="number" id="cfg-cl-tbh-6-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>6ft Black $</label><input type="number" id="cfg-cl-tbh-6-black" min="0" step="0.01" oninput="markDirty()"></div>
+        </div>
+      </div>
+
+      <div class="card" style="background:#fafafd">
+        <div class="card-title" style="font-size:13px">Fence Ties</div>
+        <div class="card-row">
+          <div class="field"><label>Galv $</label><input type="number" id="cfg-cl-tie-galv" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Black $</label><input type="number" id="cfg-cl-tie-black" min="0" step="0.01" oninput="markDirty()"></div>
+          <div class="field"><label>Per foot</label><input type="number" id="cfg-cl-tie-perFoot" min="0" step="0.1" value="1" oninput="markDirty()"></div>
+          <div class="field"><label>Per post 4ft</label><input type="number" id="cfg-cl-tie-perPost-4" min="0" step="1" value="3" oninput="markDirty()"></div>
+          <div class="field"><label>Per post 5ft</label><input type="number" id="cfg-cl-tie-perPost-5" min="0" step="1" value="4" oninput="markDirty()"></div>
+          <div class="field"><label>Per post 6ft</label><input type="number" id="cfg-cl-tie-perPost-6" min="0" step="1" value="4" oninput="markDirty()"></div>
+        </div>
+      </div>
     </div>
-    <div class="card-row" style="margin-top:8px">
-      <div class="field"><label>Qty per foot</label><input type="number" id="cfg-cl-tie-perFoot" min="0" step="0.1" value="1" oninput="markDirty()"></div>
-      <div class="field"><label>Per post (4 ft)</label><input type="number" id="cfg-cl-tie-perPost-4" min="0" step="1" value="3" oninput="markDirty()"></div>
-      <div class="field"><label>Per post (5 ft)</label><input type="number" id="cfg-cl-tie-perPost-5" min="0" step="1" value="4" oninput="markDirty()"></div>
-      <div class="field"><label>Per post (6 ft)</label><input type="number" id="cfg-cl-tie-perPost-6" min="0" step="1" value="4" oninput="markDirty()"></div>
-    </div>
-  </div>
+  </details>
 
   <div class="pricing-preview">
-    <div><div class="preview-label">Sample: 50ft 6ft Chainlink (Galvanized)</div><div class="preview-detail">Material cost before markup</div></div>
+    <div><div class="preview-label">Sample: 50ft 6ft Chainlink (Galvanized)</div><div class="preview-detail">Material cost before markup (uses legacy pricing until recipe engine is wired in)</div></div>
     <div class="preview-value" id="preview-chainlink-val">--</div>
   </div>
 </div>
@@ -4181,6 +4251,376 @@ function toast(msg, type) {
     setTimeout(() => t.remove(), 350);
   }, 3500);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// CHAINLINK V2 — Master material list + build recipes
+// ═══════════════════════════════════════════════════════════════════
+
+const CL_MATERIAL_TYPES = ['fabric', 'post', 'rail', 'bracket', 'wire', 'hardware', 'frame', 'other'];
+const CL_COLORS = ['galvanized', 'black', 'green', 'any'];
+const CL_GATE_TYPES = [
+  { id: 'single-swing', label: 'Single Swing' },
+  { id: 'single-swing-header', label: 'Single Swing w/ Header' },
+  { id: 'single-swing-wheel', label: 'Single Swing w/ Wheel' },
+  { id: 'double-swing', label: 'Double Swing' },
+  { id: 'double-swing-header', label: 'Double Swing w/ Header' },
+  { id: 'double-swing-wheel', label: 'Double Swing w/ Wheel' },
+  { id: 'overhead-track-slide', label: 'Overhead Track Sliding' },
+  { id: 'double-overhead-track', label: 'Double Overhead Track (Biparting)' },
+  { id: 'cantilever-slide', label: 'Cantilever Sliding' },
+  { id: 'american-slide', label: 'American Slide' }
+];
+
+function clEscAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function clEscHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function clNewId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function ensureCl2() {
+  if (!config.chainlinkV2) {
+    config.chainlinkV2 = {
+      materials: [],
+      recipes: { endPost: [], cornerPost: [], linePost: [], perFoot: [], gates: {} }
+    };
+  }
+  const r = config.chainlinkV2.recipes;
+  if (!r.endPost) r.endPost = [];
+  if (!r.cornerPost) r.cornerPost = [];
+  if (!r.linePost) r.linePost = [];
+  if (!r.perFoot) r.perFoot = [];
+  if (!r.gates) r.gates = {};
+  return config.chainlinkV2;
+}
+
+// ── Material CRUD ──
+function addClMaterial() {
+  const cl2 = ensureCl2();
+  cl2.materials.push({
+    id: clNewId('mat'),
+    name: '', size: '', color: 'galvanized', type: 'other',
+    cost: 0, markup: 70, sellPrice: 0
+  });
+  renderClMaterials();
+  markDirty();
+}
+
+function deleteClMaterial(id) {
+  const cl2 = ensureCl2();
+  cl2.materials = cl2.materials.filter(m => m.id !== id);
+  renderClMaterials();
+  renderAllClRecipes();
+  markDirty();
+}
+
+function updateClMaterial(id, field, value) {
+  const cl2 = ensureCl2();
+  const m = cl2.materials.find(x => x.id === id);
+  if (!m) return;
+  if (field === 'cost' || field === 'markup') {
+    m[field] = parseFloat(value) || 0;
+    m.sellPrice = +(m.cost * (1 + m.markup / 100)).toFixed(2);
+    const sellEl = document.getElementById('cl-mat-sell-' + id);
+    if (sellEl) sellEl.textContent = '$' + m.sellPrice.toFixed(2);
+  } else {
+    m[field] = value;
+    // Name/size changes affect recipe dropdowns
+    if (field === 'name' || field === 'size') renderAllClRecipes();
+  }
+  markDirty();
+}
+
+function renderClMaterials() {
+  const cl2 = ensureCl2();
+  const body = document.getElementById('cl-materials-body');
+  if (!body) return;
+  if (cl2.materials.length === 0) {
+    body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--gray-400);padding:20px;font-style:italic">No materials yet. Click "+ Add Material" to start, or "↻ Re-import from legacy" to pull in your existing pricing.</td></tr>';
+    return;
+  }
+  body.innerHTML = cl2.materials.map(m => {
+    const typeOpts = CL_MATERIAL_TYPES.map(t => `<option value="${t}"${m.type === t ? ' selected' : ''}>${t}</option>`).join('');
+    const colorOpts = CL_COLORS.map(c => `<option value="${c}"${m.color === c ? ' selected' : ''}>${c}</option>`).join('');
+    return `<tr>
+      <td><input type="text" value="${clEscAttr(m.name)}" oninput="updateClMaterial('${m.id}','name',this.value)" placeholder="e.g. Tension Band"></td>
+      <td><input type="text" value="${clEscAttr(m.size)}" oninput="updateClMaterial('${m.id}','size',this.value)" placeholder='2-3/8"' style="width:74px"></td>
+      <td><select onchange="updateClMaterial('${m.id}','color',this.value)" style="width:90px">${colorOpts}</select></td>
+      <td><select onchange="updateClMaterial('${m.id}','type',this.value)" style="width:82px">${typeOpts}</select></td>
+      <td><input type="number" value="${m.cost || 0}" step="0.01" min="0" oninput="updateClMaterial('${m.id}','cost',this.value)" style="width:68px;text-align:right"></td>
+      <td><input type="number" value="${m.markup || 0}" step="1" min="0" oninput="updateClMaterial('${m.id}','markup',this.value)" style="width:54px;text-align:right"></td>
+      <td style="text-align:right;font-weight:600;color:var(--accent)" id="cl-mat-sell-${m.id}">$${(m.sellPrice || 0).toFixed(2)}</td>
+      <td><button class="btn-icon-danger" onclick="deleteClMaterial('${m.id}')" title="Delete material">&times;</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Material Groups (for recipe dropdowns) ──
+function getClMaterialGroups() {
+  const cl2 = ensureCl2();
+  const groups = {};
+  for (const m of cl2.materials) {
+    if (!m.name) continue;
+    const key = m.name + '::' + (m.size || '');
+    if (!groups[key]) groups[key] = { name: m.name, size: m.size || '', type: m.type };
+  }
+  return Object.values(groups).sort((a, b) => (a.name + a.size).localeCompare(b.name + b.size));
+}
+
+// ── Recipe CRUD ──
+function getRecipeList(component, gateType) {
+  const cl2 = ensureCl2();
+  if (component === 'gate') {
+    if (!cl2.recipes.gates[gateType]) cl2.recipes.gates[gateType] = [];
+    return cl2.recipes.gates[gateType];
+  }
+  return cl2.recipes[component];
+}
+
+function addClRecipeItem(component, gateType) {
+  const list = getRecipeList(component, gateType);
+  if (!list) return;
+  list.push({
+    id: clNewId('item'),
+    materialName: '', materialSize: '',
+    qtyMode: 'fixed',
+    qty: 1,
+    qtyByHeight: { 4: 1, 5: 1, 6: 1 }
+  });
+  renderAllClRecipes();
+  markDirty();
+}
+
+function deleteClRecipeItem(component, gateType, itemId) {
+  const list = getRecipeList(component, gateType);
+  if (!list) return;
+  const idx = list.findIndex(x => x.id === itemId);
+  if (idx >= 0) list.splice(idx, 1);
+  renderAllClRecipes();
+  markDirty();
+}
+
+function updateClRecipeItem(component, gateType, itemId, field, value) {
+  const list = getRecipeList(component, gateType);
+  const item = list && list.find(x => x.id === itemId);
+  if (!item) return;
+  if (field === 'material') {
+    const parts = value.split('::');
+    item.materialName = parts[0] || '';
+    item.materialSize = parts[1] || '';
+  } else if (field === 'qty') {
+    item.qty = parseFloat(value) || 0;
+  } else if (field === 'qtyH4' || field === 'qtyH5' || field === 'qtyH6') {
+    const h = field.slice(4);
+    if (!item.qtyByHeight) item.qtyByHeight = {};
+    item.qtyByHeight[h] = parseFloat(value) || 0;
+  } else if (field === 'qtyMode') {
+    item.qtyMode = value;
+    renderAllClRecipes(); // re-render because inputs change
+    markDirty();
+    return;
+  }
+  markDirty();
+}
+
+function renderClRecipeList(component, gateType, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const list = getRecipeList(component, gateType) || [];
+  const groups = getClMaterialGroups();
+
+  if (list.length === 0) {
+    container.innerHTML = '<div class="cl-recipe-empty">No materials assigned. Click "+ Add Material" below.</div>';
+    return;
+  }
+
+  if (groups.length === 0) {
+    container.innerHTML = '<div class="cl-recipe-empty" style="color:#c44">Add materials to the Master List above before assigning to recipes.</div>';
+    return;
+  }
+
+  const gt = gateType || '';
+  container.innerHTML = list.map(item => {
+    const selKey = (item.materialName || '') + '::' + (item.materialSize || '');
+    const opts = groups.map(g => {
+      const k = g.name + '::' + g.size;
+      const label = g.name + (g.size ? ' (' + g.size + ')' : '');
+      return `<option value="${clEscAttr(k)}"${selKey === k ? ' selected' : ''}>${clEscHtml(label)}</option>`;
+    }).join('');
+
+    let qtyInputs;
+    if (item.qtyMode === 'byHeight') {
+      const h4 = (item.qtyByHeight && item.qtyByHeight[4]) || 0;
+      const h5 = (item.qtyByHeight && item.qtyByHeight[5]) || 0;
+      const h6 = (item.qtyByHeight && item.qtyByHeight[6]) || 0;
+      qtyInputs = `<span class="recipe-qty-label">4ft</span><input type="number" class="recipe-qty" value="${h4}" step="0.01" min="0" oninput="updateClRecipeItem('${component}','${gt}','${item.id}','qtyH4',this.value)">
+        <span class="recipe-qty-label">5ft</span><input type="number" class="recipe-qty" value="${h5}" step="0.01" min="0" oninput="updateClRecipeItem('${component}','${gt}','${item.id}','qtyH5',this.value)">
+        <span class="recipe-qty-label">6ft</span><input type="number" class="recipe-qty" value="${h6}" step="0.01" min="0" oninput="updateClRecipeItem('${component}','${gt}','${item.id}','qtyH6',this.value)">`;
+    } else {
+      qtyInputs = `<span class="recipe-qty-label">Qty</span><input type="number" class="recipe-qty" value="${item.qty || 0}" step="0.01" min="0" oninput="updateClRecipeItem('${component}','${gt}','${item.id}','qty',this.value)">`;
+    }
+
+    return `<div class="cl-recipe-row">
+      <select class="recipe-material" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','material',this.value)">
+        <option value="">— select material —</option>
+        ${opts}
+      </select>
+      <select class="recipe-mode" onchange="updateClRecipeItem('${component}','${gt}','${item.id}','qtyMode',this.value)">
+        <option value="fixed"${item.qtyMode === 'fixed' ? ' selected' : ''}>Fixed qty</option>
+        <option value="byHeight"${item.qtyMode === 'byHeight' ? ' selected' : ''}>By height</option>
+      </select>
+      ${qtyInputs}
+      <button class="btn-icon-danger" onclick="deleteClRecipeItem('${component}','${gt}','${item.id}')" title="Remove from recipe">&times;</button>
+    </div>`;
+  }).join('');
+}
+
+function renderClGateRecipes() {
+  const container = document.getElementById('cl-gate-recipes');
+  if (!container) return;
+  container.innerHTML = CL_GATE_TYPES.map(g => `
+    <div class="cl-gate-recipe">
+      <div class="cl-gate-recipe-title">${clEscHtml(g.label)}</div>
+      <div id="cl-gate-${g.id}"></div>
+      <button class="btn btn-sm" style="margin-top:6px" onclick="addClRecipeItem('gate','${g.id}')">+ Add Material</button>
+    </div>
+  `).join('');
+  CL_GATE_TYPES.forEach(g => renderClRecipeList('gate', g.id, 'cl-gate-' + g.id));
+}
+
+function renderAllClRecipes() {
+  renderClRecipeList('endPost', null, 'cl-recipe-endPost');
+  renderClRecipeList('cornerPost', null, 'cl-recipe-cornerPost');
+  renderClRecipeList('linePost', null, 'cl-recipe-linePost');
+  renderClRecipeList('perFoot', null, 'cl-recipe-perFoot');
+  renderClGateRecipes();
+}
+
+// ── Migration from legacy format ──
+function clMigrateFromLegacy(force) {
+  const cl2 = ensureCl2();
+  const old = config.materialPricing && config.materialPricing.chainlink;
+  if (!old) { toast('No legacy chainlink data found.', 'error'); return; }
+  if (!force && cl2.materials.length > 0) return; // don't overwrite unless forced
+
+  function addMat(name, size, color, type, cost, markup) {
+    if (cost == null || cost === 0) return null;
+    markup = markup != null ? markup : 70;
+    const existing = cl2.materials.find(m => m.name === name && (m.size || '') === (size || '') && m.color === color);
+    if (existing) return existing.id;
+    const id = clNewId('mat');
+    cl2.materials.push({
+      id, name, size: size || '', color, type,
+      cost: +cost, markup,
+      sellPrice: +(cost * (1 + markup / 100)).toFixed(2)
+    });
+    return id;
+  }
+
+  // Fabric per height
+  ['4', '5', '6'].forEach(h => {
+    ['galvanized', 'black'].forEach(c => {
+      const base = (old.base && old.base[h]) || 0;
+      const mod = (old.colorMod && old.colorMod[c]) || 0;
+      if (base + mod > 0) addMat('Chain Link Fabric', h + 'ft', c, 'fabric', base + mod);
+    });
+  });
+  // Top rail
+  ['galvanized', 'black'].forEach(c => {
+    addMat('Top Rail', "10'", c, 'rail', (old.topRail && old.topRail[c]) || 0);
+  });
+  // Posts by size
+  ['2-3/8', '1-7/8'].forEach(sz => {
+    const posts = (old.posts && old.posts[sz]) || {};
+    ['galvanized', 'black'].forEach(c => {
+      addMat('End Post', sz + '"', c, 'post', (posts.end && posts.end[c]) || 0);
+      addMat('Corner Post', sz + '"', c, 'post', (posts.corner && posts.corner[c]) || 0);
+      addMat('Line Post', sz + '"', c, 'post', (posts.line && posts.line[c]) || 0);
+    });
+  });
+  // Hookup hardware
+  ['2-3/8', '1-7/8'].forEach(sz => {
+    const hw = (old.hookupHardware && old.hookupHardware[sz]) || {};
+    ['galvanized', 'black'].forEach(c => {
+      addMat('Tension Band', sz + '"', c, 'bracket', (hw.tensionBand && hw.tensionBand[c]) || 0);
+      addMat('Tension Bar', sz + '"', c, 'bracket', (hw.tensionBar && hw.tensionBar[c]) || 0);
+      addMat('Nuts & Bolts', sz + '"', c, 'hardware', (hw.nutsBolts && hw.nutsBolts[c]) || 0);
+      addMat('Rail End', sz + '"', c, 'bracket', (hw.railEnd && hw.railEnd[c]) || 0);
+      addMat('Center Band', sz + '"', c, 'bracket', (hw.centerBand && hw.centerBand[c]) || 0);
+    });
+  });
+  // Fence ties
+  ['galvanized', 'black'].forEach(c => {
+    addMat('Fence Tie', '', c, 'wire', (old.fenceTies && old.fenceTies[c]) || 0);
+  });
+
+  // Seed default recipes if empty
+  if (cl2.recipes.endPost.length === 0) {
+    cl2.recipes.endPost = [
+      { id: clNewId('item'), materialName: 'End Post', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Tension Band', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
+      { id: clNewId('item'), materialName: 'Tension Bar', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Nuts & Bolts', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
+      { id: clNewId('item'), materialName: 'Rail End', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
+    ];
+  }
+  if (cl2.recipes.cornerPost.length === 0) {
+    cl2.recipes.cornerPost = [
+      { id: clNewId('item'), materialName: 'Corner Post', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Tension Band', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
+      { id: clNewId('item'), materialName: 'Tension Bar', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } },
+      { id: clNewId('item'), materialName: 'Nuts & Bolts', materialSize: '2-3/8"', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
+      { id: clNewId('item'), materialName: 'Rail End', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } }
+    ];
+  }
+  if (cl2.recipes.linePost.length === 0) {
+    cl2.recipes.linePost = [
+      { id: clNewId('item'), materialName: 'Line Post', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Center Band', materialSize: '2-3/8"', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Fence Tie', materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } }
+    ];
+  }
+  if (cl2.recipes.perFoot.length === 0) {
+    cl2.recipes.perFoot = [
+      { id: clNewId('item'), materialName: 'Chain Link Fabric', materialSize: '', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Top Rail', materialSize: "10'", qtyMode: 'fixed', qty: 0.1, qtyByHeight: { 4: 0.1, 5: 0.1, 6: 0.1 } },
+      { id: clNewId('item'), materialName: 'Fence Tie', materialSize: '', qtyMode: 'fixed', qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
+    ];
+  }
+
+  renderClMaterials();
+  renderAllClRecipes();
+  markDirty();
+  if (force) toast('Re-imported ' + cl2.materials.length + ' materials + seeded default recipes.', 'success');
+  console.log('[Chainlink V2] Migration complete:', cl2.materials.length, 'materials');
+}
+
+// Hook into load/save pipeline — called after loadConfig() runs
+function loadChainlinkV2UI() {
+  // Auto-migrate on first load if V2 is empty
+  const cl2 = ensureCl2();
+  if (cl2.materials.length === 0 && config.materialPricing && config.materialPricing.chainlink) {
+    clMigrateFromLegacy(false);
+  }
+  renderClMaterials();
+  renderAllClRecipes();
+}
+
+// Re-render V2 UI whenever the chainlink section is shown.
+// showSection() is defined elsewhere — wrap it to also refresh V2 UI.
+(function wrapShowSectionForClV2() {
+  if (typeof showSection !== 'function') return;
+  const _origShowSection = showSection;
+  window.showSection = function(name) {
+    _origShowSection(name);
+    if (name === 'chainlinkPricing') loadChainlinkV2UI();
+  };
+})();
+
+// Also render on initial page load once config is ready
+window.addEventListener('load', () => {
+  // delay a tick so loadConfig has finished
+  setTimeout(() => {
+    if (document.getElementById('cl-materials-body')) loadChainlinkV2UI();
+  }, 100);
+});
 
 // ───── Warn on close with unsaved changes ─────
 window.addEventListener('beforeunload', e => {
