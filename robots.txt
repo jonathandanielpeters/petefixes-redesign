@@ -1,0 +1,14 @@
+# Pete Fixes — robots.txt
+# https://petefixes.ca
+
+User-agent: *
+Allow: /
+
+# Don't index admin tooling
+Disallow: /services/fence-admin
+Disallow: /services/fence-admin.html
+Disallow: /.wrangler/
+Disallow: /worker/
+
+# Sitemap
+Sitemap: https://petefixes.ca/sitemap.xml
