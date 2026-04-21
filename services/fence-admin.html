@@ -147,27 +147,34 @@ a{color:var(--accent);text-decoration:none}
 .pricing-preview .preview-value{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
 .pricing-preview .preview-detail{font-size:11px;color:var(--gray-400)}
 
-/* ───── Chainlink V2 Materials Grid ───── */
-.cl-mat-group{margin:14px 0;padding:12px 14px;background:var(--white);border:1.5px solid var(--gray-100);border-radius:8px}
-.cl-mat-group-header{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;padding-bottom:8px;border-bottom:1px solid var(--gray-100)}
-.cl-mat-name-input{font-size:14px;font-weight:700;padding:5px 8px;border:1.5px solid var(--gray-200);border-radius:4px;min-width:180px}
+/* ───── Chainlink V2 Materials Grid (compact) ───── */
+#cl-materials-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:8px;margin-top:4px}
+.cl-mat-group{padding:7px 9px;background:var(--white);border:1.5px solid var(--gray-100);border-radius:6px}
+.cl-mat-group-header{display:flex;gap:5px;align-items:center;margin-bottom:5px;flex-wrap:wrap;padding-bottom:5px;border-bottom:1px solid var(--gray-100)}
+.cl-mat-name-input{font-size:12px;font-weight:700;padding:3px 6px;border:1.5px solid var(--gray-200);border-radius:3px;flex:1;min-width:110px}
 .cl-mat-name-input:focus{outline:none;border-color:var(--accent)}
-.cl-mat-type-select,.cl-mat-markup-input{font-size:11px;padding:4px 6px;border:1.5px solid var(--gray-200);border-radius:4px}
-.cl-mat-markup-wrap{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:0.05em}
-.cl-mat-markup-input{width:54px;text-align:right}
-.cl-mat-grid{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
-.cl-mat-grid th{text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);padding:4px 8px;border-bottom:2px solid var(--gray-100);white-space:nowrap}
-.cl-mat-grid td{padding:4px 6px;border-bottom:1px solid var(--gray-50);vertical-align:middle}
-.cl-mat-grid input[type="text"],.cl-mat-grid input[type="number"]{padding:4px 6px;font-size:11px;border:1.5px solid var(--gray-100);border-radius:4px;background:var(--white);transition:border-color var(--transition)}
+.cl-mat-type-select{font-size:10px;padding:3px 4px;border:1.5px solid var(--gray-200);border-radius:3px;max-width:80px}
+.cl-mat-markup-wrap{display:flex;align-items:center;gap:2px;font-size:9px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+.cl-mat-markup-input{width:38px;text-align:right;font-size:10px;padding:3px 4px;border:1.5px solid var(--gray-200);border-radius:3px}
+.cl-mat-grid{width:100%;border-collapse:collapse;font-size:11px;margin-top:2px}
+.cl-mat-grid th{text-align:left;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--gray-400);padding:3px 4px;border-bottom:1.5px solid var(--gray-100);white-space:nowrap}
+.cl-mat-grid td{padding:2px 3px;border-bottom:1px solid var(--gray-50);vertical-align:middle}
+.cl-mat-grid tr:last-child td{border-bottom:none}
+.cl-mat-grid input[type="text"],.cl-mat-grid input[type="number"]{padding:3px 5px;font-size:10px;border:1.5px solid var(--gray-100);border-radius:3px;background:var(--white);transition:border-color var(--transition)}
 .cl-mat-grid input:focus{outline:none;border-color:var(--accent)}
-.cl-mat-grid .size-cell input{width:80px}
-.cl-mat-grid .cost-cell{min-width:110px}
-.cl-mat-grid .cost-input{width:70px;text-align:right}
-.cl-mat-grid .sell-price{display:inline-block;margin-left:6px;font-size:10px;font-weight:600;color:var(--accent)}
-.cl-mat-grid .add-variant-btn{width:26px;height:26px;border:1.5px dashed var(--gray-200);background:var(--white);color:var(--gray-400);border-radius:4px;cursor:pointer;font-size:14px;line-height:1;padding:0}
+.cl-mat-grid .size-cell input{width:100%;max-width:90px}
+.cl-mat-grid .cost-cell{white-space:nowrap}
+.cl-mat-grid .cost-input{width:52px;text-align:right}
+.cl-mat-grid .sell-price{display:inline-block;margin-left:3px;font-size:9px;font-weight:600;color:var(--accent)}
+.cl-mat-grid .add-variant-btn{width:20px;height:20px;border:1.5px dashed var(--gray-200);background:var(--white);color:var(--gray-400);border-radius:3px;cursor:pointer;font-size:11px;line-height:1;padding:0}
 .cl-mat-grid .add-variant-btn:hover{border-color:var(--accent);color:var(--accent)}
-.cl-mat-add-size{margin-top:6px}
-.cl-mat-empty{padding:20px;text-align:center;color:var(--gray-400);font-style:italic}
+.cl-mat-grid .btn-icon-danger{width:18px;height:18px;font-size:11px}
+.cl-mat-add-size{margin-top:4px}
+.cl-mat-add-size .btn-sm{padding:2px 6px;font-size:9px}
+.cl-mat-empty{padding:20px;text-align:center;color:var(--gray-400);font-style:italic;grid-column:1/-1}
+
+/* Tighter group header overflow handling */
+.cl-mat-group-header .btn-icon-danger{width:18px;height:18px;font-size:12px}
 
 /* ───── Chainlink V2 Recipe UI ───── */
 .cl-recipe-group{margin:16px 0;padding:12px 14px;background:var(--white);border:1.5px solid var(--gray-100);border-radius:8px}
@@ -557,6 +564,7 @@ a{color:var(--accent);text-decoration:none}
     <div style="margin:10px 0 8px">
       <button class="btn btn-sm" onclick="addClMaterial()">+ Add Material</button>
       <button class="btn btn-sm" style="margin-left:6px" onclick="seedClStandardMaterials(true)" title="Add Pete's standard chain link material list (posts, caps, bands, bars, etc.) — only adds missing rows, won't duplicate">+ Seed Pete's standard materials</button>
+      <button class="btn btn-sm" style="margin-left:6px" onclick="consolidateClPostMaterials()" title="End Posts, Corner Posts, and Line Posts are physically the same post — only the brackets/attachments differ. This merges all three into 'Post' and updates recipe references.">⇒ Consolidate End/Corner/Line Post</button>
       <button class="btn btn-sm" style="margin-left:6px" onclick="clMigrateFromLegacy(true)" title="Re-import costs from the legacy pricing data (won't overwrite existing rows)">↻ Re-import from legacy</button>
     </div>
     <div id="cl-materials-body"></div>
@@ -4818,29 +4826,36 @@ function clMigrateFromLegacy(force) {
   //   matchHeight   → size follows customer's fence height (4ft/5ft/6ft)
   //   any           → for size-less materials (fence ties, nuts/bolts)
   //   fixed         → use the exact materialSize value regardless
+  // End / Corner / Line Post recipes all reference the unified "Post" material —
+  // they only differ in brackets and hardware attached.
   if (cl2.recipes.endPost.length === 0) {
     cl2.recipes.endPost = [
-      { id: clNewId('item'), materialName: 'End Post',     sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Tension Band', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
-      { id: clNewId('item'), materialName: 'Tension Bar',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Nuts & Bolts', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
-      { id: clNewId('item'), materialName: 'Rail End',     sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
+      { id: clNewId('item'), materialName: 'Post',         sizeMatch: 'matchHeightAndPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Post Cap',     sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Tension Band', sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
+      { id: clNewId('item'), materialName: 'Tension Bar',  sizeMatch: 'matchHeight',            materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Nuts & Bolts', sizeMatch: 'any',                    materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } },
+      { id: clNewId('item'), materialName: 'Rail End',     sizeMatch: 'any',                    materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Brace Band',   sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } }
     ];
   }
   if (cl2.recipes.cornerPost.length === 0) {
     cl2.recipes.cornerPost = [
-      { id: clNewId('item'), materialName: 'Corner Post',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Tension Band', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
-      { id: clNewId('item'), materialName: 'Tension Bar',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } },
-      { id: clNewId('item'), materialName: 'Nuts & Bolts', sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
-      { id: clNewId('item'), materialName: 'Rail End',     sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } }
+      { id: clNewId('item'), materialName: 'Post',         sizeMatch: 'matchHeightAndPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Post Cap',     sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Tension Band', sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
+      { id: clNewId('item'), materialName: 'Tension Bar',  sizeMatch: 'matchHeight',            materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } },
+      { id: clNewId('item'), materialName: 'Nuts & Bolts', sizeMatch: 'any',                    materialSize: '', qtyMode: 'byHeight', qty: 8, qtyByHeight: { 4: 6, 5: 8, 6: 8 } },
+      { id: clNewId('item'), materialName: 'Rail End',     sizeMatch: 'any',                    materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } },
+      { id: clNewId('item'), materialName: 'Brace Band',   sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'fixed',    qty: 2, qtyByHeight: { 4: 2, 5: 2, 6: 2 } }
     ];
   }
   if (cl2.recipes.linePost.length === 0) {
     cl2.recipes.linePost = [
-      { id: clNewId('item'), materialName: 'Line Post',    sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Center Band',  sizeMatch: 'matchPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
-      { id: clNewId('item'), materialName: 'Fence Tie',    sizeMatch: 'any',           materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } }
+      { id: clNewId('item'), materialName: 'Post',          sizeMatch: 'matchHeightAndPostSize', materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Line Post Cap', sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Center Band',   sizeMatch: 'matchPostSize',          materialSize: '', qtyMode: 'fixed',    qty: 1, qtyByHeight: { 4: 1, 5: 1, 6: 1 } },
+      { id: clNewId('item'), materialName: 'Fence Tie',     sizeMatch: 'any',                    materialSize: '', qtyMode: 'byHeight', qty: 4, qtyByHeight: { 4: 3, 5: 4, 6: 4 } }
     ];
   }
   if (cl2.recipes.perFoot.length === 0) {
@@ -4922,6 +4937,85 @@ if (typeof window !== 'undefined') {
   window.resolveClQty = resolveClQty;
 }
 
+// Merge End Post / Corner Post / Line Post material entries into a single "Post" group.
+// Physically they're the same post — only the brackets and attachments differ, which is
+// what the End/Corner/Line Post ASSEMBLY recipes handle separately.
+// Updates all recipe references so nothing breaks.
+function consolidateClPostMaterials() {
+  const cl2 = ensureCl2();
+  const aliases = ['End Post', 'Corner Post', 'Line Post'];
+  const toMerge = cl2.materials.filter(m => aliases.includes(m.name));
+
+  if (toMerge.length === 0) {
+    toast('No End/Corner/Line Post entries found — nothing to consolidate.', 'info');
+    return;
+  }
+
+  const msg = 'Consolidate ' + toMerge.length + ' End/Corner/Line Post rows into a single "Post" material? ' +
+    'Costs will be copied to the Post group where a matching size+color doesn\'t already exist. ' +
+    'Recipes (End Post Assembly, Corner Post Assembly, Line Post Assembly) will be updated to reference "Post" — ' +
+    'their brackets and hardware items are unchanged so each assembly stays distinct.';
+  if (!confirm(msg)) return;
+
+  let copied = 0;
+  let renamed = 0;
+
+  // First pass: for each row being merged, either copy costs into an existing Post variant
+  // or rename the row itself to "Post".
+  for (const old of toMerge) {
+    const existing = cl2.materials.find(m =>
+      m.name === 'Post' &&
+      (m.size || '') === (old.size || '') &&
+      m.color === old.color &&
+      m.id !== old.id
+    );
+    if (existing) {
+      // Post variant already exists. Copy cost from the legacy row only if existing is empty.
+      if ((!existing.cost || existing.cost === 0) && old.cost > 0) {
+        existing.cost = old.cost;
+        existing.markup = old.markup || existing.markup;
+        existing.sellPrice = +(existing.cost * (1 + (existing.markup || 0) / 100)).toFixed(2);
+        copied++;
+      }
+      // Mark this old row for deletion
+      old._consolidateRemove = true;
+    } else {
+      // No matching Post variant — promote this row to "Post"
+      old.name = 'Post';
+      renamed++;
+    }
+  }
+
+  // Second pass: remove merged rows
+  cl2.materials = cl2.materials.filter(m => !m._consolidateRemove);
+
+  // Update recipe references
+  function updateList(list) {
+    if (!list) return 0;
+    let n = 0;
+    for (const item of list) {
+      if (aliases.includes(item.materialName)) {
+        item.materialName = 'Post';
+        n++;
+      }
+    }
+    return n;
+  }
+  let recipeUpdates = 0;
+  const r = cl2.recipes || {};
+  recipeUpdates += updateList(r.endPost);
+  recipeUpdates += updateList(r.cornerPost);
+  recipeUpdates += updateList(r.linePost);
+  recipeUpdates += updateList(r.perFoot);
+  Object.values(r.gates || {}).forEach(list => { recipeUpdates += updateList(list); });
+
+  renderClMaterials();
+  renderAllClRecipes();
+  markDirty();
+
+  toast('Consolidated: ' + renamed + ' rows renamed to "Post", ' + copied + ' costs copied over, ' + recipeUpdates + ' recipe references updated.', 'success');
+}
+
 // Pete Fixes standard chain-link material list. Idempotent — won't duplicate existing rows.
 // Every definition gets both galvanized and black variants with $0 cost (fill in prices after).
 function seedClStandardMaterials(announce) {
@@ -4938,17 +5032,16 @@ function seedClStandardMaterials(announce) {
     ['Fence Tie',         '',       'wire'],
     ['Nuts & Bolts',      '',       'hardware'],
     ['Rail End',          '',       'bracket'],
-    // Posts — by LENGTH (for different fence heights)
-    ['Post',              "7.5'",   'post'],  // 4ft fence
-    ['Post',              "8.5'",   'post'],  // 5ft fence
-    ['Post',              "9.5'",   'post'],  // 6ft fence
-    // Posts — by POSITION + diameter (legacy structure; keep for recipe compat)
-    ['End Post',          '2-3/8"', 'post'],
-    ['End Post',          '1-7/8"', 'post'],
-    ['Corner Post',       '2-3/8"', 'post'],
-    ['Corner Post',       '1-7/8"', 'post'],
-    ['Line Post',         '2-3/8"', 'post'],
-    ['Line Post',         '1-7/8"', 'post'],
+    // Post — unified. End Posts, Corner Posts, and Line Posts are physically the
+    // same post; only the assembly recipe (brackets/hardware) differs. Size field
+    // holds length + diameter; the resolver's matchHeightAndPostSize mode picks
+    // the right variant from fence height + customer's post-size choice.
+    ['Post',              "7.5' 2-3/8\"", 'post'],  // 4ft fence, 2-3/8" diameter
+    ['Post',              "7.5' 1-7/8\"", 'post'],  // 4ft fence, 1-7/8" diameter
+    ['Post',              "8.5' 2-3/8\"", 'post'],  // 5ft fence
+    ['Post',              "8.5' 1-7/8\"", 'post'],
+    ['Post',              "9.5' 2-3/8\"", 'post'],  // 6ft fence
+    ['Post',              "9.5' 1-7/8\"", 'post'],
     // Post caps by diameter
     ['Post Cap',          '2-3/8"', 'hardware'],
     ['Post Cap',          '1-7/8"', 'hardware'],
