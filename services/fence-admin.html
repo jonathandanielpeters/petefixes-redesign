@@ -534,7 +534,8 @@ a{color:var(--accent);text-decoration:none}
     <div class="card-desc">Every chain link material with cost, markup %, and auto-calculated sell price. Add one row per color variant (e.g. Tension Band galvanized + Tension Band black). Sell Price = Cost × (1 + Markup/100).</div>
     <div style="margin:10px 0 8px">
       <button class="btn btn-sm" onclick="addClMaterial()">+ Add Material</button>
-      <button class="btn btn-sm" style="margin-left:6px" onclick="clMigrateFromLegacy(true)" title="Re-import materials from the legacy pricing data (will not overwrite existing rows)">↻ Re-import from legacy</button>
+      <button class="btn btn-sm" style="margin-left:6px" onclick="seedClStandardMaterials(true)" title="Add Pete's standard chain link material list (posts, caps, bands, bars, etc.) — only adds missing rows, won't duplicate">+ Seed Pete's standard materials</button>
+      <button class="btn btn-sm" style="margin-left:6px" onclick="clMigrateFromLegacy(true)" title="Re-import costs from the legacy pricing data (won't overwrite existing rows)">↻ Re-import from legacy</button>
     </div>
     <div class="table-scroll">
       <table class="data-table" id="cl-materials-table">
@@ -4707,12 +4708,88 @@ if (typeof window !== 'undefined') {
   window.resolveClQty = resolveClQty;
 }
 
+// Pete Fixes standard chain-link material list. Idempotent — won't duplicate existing rows.
+// Every definition gets both galvanized and black variants with $0 cost (fill in prices after).
+function seedClStandardMaterials(announce) {
+  const cl2 = ensureCl2();
+  // [name, size, type]
+  const defs = [
+    // Fabric by fence height
+    ['Chain Link Fabric', '4ft',    'fabric'],
+    ['Chain Link Fabric', '5ft',    'fabric'],
+    ['Chain Link Fabric', '6ft',    'fabric'],
+    // Per-foot / no-size items
+    ['Top Rail',          '',       'rail'],
+    ['Bottom Wire',       '',       'wire'],
+    ['Fence Tie',         '',       'wire'],
+    ['Nuts & Bolts',      '',       'hardware'],
+    ['Rail End',          '',       'bracket'],
+    // Posts — by LENGTH (for different fence heights)
+    ['Post',              "7.5'",   'post'],  // 4ft fence
+    ['Post',              "8.5'",   'post'],  // 5ft fence
+    ['Post',              "9.5'",   'post'],  // 6ft fence
+    // Posts — by POSITION + diameter (legacy structure; keep for recipe compat)
+    ['End Post',          '2-3/8"', 'post'],
+    ['End Post',          '1-7/8"', 'post'],
+    ['Corner Post',       '2-3/8"', 'post'],
+    ['Corner Post',       '1-7/8"', 'post'],
+    ['Line Post',         '2-3/8"', 'post'],
+    ['Line Post',         '1-7/8"', 'post'],
+    // Post caps by diameter
+    ['Post Cap',          '2-3/8"', 'hardware'],
+    ['Post Cap',          '1-7/8"', 'hardware'],
+    ['Line Post Cap',     '2-3/8"', 'hardware'],
+    ['Line Post Cap',     '1-7/8"', 'hardware'],
+    // Bands by post diameter
+    ['Tension Band',      '2-3/8"', 'bracket'],
+    ['Tension Band',      '1-7/8"', 'bracket'],
+    ['Brace Band',        '2-3/8"', 'bracket'],
+    ['Brace Band',        '1-7/8"', 'bracket'],
+    ['Center Band',       '2-3/8"', 'bracket'],
+    ['Center Band',       '1-7/8"', 'bracket'],
+    // Tension bars — by LENGTH (matches fence height)
+    ['Tension Bar',       "4'",     'bracket'],
+    ['Tension Bar',       "5'",     'bracket'],
+    ['Tension Bar',       "6'",     'bracket']
+  ];
+
+  let added = 0;
+  for (const [name, size, type] of defs) {
+    for (const color of ['galvanized', 'black']) {
+      const exists = cl2.materials.some(m => m.name === name && (m.size || '') === size && m.color === color);
+      if (exists) continue;
+      cl2.materials.push({
+        id: clNewId('mat'),
+        name, size, color, type,
+        cost: 0, markup: 70, sellPrice: 0
+      });
+      added++;
+    }
+  }
+
+  if (added > 0) {
+    renderClMaterials();
+    renderAllClRecipes();
+    markDirty();
+  }
+
+  if (announce) {
+    if (added > 0) toast('Added ' + added + ' standard chain link materials. Fill in costs to complete.', 'success');
+    else toast('All standard chain link materials are already in your list.', 'info');
+  }
+  return added;
+}
+
 // Hook into load/save pipeline — called after loadConfig() runs
 function loadChainlinkV2UI() {
-  // Auto-migrate on first load if V2 is empty
   const cl2 = ensureCl2();
-  if (cl2.materials.length === 0 && config.materialPricing && config.materialPricing.chainlink) {
-    clMigrateFromLegacy(false);
+  const firstLoad = cl2.materials.length === 0;
+  // First-time setup: pull any available costs from legacy data + seed the full standard list
+  if (firstLoad) {
+    if (config.materialPricing && config.materialPricing.chainlink) {
+      clMigrateFromLegacy(false);
+    }
+    seedClStandardMaterials(false);
   }
   renderClMaterials();
   renderAllClRecipes();
