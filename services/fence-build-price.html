@@ -384,6 +384,67 @@
         .mobile-tool-opt.active[data-mobile-tool="gate"] { background: rgba(74,144,217,0.1); border-color: #4a90d9; color: #4a90d9; }
         .mobile-tool-opt:active { transform: scale(0.97); }
 
+        /* ═════ Line Length Editor — opens on tap of a fence-line distance label ═════ */
+        .line-length-editor {
+            display: none; position: absolute; z-index: 35;
+            left: 50%; top: 50%; transform: translate(-50%, -50%);
+            background: var(--white); border: 1px solid var(--gray-200);
+            border-radius: 14px; padding: 12px 14px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+            min-width: 300px; max-width: calc(100vw - 24px);
+        }
+        .line-length-editor.visible { display: block; }
+        .lle-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .lle-title { font-size: 13px; font-weight: 700; color: var(--black); }
+        .lle-close {
+            width: 28px; height: 28px; border: none; background: transparent;
+            color: var(--gray-400); border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            touch-action: manipulation;
+        }
+        .lle-close:hover { background: var(--gray-50); color: var(--black); }
+        .lle-row {
+            display: flex; align-items: center; gap: 5px;
+            margin-bottom: 10px;
+        }
+        .lle-step {
+            min-width: 44px; height: 44px; padding: 0 10px;
+            border: 1.5px solid var(--gray-200); background: var(--gray-50);
+            color: var(--gray-700); border-radius: 8px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+            touch-action: manipulation;
+            transition: all 0.12s ease;
+        }
+        .lle-step:hover { border-color: var(--accent); color: var(--accent); }
+        .lle-step:active { transform: scale(0.94); background: var(--accent-light); }
+        .lle-step.lle-step-sm { min-width: 42px; font-size: 11px; }
+        .lle-input {
+            flex: 1; min-width: 60px; height: 44px;
+            padding: 0 10px; border: 1.5px solid var(--gray-200);
+            border-radius: 8px; font-size: 16px; font-weight: 700;
+            color: var(--black); text-align: center;
+            background: var(--white);
+            /* font-size: 16px so iOS doesn't zoom on focus */
+        }
+        .lle-input:focus { outline: none; border-color: var(--accent); }
+        .lle-unit { font-size: 13px; font-weight: 600; color: var(--gray-400); padding: 0 4px; }
+        .lle-actions { display: flex; gap: 8px; }
+        .lle-btn {
+            flex: 1; height: 42px;
+            border: none; border-radius: 8px;
+            font-size: 13px; font-weight: 700; cursor: pointer;
+            touch-action: manipulation;
+            transition: all 0.12s ease;
+        }
+        .lle-cancel { background: var(--gray-50); color: var(--gray-600); }
+        .lle-cancel:hover { background: var(--gray-100); }
+        .lle-apply { background: var(--accent); color: var(--white); }
+        .lle-apply:hover { background: var(--accent-hover); }
+        .lle-apply:active { transform: scale(0.97); }
+
         /* Selected-post action bar (top-floating): Done · Label · Delete.
            Shown only when state.selectedPointId !== null. */
         .sel-post-bar {
@@ -1284,6 +1345,28 @@
                     <button class="sel-post-bar-btn sel-post-delete" id="selPostDeleteBtn" title="Delete post">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                     </button>
+                </div>
+
+                <!-- Line length editor — opens when a fence-line distance label is tapped -->
+                <div class="line-length-editor" id="lineLengthEditor" role="dialog" aria-label="Edit line length">
+                    <div class="lle-header">
+                        <span class="lle-title" id="lleTitle">Line length</span>
+                        <button class="lle-close" id="lleClose" aria-label="Close">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="lle-row">
+                        <button class="lle-step" data-lle-step="-1" aria-label="-1 ft">-1</button>
+                        <button class="lle-step lle-step-sm" data-lle-step="-0.1" aria-label="-0.1 ft">-0.1</button>
+                        <input type="number" class="lle-input" id="lleInput" step="0.1" min="0.1" max="2000" inputmode="decimal">
+                        <span class="lle-unit">ft</span>
+                        <button class="lle-step lle-step-sm" data-lle-step="0.1" aria-label="+0.1 ft">+0.1</button>
+                        <button class="lle-step" data-lle-step="1" aria-label="+1 ft">+1</button>
+                    </div>
+                    <div class="lle-actions">
+                        <button class="lle-btn lle-cancel" id="lleCancelBtn">Cancel</button>
+                        <button class="lle-btn lle-apply" id="lleApplyBtn">Apply</button>
+                    </div>
                 </div>
 
                 <!-- D-pad for nudging (bottom center floating) — shows when a post is selected -->
@@ -4068,6 +4151,94 @@
             syncFab();
         })();
 
+        // ═════ Line Length Editor — clickable line-distance labels ═════
+        (function setupLineLengthEditor() {
+            const ed = document.getElementById('lineLengthEditor');
+            const input = document.getElementById('lleInput');
+            const title = document.getElementById('lleTitle');
+            const btnClose = document.getElementById('lleClose');
+            const btnCancel = document.getElementById('lleCancelBtn');
+            const btnApply = document.getElementById('lleApplyBtn');
+            if (!ed || !input) return;
+
+            let editingLineIdx = -1;
+            let originalLen = 0;
+
+            function open(lineIdx) {
+                const line = state.lines[lineIdx];
+                if (!line) return;
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                editingLineIdx = lineIdx;
+                originalLen = getLineLengthFt(p1, p2);
+                input.value = originalLen.toFixed(1);
+                const labelMap = getPostNumberMap ? getPostNumberMap() : {};
+                const pn1 = labelMap[line.p1] || '?';
+                const pn2 = labelMap[line.p2] || '?';
+                title.textContent = 'Line ' + (lineIdx + 1) + ' · ' + pn1 + ' → ' + pn2;
+                ed.classList.add('visible');
+                setTimeout(() => { input.focus(); input.select(); }, 50);
+            }
+            function close() {
+                ed.classList.remove('visible');
+                editingLineIdx = -1;
+            }
+            function apply() {
+                const newLen = parseFloat(input.value);
+                if (!newLen || newLen <= 0 || editingLineIdx < 0) return close();
+                const line = state.lines[editingLineIdx];
+                if (!line) return close();
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return close();
+                // Move p2 along the line direction so new distance = newLen.
+                const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                const currentLen = Math.sqrt(dx * dx + dy * dy);
+                if (currentLen < 0.01) return close();
+                const ratio = newLen / currentLen;
+                // Round to 0.1ft so lengths stay clean.
+                const newX = Math.round((p1.x + dx * ratio) * 10) / 10;
+                const newY = Math.round((p1.y + dy * ratio) * 10) / 10;
+                pushUndo && pushUndo();
+                p2.x = newX; p2.y = newY;
+                drawCanvas && drawCanvas();
+                updatePricing && updatePricing();
+                renderSidebar && renderSidebar();
+                close();
+            }
+
+            btnClose.addEventListener('click', close);
+            btnCancel.addEventListener('click', close);
+            btnApply.addEventListener('click', apply);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); apply(); }
+                else if (e.key === 'Escape') { e.preventDefault(); close(); }
+            });
+            // Step buttons (−1, −0.1, +0.1, +1)
+            ed.querySelectorAll('.lle-step').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const step = parseFloat(btn.dataset.lleStep) || 0;
+                    const cur = parseFloat(input.value) || 0;
+                    const next = Math.max(0.1, Math.round((cur + step) * 10) / 10);
+                    input.value = next.toFixed(1);
+                });
+            });
+            window.__openLineLengthEditor = open;
+            window.__closeLineLengthEditor = close;
+        })();
+
+        // Hit-test a screen point against fence-line distance labels.
+        // Returns the line index under the tap, or -1.
+        function hitTestLineLabel(sx, sy) {
+            const labels = window.__lineLabels || [];
+            for (let i = labels.length - 1; i >= 0; i--) {
+                const L = labels[i];
+                if (sx >= L.x && sx <= L.x + L.w && sy >= L.y && sy <= L.y + L.h) return L.idx;
+            }
+            return -1;
+        }
+
         // ═════ Selected-post UI: top bar + D-pad for nudges ═════
         (function setupSelPostUI() {
             const bar = document.getElementById('selPostBar');
@@ -4623,12 +4794,23 @@
                 const lb = typeLabel + ' ' + d.toFixed(1) + ' ft';
                 ctx.font = '600 11px Inter, sans-serif';
                 const tw = ctx.measureText(lb).width;
-                ctx.fillStyle = sel ? (selColor + 'f2') : 'rgba(255,255,255,0.92)';
-                ctx.beginPath(); ctx.roundRect(mx - tw / 2 - 5, my - 18, tw + 10, 18, 4); ctx.fill();
-                ctx.fillStyle = sel ? '#fff' : ac; ctx.textAlign = 'center'; ctx.fillText(lb, mx, my - 5); ctx.textAlign = 'start';
+                // Label pill — enlarged so it's finger-tappable. Bounds stored for hit-testing.
+                const padX = 8, padY = 5;
+                const labelW = tw + padX * 2, labelH = 20;
+                const labelX = mx - labelW / 2, labelY = my - 22;
+                ctx.fillStyle = sel ? (selColor + 'f2') : 'rgba(255,255,255,0.94)';
+                ctx.strokeStyle = sel ? selColor : 'rgba(0,0,0,0.08)'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.roundRect(labelX, labelY, labelW, labelH, 5); ctx.fill(); ctx.stroke();
+                ctx.fillStyle = sel ? '#fff' : ac; ctx.textAlign = 'center'; ctx.fillText(lb, mx, my - 7); ctx.textAlign = 'start';
+                // Remember this label's bounds + which line it maps to, for tap hit-testing.
+                if (!window.__lineLabels) window.__lineLabels = [];
+                if (idx === 0) window.__lineLabels.length = 0;
+                window.__lineLabels.push({ idx, x: labelX, y: labelY, w: labelW, h: labelH });
                 const posts = calculatePostsForLine(p1, p2, line);
                 posts.forEach((pt, i) => { if (i === 0 || i === posts.length - 1) return; const sp = worldToScreen(pt.x, pt.y); ctx.fillStyle = pc; ctx.beginPath(); ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2); ctx.fill(); });
             });
+            // If no lines, clear stale label bounds
+            if (state.lines.length === 0 && window.__lineLabels) window.__lineLabels.length = 0;
 
             // Draw gates
             state.gates.forEach((gate, idx) => {
@@ -6300,6 +6482,13 @@
             const r = canvas.getBoundingClientRect();
             const sx = e.clientX - r.left, sy = e.clientY - r.top;
 
+            // Tap on a fence-line distance label → open the length editor.
+            const hitLineIdx = hitTestLineLabel(sx, sy);
+            if (hitLineIdx >= 0 && window.__openLineLengthEditor) {
+                window.__openLineLengthEditor(hitLineIdx);
+                return;
+            }
+
             // House tool — place a house
             if (state.activeTool === 'house') {
                 const houseHit = hitTestHouses(sx, sy);
@@ -6823,6 +7012,13 @@
                 const t = e.changedTouches[0];
                 const r = canvas.getBoundingClientRect();
                 const sx = t.clientX - r.left, sy = t.clientY - r.top;
+
+                // Tap on a fence-line distance label → open the length editor.
+                const hitLineIdx = hitTestLineLabel(sx, sy);
+                if (hitLineIdx >= 0 && window.__openLineLengthEditor) {
+                    window.__openLineLengthEditor(hitLineIdx);
+                    return;
+                }
 
                 // ── Touch: tapping an existing post selects it and shows the
                 // floating action bar (top) + D-pad (bottom). If the tap also had
