@@ -242,6 +242,80 @@
             .canvas-fit-btn { width: 42px; height: 42px; right: 12px; top: 12px; }
         }
 
+        /* ═════ Vertical zoom stack — directly under the Fit button ═════ */
+        .canvas-zoom-vertical {
+            position: absolute; z-index: 22;
+            right: 14px; top: 62px; /* Fit btn is 40px tall + 14px top + 8px gap */
+            display: flex; flex-direction: column; align-items: stretch;
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+            border: 1px solid var(--gray-200); border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            padding: 4px; gap: 2px; width: 40px;
+            touch-action: manipulation;
+        }
+        .zoom-vert-btn {
+            width: 32px; height: 28px;
+            border: none; background: transparent; color: var(--gray-600);
+            border-radius: 6px; cursor: pointer;
+            font-size: 18px; font-weight: 600; line-height: 1;
+            padding: 0; display: flex; align-items: center; justify-content: center;
+            transition: background 0.12s ease, color 0.12s ease;
+            touch-action: manipulation;
+        }
+        .zoom-vert-btn:hover { background: var(--gray-50); color: var(--black); }
+        .zoom-vert-btn:active { background: var(--gray-100); }
+
+        .zoom-vert-slider-wrap {
+            display: flex; align-items: center; justify-content: center;
+            height: 120px; position: relative;
+        }
+        /* Vertical range input — work across Chromium, Safari, Firefox */
+        .zoom-vert-slider {
+            writing-mode: vertical-lr;
+            direction: rtl; /* so slider handle grows upward = zoom in */
+            -webkit-appearance: slider-vertical; /* Webkit */
+            appearance: slider-vertical;
+            width: 32px; height: 120px;
+            margin: 0; padding: 0; background: transparent; cursor: pointer;
+            touch-action: manipulation;
+        }
+        .zoom-vert-slider::-webkit-slider-runnable-track {
+            width: 4px; background: var(--gray-100); border-radius: 2px;
+        }
+        .zoom-vert-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: var(--accent); border: 2px solid var(--white);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+            cursor: grab;
+        }
+        .zoom-vert-slider::-moz-range-track {
+            width: 4px; background: var(--gray-100); border-radius: 2px;
+        }
+        .zoom-vert-slider::-moz-range-thumb {
+            width: 16px; height: 16px; border-radius: 50%;
+            background: var(--accent); border: 2px solid var(--white);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+            cursor: grab;
+        }
+
+        .zoom-vert-pct {
+            font-size: 10px; font-weight: 700; color: var(--gray-500);
+            text-align: center; padding: 4px 0;
+            cursor: pointer; border-radius: 4px;
+            user-select: none;
+            transition: background 0.12s ease;
+        }
+        .zoom-vert-pct:hover { background: var(--gray-50); color: var(--black); }
+
+        @media (max-width: 768px) {
+            .canvas-zoom-vertical { right: 12px; top: 66px; width: 42px; padding: 3px; }
+            .zoom-vert-btn { width: 36px; height: 30px; font-size: 18px; }
+            .zoom-vert-slider-wrap { height: 110px; }
+            .zoom-vert-slider { width: 36px; height: 110px; }
+            .zoom-vert-pct { font-size: 9px; padding: 3px 0; }
+        }
+
         /* ═════ Mobile FAB + tool picker + selection popover ═════ */
         .mobile-fab {
             display: none;
@@ -577,12 +651,20 @@
             .config-panel { display: none !important; }
             .mobile-sidebar { display: flex; }
             .config-canvas-area { min-height: calc(100vh - 84px); padding-bottom: 86px; }
-            .canvas-toolbar { flex-wrap: nowrap; gap: 6px; padding: 8px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; min-height: 44px; }
+            .canvas-toolbar { flex-wrap: nowrap; gap: 4px; padding: 8px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; min-height: 44px; }
             .canvas-toolbar::-webkit-scrollbar { display: none; }
-            .canvas-toolbar-left { flex-shrink: 0; gap: 6px; }
-            .canvas-toolbar-right { flex-shrink: 0; gap: 6px; margin-left: auto; }
+            .canvas-toolbar-left { flex-shrink: 0; gap: 4px; }
+            .canvas-toolbar-right { flex-shrink: 0; gap: 4px; margin-left: auto; }
             .canvas-hint { display: none; }
-            .zoom-controls { flex-shrink: 0; }
+            /* Icon-only tool buttons on mobile — tighter spacing so undo/redo fit */
+            .canvas-tool-btn { font-size: 0; padding: 6px; gap: 0; min-width: 30px; min-height: 30px; justify-content: center; }
+            .canvas-tool-btn svg { width: 14px; height: 14px; }
+            .canvas-mode-btn { padding: 5px 8px; font-size: 10px; }
+            .canvas-mode-toggle { padding: 2px; }
+            /* Fit button already floats on canvas — hide the toolbar copy on mobile */
+            #fitToViewBtn { display: none; }
+            /* Touch toggle button takes a lot of space — hide on mobile (we have FAB) */
+            .touch-toggle-btn { display: none; }
             .pricing-bar { left: 0; padding: 6px 12px; flex-wrap: wrap; gap: 4px 10px; }
             .pricing-summary { gap: 12px; }
             .pricing-total { text-align: left; flex: 1; order: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -632,8 +714,7 @@
             .pricing-total-value { font-size: 16px; }
             .pricing-item-value { font-size: 12px; }
             .pricing-actions .btn, .pricing-actions .btn-book { padding: 6px 10px; font-size: 11px; }
-            .canvas-toolbar-left { flex-wrap: wrap; gap: 4px; }
-            .canvas-tool-btn { padding: 5px 10px; font-size: 11px; }
+            /* canvas-tool-btn stays icon-only (from the 768px rule) — don't override */
             .map-search-row { flex-direction: column; }
             .map-search-btn { width: 100%; padding: 12px; }
         }
@@ -1092,15 +1173,6 @@
                         Touch
                     </button>
                     <span class="canvas-hint" id="canvasHint">Click to place your first point</span>
-                    <button class="canvas-tool-btn" id="fitToViewBtn" title="Fit whole fence in view — reframe &amp; zoom to show every post">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 4 4 8 4"/><polyline points="16 4 20 4 20 8"/><polyline points="20 16 20 20 16 20"/><polyline points="8 20 4 20 4 16"/></svg>
-                        Fit
-                    </button>
-                    <div class="zoom-controls">
-                        <button class="zoom-btn" id="zoomOutBtn" title="Zoom out">&#8722;</button>
-                        <span class="zoom-level" id="zoomLevel" title="Reset zoom">100%</span>
-                        <button class="zoom-btn" id="zoomInBtn" title="Zoom in">&#43;</button>
-                    </div>
                 </div>
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
@@ -1110,6 +1182,18 @@
                 <button class="canvas-fit-btn" id="canvasFitBtn" aria-label="Fit whole fence in view" title="Fit whole fence in view">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 4 4 8 4"/><polyline points="16 4 20 4 20 8"/><polyline points="20 16 20 20 16 20"/><polyline points="8 20 4 20 4 16"/></svg>
                 </button>
+
+                <!-- Vertical zoom control — lives directly under the Fit button.
+                     Tap the + / − at top/bottom for fixed increments. Drag the slider
+                     in between for continuous zoom. Tap the % label to reset to default view. -->
+                <div class="canvas-zoom-vertical" id="canvasZoomVertical">
+                    <button class="zoom-vert-btn" id="zoomVertIn" aria-label="Zoom in" title="Zoom in">&#43;</button>
+                    <div class="zoom-vert-slider-wrap">
+                        <input type="range" class="zoom-vert-slider" id="zoomVertSlider" min="0" max="100" value="50" step="1" orient="vertical" aria-label="Zoom level">
+                    </div>
+                    <span class="zoom-vert-pct" id="zoomVertPct" title="Reset to default view">100%</span>
+                    <button class="zoom-vert-btn" id="zoomVertOut" aria-label="Zoom out" title="Zoom out">&#8722;</button>
+                </div>
 
                 <!-- Mobile active-tool FAB (only visible on touch devices / small screens) -->
                 <button class="mobile-fab" id="mobileFab" aria-label="Change active tool">
@@ -4026,7 +4110,11 @@
         requestAnimationFrame(() => resizeCanvas());
 
         // ZOOM & PAN
-        function updateZoomLabel() { document.getElementById('zoomLevel').textContent = Math.round(state.zoom * 100) + '%'; }
+        function updateZoomLabel() {
+            const legacy = document.getElementById('zoomLevel');
+            if (legacy) legacy.textContent = Math.round(state.zoom * 100) + '%';
+            if (window.__syncZoomSlider) window.__syncZoomSlider();
+        }
 
         function setZoom(nz, px, py) {
             const c = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nz));
@@ -4041,9 +4129,63 @@
             updateZoomLabel(); drawCanvas();
         }
 
-        document.getElementById('zoomInBtn').addEventListener('click', () => setZoom(state.zoom * ZOOM_STEP));
-        document.getElementById('zoomOutBtn').addEventListener('click', () => setZoom(state.zoom / ZOOM_STEP));
-        document.getElementById('zoomLevel').addEventListener('click', () => { resetToDefaultView(); });
+        // Vertical zoom controls (floating on canvas, right side)
+        (function setupVerticalZoom() {
+            const slider = document.getElementById('zoomVertSlider');
+            const inBtn = document.getElementById('zoomVertIn');
+            const outBtn = document.getElementById('zoomVertOut');
+            const pctLabel = document.getElementById('zoomVertPct');
+            if (!slider || !inBtn || !outBtn || !pctLabel) return;
+
+            // Log-scale mapping: slider 0..100 ↔ zoom MIN_ZOOM..MAX_ZOOM
+            const lnMin = Math.log(MIN_ZOOM);
+            const lnMax = Math.log(MAX_ZOOM);
+            function zoomToSlider(z) {
+                const v = (Math.log(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z))) - lnMin) / (lnMax - lnMin);
+                return Math.round(v * 100);
+            }
+            function sliderToZoom(s) {
+                return Math.exp(lnMin + (s / 100) * (lnMax - lnMin));
+            }
+
+            // Expose so updateZoomLabel() can sync the slider + % text.
+            window.__syncZoomSlider = function syncZoomSlider() {
+                slider.value = zoomToSlider(state.zoom);
+                pctLabel.textContent = Math.round(state.zoom * 100) + '%';
+            };
+
+            // User drags the slider → set zoom around canvas center (same as pinch).
+            let sliderActive = false;
+            slider.addEventListener('input', () => {
+                sliderActive = true;
+                const newZ = sliderToZoom(+slider.value);
+                setZoom(newZ, canvasW / 2, canvasH / 2);
+                sliderActive = false;
+            });
+
+            // Tap increments — each tap moves 7 slider units (~5% per tap at mid-range)
+            const STEP_UNITS = 7;
+            inBtn.addEventListener('click', () => {
+                const target = Math.min(100, +slider.value + STEP_UNITS);
+                setZoom(sliderToZoom(target), canvasW / 2, canvasH / 2);
+            });
+            outBtn.addEventListener('click', () => {
+                const target = Math.max(0, +slider.value - STEP_UNITS);
+                setZoom(sliderToZoom(target), canvasW / 2, canvasH / 2);
+            });
+
+            pctLabel.addEventListener('click', () => resetToDefaultView());
+        })();
+
+        // Keep the legacy zoom-label handler so any stray listeners still work.
+        (function keepLegacyZoomHooks() {
+            const legacyIn = document.getElementById('zoomInBtn');
+            const legacyOut = document.getElementById('zoomOutBtn');
+            const legacyLevel = document.getElementById('zoomLevel');
+            if (legacyIn) legacyIn.addEventListener('click', () => setZoom(state.zoom * ZOOM_STEP));
+            if (legacyOut) legacyOut.addEventListener('click', () => setZoom(state.zoom / ZOOM_STEP));
+            if (legacyLevel) legacyLevel.addEventListener('click', () => resetToDefaultView());
+        })();
         // "Fit to view" — reframes and zooms to show the entire drawing.
         // Both the toolbar button and the floating canvas button route to the same handler.
         function fitToViewHandler() {
