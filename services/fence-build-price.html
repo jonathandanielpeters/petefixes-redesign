@@ -1415,7 +1415,7 @@
                             <li>Use the <strong>Gate</strong> tool to add gates between two posts</li>
                         </ol>
                         <p class="onboarding-tips"><strong>Tips:</strong> Scroll to zoom · Hold &amp; drag to pan · Click a post to select &amp; delete it</p>
-                        <button class="onboarding-start-btn" id="onboardingStartBtn">Got it — Start Drawing</button>
+                        <button class="onboarding-start-btn" id="onboardingStartBtn" type="button" onclick="(function(){var o=document.getElementById('onboardingOverlay');if(o){o.style.display='none';}try{localStorage.setItem('pf_onboarding_done','1');}catch(e){}})()">Got it — Start Drawing</button>
                     </div>
                 </div>
                 <div class="map-search-overlay" id="mapSearchOverlay">
@@ -6646,17 +6646,16 @@
             document.getElementById('clearConfirmModal').classList.remove('open');
         });
 
-        // Onboarding — show once per user
+        // Onboarding — hide the overlay immediately if user has already seen it.
+        // The "Got it" button itself has an inline onclick that hides the overlay +
+        // writes the localStorage flag (more robust than delegated listeners —
+        // unaffected by script errors earlier in the same script block).
         (function initOnboarding() {
             const overlay = document.getElementById('onboardingOverlay');
             if (!overlay) return;
             if (localStorage.getItem('pf_onboarding_done') || state.lines.length > 0) {
-                overlay.style.display = 'none'; return;
-            }
-            document.getElementById('onboardingStartBtn').addEventListener('click', () => {
                 overlay.style.display = 'none';
-                localStorage.setItem('pf_onboarding_done', '1');
-            });
+            }
         })();
 
         // ── Snapshot-based Undo / Redo ──────────────────────────────────
