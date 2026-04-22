@@ -3128,8 +3128,8 @@
         const SNAP_RADIUS = 15;
         const POST_MAX_SPACING = 8;
         const POINT_RADIUS = 7;
-        const MIN_ZOOM = 0.01;
-        const MAX_ZOOM = 4;
+        const MIN_ZOOM = 0.15;
+        const MAX_ZOOM = 5;
         const ZOOM_STEP = 1.02;
         function gridSpacing() { return BASE_GRID_SPACING * state.zoom; }
 
@@ -6300,6 +6300,9 @@
         let touchStartTime = 0, touchStartX = 0, touchStartY = 0, touchMoved = false, touchIsPinch = false;
         let touchDragPoint = null, touchDragActive = false, touchHoldTimer = null;
 
+        // Pinch-gesture anchor state — reset at every 2-finger touchstart so zoom
+        // is computed from START (not cumulative) distance/zoom each pinch.
+        let pinchStartDist = null, pinchStartZoom = 1;
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (e.touches.length === 2) {
@@ -6307,7 +6310,9 @@
                 touchIsPinch = true; lastTouchDist = null; touchPanning = false;
                 clearTimeout(touchHoldTimer); touchDragPoint = null; touchDragActive = false;
                 const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
-                lastTouchDist = Math.sqrt(dx*dx+dy*dy);
+                pinchStartDist = Math.sqrt(dx*dx+dy*dy);
+                pinchStartZoom = state.zoom;
+                lastTouchDist = pinchStartDist;
             } else if (e.touches.length === 1) {
                 touchIsPinch = false; touchMoved = false;
                 touchStartTime = Date.now();
@@ -6337,22 +6342,26 @@
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             if (e.touches.length === 2) {
-                // Pinch zoom
+                // Pinch zoom — distance-anchored model.
+                // zoom = pinchStartZoom × (currentDist / startDist)^damping
+                // Using an exponent < 1 dampens the response so zoom scales feel
+                // gradual instead of snapping. pinchStartDist/pinchStartZoom are
+                // captured once per gesture so tiny per-frame deltas don't compound.
                 touchIsPinch = true;
                 clearTimeout(touchHoldTimer); touchDragPoint = null; touchDragActive = false;
                 const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
                 const d = Math.sqrt(dx*dx+dy*dy);
-                if (lastTouchDist !== null) {
+                if (pinchStartDist && pinchStartDist > 0) {
                     const r = canvas.getBoundingClientRect();
                     const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
                     const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
-                    const pinchRatio = d / lastTouchDist;
-                    // Dampen more aggressively when zoomed out so pinch feels consistent.
-                    let damp = 0.55;
-                    if (state.zoom < 0.4) damp = 0.35;
-                    else if (state.zoom > 2.5) damp = 0.45;
-                    const dampened = 1 + (pinchRatio - 1) * damp;
-                    setZoom(state.zoom * dampened, cx, cy);
+                    const rawRatio = d / pinchStartDist;
+                    // Damping exponent below 1 reduces sensitivity. 0.7 gives
+                    // a natural "match finger movement" feel without overshoot.
+                    const damping = 0.7;
+                    const dampedRatio = Math.pow(rawRatio, damping);
+                    const newZoom = pinchStartZoom * dampedRatio;
+                    setZoom(newZoom, cx, cy);
                 }
                 lastTouchDist = d;
             } else if (e.touches.length === 1 && !touchIsPinch) {
@@ -6460,6 +6469,7 @@
             }
             lastTouchDist = null; touchIsPinch = false; touchMoved = false; touchPanning = false;
             touchDragActive = false; touchDragPoint = null;
+            pinchStartDist = null;
         });
 
         // Trackpad pinch (Safari/Chrome gesturechange) for laptops
