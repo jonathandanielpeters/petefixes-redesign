@@ -3808,6 +3808,48 @@
         // COORD TRANSFORMS
         function worldToScreen(wx, wy) { return { x: wx * BASE_GRID_SPACING * state.zoom + state.panX, y: wy * BASE_GRID_SPACING * state.zoom + state.panY }; }
         function screenToWorld(sx, sy) { return { x: (sx - state.panX) / (BASE_GRID_SPACING * state.zoom), y: (sy - state.panY) / (BASE_GRID_SPACING * state.zoom) }; }
+
+        // Auto-zoom + pan so the entire drawing is centered and visible with margin.
+        // Called when reopening an estimate from an email link.
+        function fitDrawingToView(marginPx) {
+            marginPx = marginPx != null ? marginPx : 60;
+            // Collect all world-space points we care about (fence posts + house corners)
+            const xs = [], ys = [];
+            for (const p of state.points) { xs.push(p.x); ys.push(p.y); }
+            for (const h of state.houses) {
+                xs.push(h.x, h.x + h.width);
+                ys.push(h.y, h.y + h.height);
+            }
+            if (xs.length === 0) {
+                // Nothing drawn — reset to centered origin
+                state.zoom = 1;
+                state.panX = canvasW / 2;
+                state.panY = canvasH / 2;
+                updateZoomLabel();
+                drawCanvas();
+                return;
+            }
+            const minX = Math.min(...xs), maxX = Math.max(...xs);
+            const minY = Math.min(...ys), maxY = Math.max(...ys);
+            const wFt = Math.max(1, maxX - minX);
+            const hFt = Math.max(1, maxY - minY);
+            const availW = Math.max(100, canvasW - 2 * marginPx);
+            const availH = Math.max(100, canvasH - 2 * marginPx);
+            // Zoom that fits width × feet-to-pixels; pick the tighter of the two constraints
+            const zoomX = availW / (wFt * BASE_GRID_SPACING);
+            const zoomY = availH / (hFt * BASE_GRID_SPACING);
+            let z = Math.min(zoomX, zoomY);
+            // Clamp to a sensible range so we don't over-zoom on tiny fences
+            z = Math.max(0.15, Math.min(z, 2.5));
+            state.zoom = z;
+            // Pan so the bounding-box center lands at the canvas center
+            const cxWorld = (minX + maxX) / 2;
+            const cyWorld = (minY + maxY) / 2;
+            state.panX = canvasW / 2 - cxWorld * BASE_GRID_SPACING * z;
+            state.panY = canvasH / 2 - cyWorld * BASE_GRID_SPACING * z;
+            updateZoomLabel();
+            drawCanvas();
+        }
         function snapWorldToGrid(wx, wy) { return { x: Math.round(wx), y: Math.round(wy) }; }
 
         // ============================================
@@ -6214,6 +6256,12 @@
                 updateHint(); drawCanvas(); updatePricing(); renderSidebar();
                 if (typeof applyBranding === 'function') applyBranding();
                     if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
+                // Zoom + pan to fit the whole drawing in view.
+                // Wait one frame so the canvas is sized correctly before fitting.
+                requestAnimationFrame(() => {
+                    if (typeof resizeCanvas === 'function') resizeCanvas();
+                    fitDrawingToView();
+                });
                 return true;
             } catch (e) { return false; }
         }
