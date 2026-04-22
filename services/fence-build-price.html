@@ -222,6 +222,26 @@
         .canvas-hint { font-size: 11px; color: var(--gray-400); font-style: italic; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
         .canvas-wrapper { flex: 1; position: relative; overflow: hidden; }
 
+        /* ═════ Canvas-floating Fit-to-view button (all screen sizes) ═════ */
+        .canvas-fit-btn {
+            position: absolute; z-index: 22;
+            right: 14px; top: 14px;
+            width: 40px; height: 40px;
+            border: 1px solid var(--gray-200);
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+            color: var(--gray-700);
+            border-radius: 10px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            transition: all 0.15s ease;
+            touch-action: manipulation;
+        }
+        .canvas-fit-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .canvas-fit-btn:active { transform: scale(0.94); }
+        @media (max-width: 768px) {
+            .canvas-fit-btn { width: 42px; height: 42px; right: 12px; top: 12px; }
+        }
+
         /* ═════ Mobile FAB + tool picker + selection popover ═════ */
         .mobile-fab {
             display: none;
@@ -1072,6 +1092,10 @@
                         Touch
                     </button>
                     <span class="canvas-hint" id="canvasHint">Click to place your first point</span>
+                    <button class="canvas-tool-btn" id="fitToViewBtn" title="Fit whole fence in view — reframe &amp; zoom to show every post">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 4 4 8 4"/><polyline points="16 4 20 4 20 8"/><polyline points="20 16 20 20 16 20"/><polyline points="8 20 4 20 4 16"/></svg>
+                        Fit
+                    </button>
                     <div class="zoom-controls">
                         <button class="zoom-btn" id="zoomOutBtn" title="Zoom out">&#8722;</button>
                         <span class="zoom-level" id="zoomLevel" title="Reset zoom">100%</span>
@@ -1081,6 +1105,11 @@
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="fenceCanvas"></canvas>
+
+                <!-- Floating "fit to view" button — visible on all screen sizes, canvas-local -->
+                <button class="canvas-fit-btn" id="canvasFitBtn" aria-label="Fit whole fence in view" title="Fit whole fence in view">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 4 4 8 4"/><polyline points="16 4 20 4 20 8"/><polyline points="20 16 20 20 16 20"/><polyline points="8 20 4 20 4 16"/></svg>
+                </button>
 
                 <!-- Mobile active-tool FAB (only visible on touch devices / small screens) -->
                 <button class="mobile-fab" id="mobileFab" aria-label="Change active tool">
@@ -3984,6 +4013,19 @@
         document.getElementById('zoomInBtn').addEventListener('click', () => setZoom(state.zoom * ZOOM_STEP));
         document.getElementById('zoomOutBtn').addEventListener('click', () => setZoom(state.zoom / ZOOM_STEP));
         document.getElementById('zoomLevel').addEventListener('click', () => { state.zoom = 1; state.panX = 0; state.panY = 0; updateZoomLabel(); drawCanvas(); });
+        // "Fit to view" — reframes and zooms to show the entire drawing.
+        // Both the toolbar button and the floating canvas button route to the same handler.
+        function fitToViewHandler() {
+            if (state.points.length === 0 && state.houses.length === 0) {
+                // Nothing drawn — just reset to origin-centered 100%
+                state.zoom = 1; state.panX = canvasW / 2; state.panY = canvasH / 2;
+                updateZoomLabel(); drawCanvas();
+                return;
+            }
+            fitDrawingToView(60);
+        }
+        document.getElementById('fitToViewBtn').addEventListener('click', fitToViewHandler);
+        document.getElementById('canvasFitBtn').addEventListener('click', fitToViewHandler);
         wrapper.addEventListener('wheel', (e) => {
             e.preventDefault();
             const r = canvas.getBoundingClientRect();
