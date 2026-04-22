@@ -885,12 +885,14 @@
                 <li>
                     <span class="nav-dropdown-trigger">Gates</span>
                     <ul class="nav-dropdown">
-                        <li><a href="automatic-gates.html#slide-gates">Slide Gates</a></li>
-                        <li><a href="automatic-gates.html#swing-gates">Swing Gates</a></li>
-                        <li><a href="automatic-gates.html#folding-gates">Folding Gates</a></li>
-                        <li><a href="automatic-gates.html#barrier-gates">Barrier Gates</a></li>
+                        <li><a href="automatic-gates.html">View All Gates</a></li>
                         <li class="dropdown-divider"></li>
-                        <li><a href="automatic-gates.html">Gate Operators</a></li>
+                        <li><a href="slide-gates.html">Slide Gates</a></li>
+                        <li><a href="swing-gates.html">Swing Gates</a></li>
+                        <li><a href="custom-gates.html">Custom Gates</a></li>
+                        <li><a href="barrier-gates.html">Barrier Gates</a></li>
+                        <li class="dropdown-divider"></li>
+                        <li><a href="gate-automation.html">Gate Automation</a></li>
                     </ul>
                 </li>
                 <li>
@@ -935,11 +937,12 @@
             <li>
                 <span class="mobile-section-title">Gates</span>
                 <ul class="mobile-submenu">
-                    <li><a href="automatic-gates.html#slide-gates">Slide Gates</a></li>
-                    <li><a href="automatic-gates.html#swing-gates">Swing Gates</a></li>
-                    <li><a href="automatic-gates.html#folding-gates">Folding Gates</a></li>
-                    <li><a href="automatic-gates.html#barrier-gates">Barrier Gates</a></li>
-                    <li><a href="automatic-gates.html">Gate Operators</a></li>
+                    <li><a href="automatic-gates.html">View All Gates</a></li>
+                    <li><a href="slide-gates.html">Slide Gates</a></li>
+                    <li><a href="swing-gates.html">Swing Gates</a></li>
+                    <li><a href="custom-gates.html">Custom Gates</a></li>
+                    <li><a href="barrier-gates.html">Barrier Gates</a></li>
+                    <li><a href="gate-automation.html">Gate Automation</a></li>
                 </ul>
             </li>
             <li>
@@ -4379,17 +4382,20 @@
             drawCanvas && drawCanvas();
         }
 
-        let canvasInited = false;
+        // First resize after layout settles applies the "show 80ft across" default view.
+        let defaultViewApplied = false;
         function resizeCanvas() {
             const rect = wrapper.getBoundingClientRect();
             canvasW = rect.width; canvasH = rect.height;
+            // Don't zero-out the canvas buffer before layout has settled — keep
+            // whatever sizing it currently has and retry on the next tick.
+            if (!canvasW || !canvasH) return;
             canvas.width = canvasW * devicePixelRatio; canvas.height = canvasH * devicePixelRatio;
             canvas.style.width = canvasW + 'px'; canvas.style.height = canvasH + 'px';
             ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-            // On first successful size, apply the "show 80ft across" default.
-            if (!canvasInited && canvasW > 0) {
-                canvasInited = true;
-                // Only apply default if user hasn't already drawn/loaded anything
+            if (!defaultViewApplied) {
+                defaultViewApplied = true;
+                // Only apply default view if user hasn't already drawn/loaded anything
                 if (state.points.length === 0 && state.houses.length === 0) {
                     state.zoom = defaultZoomForCanvas();
                     state.panX = canvasW / 2;
@@ -4400,6 +4406,13 @@
             drawCanvas();
         }
         window.addEventListener('resize', resizeCanvas);
+        // ResizeObserver fires automatically when the wrapper first gets real
+        // dimensions AND on subsequent layout changes (orientation, zoom, etc).
+        // This covers both initial layout-settle and later resizes reliably.
+        if (typeof ResizeObserver !== 'undefined') {
+            try { new ResizeObserver(() => resizeCanvas()).observe(wrapper); }
+            catch (e) { /* old browser — fall through to rAF trigger */ }
+        }
         requestAnimationFrame(() => resizeCanvas());
 
         // ZOOM & PAN
@@ -4488,7 +4501,11 @@
             }
             fitDrawingToView(60);
         }
-        document.getElementById('fitToViewBtn').addEventListener('click', fitToViewHandler);
+        // fitToViewBtn was removed from the toolbar in the icon-only redesign;
+        // the floating canvasFitBtn is now the only entry point.  Null-guard the
+        // legacy reference so it can't throw and abort IIFE init.
+        const _legacyFitBtn = document.getElementById('fitToViewBtn');
+        if (_legacyFitBtn) _legacyFitBtn.addEventListener('click', fitToViewHandler);
         document.getElementById('canvasFitBtn').addEventListener('click', fitToViewHandler);
         wrapper.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -5474,7 +5491,15 @@
             );
         });
 
-        function drawCanvas() { (canvasMode === 'map' ? drawMapTiles : drawGrid)(); drawHouses(); drawFenceLines(); }
+        function drawCanvas() {
+            // Guard: if resizeCanvas hasn't run yet (initial page load race),
+            // bail rather than paint to a 0×0 buffer.  resizeCanvas will call
+            // drawCanvas again once the wrapper has real dimensions.
+            if (!canvasW || !canvasH) return;
+            (canvasMode === 'map' ? drawMapTiles : drawGrid)();
+            drawHouses();
+            drawFenceLines();
+        }
 
         function drawHouses() {
             state.houses.forEach((h, idx) => {

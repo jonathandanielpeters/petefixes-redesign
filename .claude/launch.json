@@ -5,7 +5,8 @@
       "name": "petefixes",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8080", "-d", "/Users/daniel/code/petefixes-redesign"],
-      "port": 8080
+      "port": 8080,
+      "autoPort": false
     }
   ]
 }
