@@ -221,6 +221,102 @@
         .zoom-level:hover { color: var(--accent); }
         .canvas-hint { font-size: 11px; color: var(--gray-400); font-style: italic; white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
         .canvas-wrapper { flex: 1; position: relative; overflow: hidden; }
+
+        /* ═════ Mobile FAB + tool picker + selection popover ═════ */
+        .mobile-fab {
+            display: none;
+            position: absolute; z-index: 25;
+            right: 14px; bottom: 82px;
+            align-items: center; gap: 8px;
+            padding: 10px 16px 10px 14px;
+            background: var(--accent); color: #fff;
+            border: none; border-radius: 32px;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.22), 0 1px 3px rgba(0,0,0,0.12);
+            font-size: 13px; font-weight: 700;
+            cursor: pointer; letter-spacing: 0.01em;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            touch-action: manipulation;
+        }
+        .mobile-fab:active { transform: scale(0.96); box-shadow: 0 2px 10px rgba(0,0,0,0.22); }
+        .mobile-fab-icon { flex-shrink: 0; }
+        .mobile-fab-label { white-space: nowrap; }
+        .mobile-fab.gate-mode { background: #4a90d9; }
+        .mobile-fab.pan-mode { background: var(--gray-600); }
+
+        /* Bottom sheet */
+        .mobile-tool-sheet-backdrop {
+            display: none; position: absolute; inset: 0; z-index: 30;
+            background: rgba(0,0,0,0.35); opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        .mobile-tool-sheet-backdrop.open { display: block; opacity: 1; }
+        .mobile-tool-sheet {
+            position: absolute; z-index: 31; left: 0; right: 0; bottom: 0;
+            background: var(--white);
+            border-radius: 20px 20px 0 0;
+            padding: 10px 16px 24px;
+            box-shadow: 0 -6px 24px rgba(0,0,0,0.18);
+            transform: translateY(110%);
+            transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.25, 1);
+            touch-action: pan-y;
+        }
+        .mobile-tool-sheet.open { transform: translateY(0); }
+        .mobile-tool-sheet-handle {
+            width: 42px; height: 4px; background: var(--gray-200);
+            border-radius: 999px; margin: 0 auto 10px;
+        }
+        .mobile-tool-sheet-title {
+            font-size: 11px; font-weight: 700; color: var(--gray-400);
+            text-transform: uppercase; letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+        .mobile-tool-options {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+        }
+        .mobile-tool-opt {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 5px; padding: 14px 8px;
+            background: var(--gray-50); color: var(--gray-600);
+            border: 1.5px solid transparent; border-radius: 12px;
+            font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: all var(--transition);
+            touch-action: manipulation;
+        }
+        .mobile-tool-opt.active { background: var(--accent-light); border-color: var(--accent); color: var(--black); }
+        .mobile-tool-opt.active[data-mobile-tool="gate"] { background: rgba(74,144,217,0.1); border-color: #4a90d9; color: #4a90d9; }
+        .mobile-tool-opt:active { transform: scale(0.97); }
+
+        /* Contextual selection popover (both mobile + desktop) */
+        .selection-popover {
+            display: none; position: absolute; z-index: 24;
+            background: var(--black); color: #fff;
+            padding: 6px; border-radius: 10px; gap: 4px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            flex-direction: row; align-items: center;
+            transform: translate(-50%, -100%); margin-top: -12px;
+        }
+        .selection-popover.visible { display: flex; }
+        .selection-popover::after {
+            content: ''; position: absolute; bottom: -6px; left: 50%;
+            transform: translateX(-50%); width: 0; height: 0;
+            border-left: 6px solid transparent; border-right: 6px solid transparent;
+            border-top: 6px solid var(--black);
+        }
+        .sel-pop-btn {
+            background: transparent; border: none; color: #fff;
+            padding: 7px; border-radius: 6px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background var(--transition);
+            touch-action: manipulation;
+        }
+        .sel-pop-btn:hover, .sel-pop-btn:active { background: rgba(255,255,255,0.15); }
+        .sel-pop-btn.danger { color: #ff6b6b; }
+        .sel-pop-btn.danger:hover, .sel-pop-btn.danger:active { background: rgba(255,107,107,0.15); }
+
+        @media (max-width: 768px) {
+            .mobile-fab { display: flex; }
+            .canvas-float-actions { display: none; }
+        }
         #fenceCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
         /* Floating action buttons — hidden (redundant with toolbar) */
@@ -985,6 +1081,51 @@
             </div>
             <div class="canvas-wrapper" id="canvasWrapper">
                 <canvas id="fenceCanvas"></canvas>
+
+                <!-- Mobile active-tool FAB (only visible on touch devices / small screens) -->
+                <button class="mobile-fab" id="mobileFab" aria-label="Change active tool">
+                    <svg class="mobile-fab-icon" id="mobileFabIcon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    <span class="mobile-fab-label" id="mobileFabLabel">Draw</span>
+                </button>
+
+                <!-- Mobile tool picker bottom sheet -->
+                <div class="mobile-tool-sheet-backdrop" id="mobileToolBackdrop"></div>
+                <div class="mobile-tool-sheet" id="mobileToolSheet" role="dialog" aria-label="Pick a tool">
+                    <div class="mobile-tool-sheet-handle"></div>
+                    <div class="mobile-tool-sheet-title">Tool</div>
+                    <div class="mobile-tool-options">
+                        <button class="mobile-tool-opt" data-mobile-tool="draw">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                            <span>Draw fence</span>
+                        </button>
+                        <button class="mobile-tool-opt" data-mobile-tool="gate">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>
+                            <span>Add gate</span>
+                        </button>
+                        <button class="mobile-tool-opt" data-mobile-tool="house">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a2 2 0 01-2 2H5a2 2 0 01-2-2V10z"/></svg>
+                            <span>Place house</span>
+                        </button>
+                        <button class="mobile-tool-opt" data-mobile-tool="pan">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+                            <span>Pan / zoom</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Contextual selection popover — appears near a selected element -->
+                <div class="selection-popover" id="selectionPopover" role="toolbar" aria-label="Selection actions">
+                    <button class="sel-pop-btn" id="selPopMove" title="Drag to move">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+                    </button>
+                    <button class="sel-pop-btn danger" id="selPopDelete" title="Delete">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    </button>
+                    <button class="sel-pop-btn" id="selPopDismiss" title="Dismiss">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+
                 <!-- Floating action overlay — top right of canvas -->
                 <div class="canvas-float-actions" id="canvasFloatActions">
                     <button class="canvas-float-btn" id="selectAllBtn" title="Select next element">
@@ -3688,6 +3829,110 @@
         houseToolBtn.addEventListener('click', () => setActiveTool('house'));
         panToolBtn.addEventListener('click', () => setActiveTool('pan'));
 
+        // ═════ Mobile FAB + bottom sheet ═════
+        (function setupMobileFab() {
+            const fab = document.getElementById('mobileFab');
+            const fabIcon = document.getElementById('mobileFabIcon');
+            const fabLabel = document.getElementById('mobileFabLabel');
+            const sheet = document.getElementById('mobileToolSheet');
+            const backdrop = document.getElementById('mobileToolBackdrop');
+            if (!fab || !sheet || !backdrop) return;
+
+            const TOOL_META = {
+                draw:  { label: 'Draw',  cls: '', icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>' },
+                gate:  { label: 'Gate',  cls: 'gate-mode', icon: '<rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/>' },
+                house: { label: 'House', cls: '', icon: '<path d="M3 10l9-7 9 7v10a2 2 0 01-2 2H5a2 2 0 01-2-2V10z"/>' },
+                pan:   { label: 'Pan',   cls: 'pan-mode', icon: '<path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/>' }
+            };
+
+            function syncFab() {
+                const meta = TOOL_META[state.activeTool] || TOOL_META.draw;
+                fab.classList.remove('gate-mode', 'pan-mode');
+                if (meta.cls) fab.classList.add(meta.cls);
+                fabIcon.innerHTML = meta.icon;
+                fabLabel.textContent = meta.label;
+                // Highlight the matching option in the sheet if it's open
+                sheet.querySelectorAll('.mobile-tool-opt').forEach(b => {
+                    b.classList.toggle('active', b.dataset.mobileTool === state.activeTool);
+                });
+            }
+
+            function openSheet() {
+                syncFab();
+                backdrop.classList.add('open');
+                requestAnimationFrame(() => sheet.classList.add('open'));
+            }
+            function closeSheet() {
+                sheet.classList.remove('open');
+                setTimeout(() => backdrop.classList.remove('open'), 250);
+            }
+
+            fab.addEventListener('click', openSheet);
+            backdrop.addEventListener('click', closeSheet);
+            sheet.querySelectorAll('.mobile-tool-opt').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tool = btn.dataset.mobileTool;
+                    setActiveTool(tool);
+                    syncFab();
+                    closeSheet();
+                });
+            });
+
+            // Keep FAB label in sync whenever the tool changes via any path.
+            const _origSet = setActiveTool;
+            window.__origSetActiveTool = _origSet;
+            // Monkey-patch: wrap setActiveTool to also sync the FAB.
+            // This preserves the existing behaviour on desktop toolbar clicks.
+            // eslint-disable-next-line no-func-assign
+            setActiveTool = function(t) { _origSet(t); syncFab(); };
+            syncFab();
+        })();
+
+        // ═════ Contextual selection popover ═════
+        (function setupSelectionPopover() {
+            const pop = document.getElementById('selectionPopover');
+            const btnMove = document.getElementById('selPopMove');
+            const btnDelete = document.getElementById('selPopDelete');
+            const btnDismiss = document.getElementById('selPopDismiss');
+            if (!pop) return;
+
+            function hide() { pop.classList.remove('visible'); }
+            function showAt(screenX, screenY) {
+                pop.style.left = screenX + 'px';
+                pop.style.top = screenY + 'px';
+                pop.classList.add('visible');
+            }
+
+            btnDismiss.addEventListener('click', () => {
+                state.selectedPointId = null;
+                state.selectedLineIdx = -1;
+                state.selectedGateIdx = -1;
+                state.selectedHouseIdx = -1;
+                hide();
+                drawCanvas();
+                updateDeletePointBtn();
+                updateHint();
+            });
+            btnDelete.addEventListener('click', () => {
+                // Reuse the existing delete-selected logic if present; otherwise inline
+                const delBtn = document.getElementById('deletePointBtn');
+                if (delBtn && delBtn.click) delBtn.click();
+                hide();
+            });
+            btnMove.addEventListener('click', () => {
+                // Enter a simple move mode: user taps next spot to move selected post there.
+                if (state.selectedPointId !== null) {
+                    showTouchHint && showTouchHint('Tap where to move this post', 2500);
+                    window.__mobileMoveMode = true;
+                }
+                hide();
+            });
+
+            // Expose for the canvas touch handler to call
+            window.__showSelPopover = showAt;
+            window.__hideSelPopover = hide;
+        })();
+
         let spaceHeld = false;
         document.addEventListener('keydown', (e) => {
             if (e.code === 'Space' && !e.repeat && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'SELECT') {
@@ -6157,13 +6402,44 @@
                 const r = canvas.getBoundingClientRect();
                 const sx = t.clientX - r.left, sy = t.clientY - r.top;
 
+                // ── Mobile move mode: if a post was selected and user activated "Move" in the
+                // popover, the next tap relocates that post and exits move mode. ──
+                if (window.__mobileMoveMode && state.selectedPointId !== null) {
+                    const pt = state.points.find(p => p.id === state.selectedPointId);
+                    if (pt) {
+                        const world = screenToWorld(sx, sy);
+                        const snapped = snapWorldToGrid(world.x, world.y);
+                        pushUndo();
+                        pt.x = snapped.x; pt.y = snapped.y;
+                        drawCanvas(); updatePricing(); renderSidebar();
+                    }
+                    window.__mobileMoveMode = false;
+                    return;
+                }
+
+                // ── Touch: if tapping an EXISTING element (post/line/gate/house), select it
+                // and show the contextual popover near the tap. Skip if the user is in the
+                // middle of drawing (pendingPoint !== null). ──
+                const nearby = findNearbyPoint(sx, sy);
+                if (nearby && state.pendingPoint === null) {
+                    state.selectedPointId = nearby.id;
+                    state.selectedLineIdx = -1; state.selectedGateIdx = -1; state.selectedHouseIdx = -1;
+                    drawCanvas();
+                    updateDeletePointBtn && updateDeletePointBtn();
+                    updateHint && updateHint();
+                    // Position popover above the tapped point
+                    if (window.__showSelPopover) {
+                        const sp = worldToScreen(nearby.x, nearby.y);
+                        window.__showSelPopover(sp.x, sp.y);
+                    }
+                    return;
+                } else if (window.__hideSelPopover) {
+                    window.__hideSelPopover();
+                }
+
                 // Touch mode: show hint when tapping a selected point
                 if (touchModeEnabled) {
-                    const nearby = findNearbyPoint(sx, sy);
-                    if (nearby && state.pendingPoint === null) {
-                        // Tapped an existing point — start fence from it
-                        showTouchHint('Tap where to place the next fence post', 3000);
-                    } else if (state.pendingPoint !== null && !nearby) {
+                    if (state.pendingPoint !== null) {
                         showTouchHint('Tap next post or pinch to zoom', 2000);
                     }
                 }
