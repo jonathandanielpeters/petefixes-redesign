@@ -1,0 +1,13 @@
+{
+  "name": "Pete Fixes",
+  "short_name": "Pete Fixes",
+  "description": "Winnipeg fence & gate installation, automation and smart access.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1d1d1f",
+  "theme_color": "#c8a55a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
