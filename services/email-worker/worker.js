@@ -34,6 +34,7 @@ async function handleSendEstimate(request, env) {
 
   const fromEmail = env.FROM_EMAIL || 'noreply@example.com';
   const fromName = env.FROM_NAME || 'Fence Estimate';
+  const replyTo = env.REPLY_TO_EMAIL || env.INTERNAL_EMAIL || null;
   const apiKey = env.RESEND_API_KEY;
 
   if (!apiKey) {
@@ -42,9 +43,10 @@ async function handleSendEstimate(request, env) {
 
   const results = { customer: null, internal: null };
 
-  // Send customer email
+  // Send customer email (with reply-to so replies reach the business inbox)
   const custRes = await sendEmail(apiKey, {
     from: `${fromName} <${fromEmail}>`,
+    reply_to: replyTo,
     to: customerEmail,
     subject: subject,
     html: customerHtml
@@ -68,18 +70,22 @@ async function handleSendEstimate(request, env) {
 
 async function sendEmail(apiKey, params) {
   try {
+    const payload = {
+      from: params.from,
+      to: [params.to],
+      subject: params.subject,
+      html: params.html
+    };
+    if (params.reply_to) {
+      payload.reply_to = params.reply_to;
+    }
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        from: params.from,
-        to: [params.to],
-        subject: params.subject,
-        html: params.html
-      })
+      body: JSON.stringify(payload)
     });
 
     const data = await res.json();
