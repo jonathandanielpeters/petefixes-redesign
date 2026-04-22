@@ -188,8 +188,20 @@
         .gate-dir-badge:hover { background: rgba(74,144,217,0.15); color: #4a90d9; }
 
         /* Canvas Area */
-        .config-canvas-area { background: var(--gray-50); display: flex; flex-direction: column; position: relative; touch-action: none; padding-bottom: 52px; }
-        .canvas-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--white); border-bottom: 1px solid var(--gray-100); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; gap: 12px; }
+        .config-canvas-area { background: var(--gray-50); display: flex; flex-direction: column; position: relative; touch-action: none; padding-bottom: 52px; min-height: 0; min-width: 0; overflow: hidden; }
+        /* Toolbar: scrollable horizontally if content overflows; min-height prevents collapse.
+           Fade edges hint that there's more content to scroll to. */
+        .canvas-toolbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px; background: var(--white);
+            border-bottom: 1px solid var(--gray-100);
+            flex: 0 0 auto; min-height: 52px;
+            overflow-x: auto; overflow-y: visible;
+            scrollbar-width: none; -webkit-overflow-scrolling: touch;
+            gap: 12px; position: relative; z-index: 2;
+            mask-image: linear-gradient(to right, black 0, black calc(100% - 24px), transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, black 0, black calc(100% - 24px), transparent 100%);
+        }
         .canvas-toolbar::-webkit-scrollbar { display: none; }
         .canvas-toolbar-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
         .canvas-toolbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
@@ -449,7 +461,7 @@
             .config-panel { display: none !important; }
             .mobile-sidebar { display: flex; }
             .config-canvas-area { min-height: calc(100vh - 84px); padding-bottom: 86px; }
-            .canvas-toolbar { flex-wrap: nowrap; gap: 6px; padding: 8px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+            .canvas-toolbar { flex-wrap: nowrap; gap: 6px; padding: 8px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; min-height: 44px; }
             .canvas-toolbar::-webkit-scrollbar { display: none; }
             .canvas-toolbar-left { flex-shrink: 0; gap: 6px; }
             .canvas-toolbar-right { flex-shrink: 0; gap: 6px; margin-left: auto; }
@@ -470,6 +482,31 @@
             .map-search-input { font-size: 16px; } /* prevents iOS zoom on focus */
             /* Save estimate modal fix for mobile */
             .save-estimate-dialog { max-width: 95vw; max-height: 85vh; padding: 20px; }
+        }
+        /* Standard phones — iPhone 12/13/14 (390×844), Pixel (393×851) */
+        @media (max-width: 430px) {
+            .beta-banner { padding: 3px 8px; }
+            .beta-text { font-size: 9px; }
+            .pricing-bar { padding: 5px 8px; gap: 3px 6px; }
+            .pricing-total-value { font-size: 16px; }
+            .pricing-item-value { font-size: 12px; }
+            .pricing-actions .btn, .pricing-actions .btn-book { padding: 6px 10px; font-size: 11px; }
+            .canvas-toolbar-left { flex-wrap: nowrap; gap: 4px; }
+            .canvas-tool-btn { padding: 6px 8px; min-width: 28px; min-height: 28px; }
+            .canvas-tool-btn svg { width: 14px; height: 14px; }
+            .canvas-mode-btn { padding: 4px 8px; font-size: 10px; }
+            .zoom-btn { width: 26px; height: 26px; }
+            .mobile-sidebar { width: 56px; }
+        }
+        /* Small phones — iPhone SE (375×667), small Androids (360×800) */
+        @media (max-width: 380px) {
+            .beta-banner { padding: 3px 6px; }
+            .pricing-bar { padding: 4px 6px; }
+            .canvas-toolbar { padding: 6px 8px; gap: 4px; }
+            .canvas-tool-btn { padding: 5px 6px; min-width: 26px; min-height: 26px; }
+            .canvas-tool-btn svg { width: 13px; height: 13px; }
+            .pricing-total-value { font-size: 14px; }
+            .mobile-sidebar { width: 52px; }
         }
         @media (max-width: 480px) {
             .beta-banner { padding: 3px 10px; }
@@ -3704,8 +3741,13 @@
             const r = canvas.getBoundingClientRect();
             let dy = e.deltaY;
             if (e.deltaMode === 1) dy *= 16;
-            if (e.ctrlKey) dy *= 3;
-            const factor = Math.exp(-dy * 0.0008);
+            if (e.ctrlKey) dy *= 2.5; // pinch-trackpad (less aggressive than before)
+            // Slower base sensitivity so a single scroll tick doesn't over-zoom at any scale.
+            // Exp-based keeps the ratio constant, but we also dampen further at extreme zooms.
+            let sensitivity = 0.00045;
+            if (state.zoom < 0.4) sensitivity *= 0.65;  // zoomed out: slow it down more
+            else if (state.zoom > 2.5) sensitivity *= 0.85; // zoomed in: slight slowdown
+            const factor = Math.exp(-dy * sensitivity);
             setZoom(state.zoom * factor, e.clientX - r.left, e.clientY - r.top);
         }, { passive: false });
 
@@ -6057,7 +6099,11 @@
                     const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
                     const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
                     const pinchRatio = d / lastTouchDist;
-                    const dampened = 1 + (pinchRatio - 1) * 0.4;
+                    // Dampen more aggressively when zoomed out so pinch feels consistent.
+                    let damp = 0.55;
+                    if (state.zoom < 0.4) damp = 0.35;
+                    else if (state.zoom > 2.5) damp = 0.45;
+                    const dampened = 1 + (pinchRatio - 1) * damp;
                     setZoom(state.zoom * dampened, cx, cy);
                 }
                 lastTouchDist = d;
