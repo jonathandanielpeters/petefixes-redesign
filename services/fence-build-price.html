@@ -5133,15 +5133,18 @@
                 const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
                 const totalHours = totalMinutes / 60;
-                // Overtime split: person-hours above threshold paid at premium.
+                // Overtime split with max-hours-per-day cap → auto-split across multiple days
                 const otThreshold = lab.overtimeAfterHours || 8;
+                const maxHoursPerDay = lab.maxHoursPerDay || 12;
                 const otCostMult = lab.otCostMult || 1;
                 const otChargeMult = lab.otChargeMult || 1;
                 const perPersonHrs = totalHours / crew;
-                const regPerPerson = Math.min(perPersonHrs, otThreshold);
-                const otPerPerson = Math.max(0, perPersonHrs - otThreshold);
-                const regHrs = regPerPerson * crew;
-                const otHrs = otPerPerson * crew;
+                const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
+                const perPersonPerDay = perPersonHrs / daysNeeded;
+                const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
+                const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
+                const regHrs = regPerPersonPerDay * daysNeeded * crew;
+                const otHrs = otPerPersonPerDay * daysNeeded * crew;
                 labourCost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
                 labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
             }

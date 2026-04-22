@@ -786,9 +786,10 @@ a{color:var(--accent);text-decoration:none}
 
   <div class="card">
     <div class="card-title">Overtime</div>
-    <div class="card-desc">Hours worked per employee per day above the threshold are paid at a premium rate (typically 1.5× in Manitoba). If a job will span multiple days, increase "Hours per workday" above so the calculator knows the work is spread across shifts.</div>
+    <div class="card-desc">Overtime threshold + multipliers, plus the maximum hours one worker can be scheduled per day. Jobs needing more than the max auto-split across multiple days — each day gets its own regular + overtime hours.</div>
     <div class="card-row">
       <div class="field"><label>Overtime after hrs/person/day</label><input type="number" id="lab2-ot-after" step="0.5" min="0" value="8" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Hours per employee per day before overtime kicks in. MB legal threshold is 8 hours/day."></div>
+      <div class="field"><label>Max hrs/person/day</label><input type="number" id="lab2-max-hours-per-day" step="0.5" min="1" value="12" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Absolute ceiling — most hours you'll schedule one worker in a single day. Jobs needing more auto-split into multiple days."></div>
       <div class="field"><label>OT cost multiplier (you pay)</label><input type="number" id="lab2-ot-cost-mult" step="0.05" min="1" value="1.5" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Legal requirement is usually 1.5× regular rate for overtime hours."></div>
       <div class="field"><label>OT charge multiplier (customer pays)</label><input type="number" id="lab2-ot-charge-mult" step="0.05" min="1" value="1.5" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="How much to mark up the customer's charge rate on overtime hours. 1.5× matches cost; higher = better margin on OT work; 1.0× = you eat the OT cost."></div>
     </div>
@@ -5336,6 +5337,7 @@ function ensureLab2() {
   if (config.labour2.overtimeAfterHours == null) config.labour2.overtimeAfterHours = 8;
   if (config.labour2.otCostMult == null) config.labour2.otCostMult = 1.5;
   if (config.labour2.otChargeMult == null) config.labour2.otChargeMult = 1.5;
+  if (config.labour2.maxHoursPerDay == null) config.labour2.maxHoursPerDay = 12;
   if (config.labour2.targetProfitPerDay == null) config.labour2.targetProfitPerDay = 800;
   delete config.labour2.breakPct;
   delete config.labour2.cushioningPct;
@@ -5429,6 +5431,7 @@ function loadLabourUI() {
   setV('lab2-break-min-per-day', lab.breakMinPerDay);
   setV('lab2-hours-per-day', lab.hoursPerDay);
   setV('lab2-ot-after', lab.overtimeAfterHours);
+  setV('lab2-max-hours-per-day', lab.maxHoursPerDay);
   setV('lab2-ot-cost-mult', lab.otCostMult);
   setV('lab2-ot-charge-mult', lab.otChargeMult);
   setV('lab2-target-profit-day', lab.targetProfitPerDay);
@@ -5449,6 +5452,7 @@ function collectLabourUI() {
   lab.breakMinPerDay = gn('lab2-break-min-per-day');
   lab.hoursPerDay = gn('lab2-hours-per-day') || 8;
   lab.overtimeAfterHours = gn('lab2-ot-after') || 8;
+  lab.maxHoursPerDay = gn('lab2-max-hours-per-day') || 12;
   lab.otCostMult = gn('lab2-ot-cost-mult') || 1;
   lab.otChargeMult = gn('lab2-ot-charge-mult') || 1;
   lab.targetProfitPerDay = gn('lab2-target-profit-day');
@@ -5512,25 +5516,32 @@ function computeLabour(ctx) {
   const totalMinutes = workMinutes + breakMinutes + travelMin + loadMin;
   const totalHours = totalMinutes / 60;
 
-  // Split into regular vs overtime hours (per person).
-  // totalMinutes is person-minutes; divide by crew to get per-person wall-clock hours.
+  // Per-person wall-clock hours for the whole job
   const otThreshold = lab.overtimeAfterHours || 8;
+  const maxHoursPerDay = lab.maxHoursPerDay || 12;
   const otCostMult = lab.otCostMult || 1;
   const otChargeMult = lab.otChargeMult || 1;
   const perPersonHrs = totalHours / crewSize;
-  const regPerPerson = Math.min(perPersonHrs, otThreshold);
-  const otPerPerson = Math.max(0, perPersonHrs - otThreshold);
-  const regHrs = regPerPerson * crewSize;
-  const otHrs = otPerPerson * crewSize;
+
+  // Split across days if perPersonHrs > maxHoursPerDay. Work is distributed
+  // evenly across days so each day's hours = perPersonHrs / daysNeeded.
+  const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
+  const perPersonPerDay = perPersonHrs / daysNeeded;
+  const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
+  const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
+  const regHrs = regPerPersonPerDay * daysNeeded * crewSize;
+  const otHrs = otPerPersonPerDay * daysNeeded * crewSize;
 
   const cost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
   const charge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
 
+  if (daysNeeded > 1) breakdown.push({ label: 'Job spans ' + daysNeeded + ' workdays (' + perPersonPerDay.toFixed(1) + ' hrs/person/day)', minutes: 0 });
   if (otHrs > 0) breakdown.push({ label: 'OVERTIME — ' + otHrs.toFixed(1) + ' hrs × ' + otCostMult + 'x cost / ' + otChargeMult + 'x charge', minutes: otHrs * 60 });
 
   return {
     minutes: totalMinutes, workMinutes, breakMinutes,
     hours: totalHours, regHrs, otHrs, perPersonHrs,
+    daysNeeded, perPersonPerDay,
     cost, charge, withCushioning: charge, breakdown
   };
 }
@@ -5647,14 +5658,14 @@ function computeFenceSample(spec) {
   const profit = totalCharge - totalCost;
   const profitPct = totalCost > 0 ? (profit / totalCharge) * 100 : 0;
 
-  // Per-job target profit based on fraction of workday consumed.
-  // perPersonHrs assumes crew size = setupDiscussion employees (same as elsewhere).
+  // Per-job target profit — scales by fraction of a workday consumed.
+  // For multi-day jobs, days count toward the target (2 days = 2× daily target).
   const labCfg = ensureLab2();
-  const crew = (labCfg.tasks && labCfg.tasks.setupDiscussion && labCfg.tasks.setupDiscussion.employees) || 2;
   const hoursPerDay = labCfg.hoursPerDay || 8;
   const targetProfitPerDay = labCfg.targetProfitPerDay || 0;
-  const perPersonHrs = lab.hours / crew;
-  const dayFraction = hoursPerDay > 0 ? (perPersonHrs / hoursPerDay) : 0;
+  // Use per-person hours per day × number of days to compute fraction.
+  // lab.daysNeeded is full days; perPersonPerDay is hours/person/day.
+  const dayFraction = hoursPerDay > 0 ? ((lab.perPersonPerDay || 0) / hoursPerDay) * (lab.daysNeeded || 1) : 0;
   const targetProfit = dayFraction * targetProfitPerDay;
   const minimumCharge = totalCost + targetProfit;
   const profitGap = minimumCharge - totalCharge; // positive = underpriced
@@ -5663,6 +5674,8 @@ function computeFenceSample(spec) {
     spec, endPosts, cornerPosts: corners, linePosts, totalPosts, hookups, gates,
     matCost, matSell,
     labourHours: lab.hours, labourCost: lab.cost, labourCharge: lab.charge,
+    daysNeeded: lab.daysNeeded, perPersonPerDay: lab.perPersonPerDay,
+    otHrs: lab.otHrs,
     totalCost, totalCharge, profit, profitPct,
     dayFraction, targetProfit, minimumCharge, profitGap,
     matLines: lines
@@ -5695,7 +5708,7 @@ function renderSamplePriceCard(title, spec) {
     <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <div>
         <div style="font-size:12px;font-weight:700;color:var(--black)">${clEscHtml(title)}</div>
-        <div style="font-size:10px;color:var(--gray-400)">${r.spec.lengthFt}ft · ${r.endPosts} end / ${r.cornerPosts} corner / ${r.linePosts} line posts · ${r.gates} gate${r.gates === 1 ? '' : 's'} · ${lineCount} line${lineCount === 1 ? '' : 's'}</div>
+        <div style="font-size:10px;color:var(--gray-400)">${r.spec.lengthFt}ft · ${r.endPosts} end / ${r.cornerPosts} corner / ${r.linePosts} line posts · ${r.gates} gate${r.gates === 1 ? '' : 's'} · ${lineCount} line${lineCount === 1 ? '' : 's'}${(r.daysNeeded || 1) > 1 ? ' · <strong style="color:#d2691e">' + r.daysNeeded + ' days</strong>' : ''}</div>
       </div>
       <div style="text-align:right">
         <div style="font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-0.02em">${money(r.totalCharge)}</div>
