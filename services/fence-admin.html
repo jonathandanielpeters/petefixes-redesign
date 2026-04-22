@@ -774,6 +774,17 @@ a{color:var(--accent);text-decoration:none}
   </div>
 
   <div class="card">
+    <div class="card-title">Profit Target</div>
+    <div class="card-desc">Target profit per full workday — Pete's baseline income goal. Each job should contribute its share based on the hours it consumes. A job that fills 50% of a day should hit 50% of the target (assuming another job fills the other half).</div>
+    <div class="card-row">
+      <div class="field"><label>Target profit / workday ($)</label><input type="number" id="lab2-target-profit-day" step="25" min="0" value="800" oninput="markDirty();refreshSamplePrices()" title="How much net profit you want to net per full workday after material cost + labour cost. Samples below flag any job that falls short of this target prorated to its share of a workday."></div>
+      <div class="field" style="display:flex;align-items:end;color:var(--gray-400);font-size:11px;line-height:1.4">
+        Per-job target = (job hours ÷ hours per workday) × target profit / workday
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Overtime</div>
     <div class="card-desc">Hours worked per employee per day above the threshold are paid at a premium rate (typically 1.5× in Manitoba). If a job will span multiple days, increase "Hours per workday" above so the calculator knows the work is spread across shifts.</div>
     <div class="card-row">
@@ -5325,6 +5336,7 @@ function ensureLab2() {
   if (config.labour2.overtimeAfterHours == null) config.labour2.overtimeAfterHours = 8;
   if (config.labour2.otCostMult == null) config.labour2.otCostMult = 1.5;
   if (config.labour2.otChargeMult == null) config.labour2.otChargeMult = 1.5;
+  if (config.labour2.targetProfitPerDay == null) config.labour2.targetProfitPerDay = 800;
   delete config.labour2.breakPct;
   delete config.labour2.cushioningPct;
   if (!config.labour2.customTaskOrder) config.labour2.customTaskOrder = [];
@@ -5419,6 +5431,7 @@ function loadLabourUI() {
   setV('lab2-ot-after', lab.overtimeAfterHours);
   setV('lab2-ot-cost-mult', lab.otCostMult);
   setV('lab2-ot-charge-mult', lab.otChargeMult);
+  setV('lab2-target-profit-day', lab.targetProfitPerDay);
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
   setV('lab2-travel-min', lab.travelMinOneWay);
@@ -5438,6 +5451,7 @@ function collectLabourUI() {
   lab.overtimeAfterHours = gn('lab2-ot-after') || 8;
   lab.otCostMult = gn('lab2-ot-cost-mult') || 1;
   lab.otChargeMult = gn('lab2-ot-charge-mult') || 1;
+  lab.targetProfitPerDay = gn('lab2-target-profit-day');
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
   lab.travelMinOneWay = gn('lab2-travel-min');
@@ -5633,11 +5647,24 @@ function computeFenceSample(spec) {
   const profit = totalCharge - totalCost;
   const profitPct = totalCost > 0 ? (profit / totalCharge) * 100 : 0;
 
+  // Per-job target profit based on fraction of workday consumed.
+  // perPersonHrs assumes crew size = setupDiscussion employees (same as elsewhere).
+  const labCfg = ensureLab2();
+  const crew = (labCfg.tasks && labCfg.tasks.setupDiscussion && labCfg.tasks.setupDiscussion.employees) || 2;
+  const hoursPerDay = labCfg.hoursPerDay || 8;
+  const targetProfitPerDay = labCfg.targetProfitPerDay || 0;
+  const perPersonHrs = lab.hours / crew;
+  const dayFraction = hoursPerDay > 0 ? (perPersonHrs / hoursPerDay) : 0;
+  const targetProfit = dayFraction * targetProfitPerDay;
+  const minimumCharge = totalCost + targetProfit;
+  const profitGap = minimumCharge - totalCharge; // positive = underpriced
+
   return {
     spec, endPosts, cornerPosts: corners, linePosts, totalPosts, hookups, gates,
     matCost, matSell,
     labourHours: lab.hours, labourCost: lab.cost, labourCharge: lab.charge,
     totalCost, totalCharge, profit, profitPct,
+    dayFraction, targetProfit, minimumCharge, profitGap,
     matLines: lines
   };
 }
@@ -5704,6 +5731,14 @@ function renderSamplePriceCard(title, spec) {
       <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Profit</div><div style="font-weight:700;color:${r.profit >= 0 ? '#27ae60' : '#c44'}">${money(r.profit)}</div></div>
       <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Margin / Markup</div><div style="font-weight:700;color:${r.profit >= 0 ? '#27ae60' : '#c44'}">${margin.toFixed(0)}% / ${markup.toFixed(0)}%</div></div>
     </div>
+
+    ${(r.targetProfit || 0) > 0 ? `
+    <!-- Target profit / minimum charge -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px;padding-top:6px;border-top:1px dashed var(--gray-200);margin-top:4px">
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Day share · Target profit</div><div style="font-weight:600">${(r.dayFraction * 100).toFixed(0)}% · ${money(r.targetProfit)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Min charge to hit target</div><div style="font-weight:700">${money(r.minimumCharge)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Gap vs. target</div><div style="font-weight:700;color:${r.profitGap <= 0 ? '#27ae60' : '#c44'}">${r.profitGap <= 0 ? '✓ ahead ' + money(-r.profitGap) : '✗ short ' + money(r.profitGap)}</div></div>
+    </div>` : ''}
   </div>`;
 }
 
