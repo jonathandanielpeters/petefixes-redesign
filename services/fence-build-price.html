@@ -6399,10 +6399,28 @@
                 touchPanStartX = e.touches[0].clientX; touchPanStartY = e.touches[0].clientY;
                 touchDragActive = false; touchDragPoint = null;
 
+                // House: check if the touch landed on a resize handle or house body.
+                // Touch mirrors the mousedown flow so drag/resize work on phones.
+                const r = canvas.getBoundingClientRect();
+                const sx = e.touches[0].clientX - r.left, sy = e.touches[0].clientY - r.top;
+                const houseHit = hitTestHouses(sx, sy);
+                if (houseHit) {
+                    if (houseHit.handle) {
+                        isResizingHouse = true; resizeHouse = houseHit.house; resizeHandle = houseHit.handle;
+                        canvas.style.cursor = 'nwse-resize';
+                        return;
+                    } else if (houseHit.body) {
+                        isDraggingHouse = true; dragHouse = houseHit.house;
+                        const world = screenToWorld(sx, sy);
+                        dragHouseOffsetX = world.x - dragHouse.x;
+                        dragHouseOffsetY = world.y - dragHouse.y;
+                        canvas.style.cursor = 'move';
+                        return;
+                    }
+                }
+
                 // Touch mode: detect hold on a point for drag
                 if (touchModeEnabled) {
-                    const r = canvas.getBoundingClientRect();
-                    const sx = e.touches[0].clientX - r.left, sy = e.touches[0].clientY - r.top;
                     const nearby = findNearbyPoint(sx, sy);
                     if (nearby && state.pendingPoint === null) {
                         touchDragPoint = nearby;
@@ -6449,6 +6467,28 @@
                 const dx = e.touches[0].clientX - touchStartX, dy = e.touches[0].clientY - touchStartY;
                 const dist = Math.sqrt(dx*dx + dy*dy);
 
+                // House resize (touch)
+                if (isResizingHouse && resizeHouse) {
+                    const r = canvas.getBoundingClientRect();
+                    const world = screenToWorld(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+                    const snapped = snapWorldToGrid(world.x, world.y);
+                    if (resizeHandle.includes('e')) resizeHouse.width = Math.max(5, snapped.x - resizeHouse.x);
+                    if (resizeHandle.includes('w')) { const newX = Math.min(snapped.x, resizeHouse.x + resizeHouse.width - 5); resizeHouse.width += resizeHouse.x - newX; resizeHouse.x = newX; }
+                    if (resizeHandle.includes('s')) resizeHouse.height = Math.max(5, snapped.y - resizeHouse.y);
+                    if (resizeHandle.includes('n')) { const newY = Math.min(snapped.y, resizeHouse.y + resizeHouse.height - 5); resizeHouse.height += resizeHouse.y - newY; resizeHouse.y = newY; }
+                    touchMoved = true; drawCanvas();
+                    return;
+                }
+                // House drag (touch)
+                if (isDraggingHouse && dragHouse) {
+                    const r = canvas.getBoundingClientRect();
+                    const world = screenToWorld(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+                    const snapped = snapWorldToGrid(world.x - dragHouseOffsetX, world.y - dragHouseOffsetY);
+                    dragHouse.x = snapped.x; dragHouse.y = snapped.y;
+                    touchMoved = true; drawCanvas();
+                    return;
+                }
+
                 // Touch mode: drag point if hold activated
                 if (touchModeEnabled && touchDragActive && touchDragPoint) {
                     const r = canvas.getBoundingClientRect();
@@ -6461,8 +6501,11 @@
                     return;
                 }
 
-                // Cancel hold timer if finger moved too far
-                if (dist > 10) {
+                // Cancel hold timer if finger moved too far.
+                // Threshold raised from 10 → 14 so a natural thumb tap that jitters a
+                // few pixels isn't mis-classified as a drag/pan (used to block the
+                // first-tap popover).
+                if (dist > 14) {
                     clearTimeout(touchHoldTimer);
                     touchDragPoint = null;
                     touchMoved = true;
@@ -6489,6 +6532,17 @@
                 return;
             }
             gestureLock = false;
+
+            // Finish house drag/resize
+            if (isDraggingHouse || isResizingHouse) {
+                pushUndo();
+                isDraggingHouse = false; isResizingHouse = false;
+                dragHouse = null; resizeHouse = null;
+                canvas.style.cursor = state.activeTool === 'house' ? 'copy' : 'crosshair';
+                lastTouchDist = null; touchIsPinch = false; touchMoved = false; touchPanning = false;
+                pinchStartDist = null;
+                return;
+            }
 
             if (touchDragActive && touchDragPoint) {
                 // Finished dragging a point
@@ -6519,16 +6573,23 @@
                     return;
                 }
 
-                // ── Touch: tapping an EXISTING post selects it AND starts/continues draw
-                // mode from it. In draw tool, the post becomes pendingPoint so the very
-                // next tap extends a fence line from here (same flow as first-time drawing).
-                // The popover appears alongside for Delete/Move actions. ──
+                // ── Touch: tapping an EXISTING post always selects it and shows the
+                // selection popover on the FIRST tap, even if draw mode had a pending
+                // point (we cancel that so the user can Move/Delete without getting a
+                // line drawn to it first). If no current draw is in progress, the post
+                // also becomes pendingPoint so the very NEXT tap extends a line from
+                // here — matching the first-time drawing feel. ──
                 const nearby = findNearbyPoint(sx, sy);
-                if (nearby && state.pendingPoint === null) {
+                if (nearby) {
+                    // Cancel any pending draw so tap-to-select wins
+                    if (state.pendingPoint !== null && state.pendingPoint !== nearby.id) {
+                        if (typeof cancelPending === 'function') cancelPending();
+                        else state.pendingPoint = null;
+                    }
                     state.selectedPointId = nearby.id;
                     state.selectedLineIdx = -1; state.selectedGateIdx = -1; state.selectedHouseIdx = -1;
-                    // Seed pendingPoint so the NEXT tap extends a fence from this post.
-                    // Applies only to draw + gate tools; pan/house modes skip this.
+                    // In draw/gate mode, seed pendingPoint from this post so next tap
+                    // continues a line. (pan/house tools skip — different semantics.)
                     if (state.activeTool === 'draw' || state.activeTool === 'gate') {
                         state.pendingPoint = nearby.id;
                     }
