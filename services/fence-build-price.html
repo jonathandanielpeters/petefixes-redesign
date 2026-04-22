@@ -6342,9 +6342,14 @@
         let touchStartTime = 0, touchStartX = 0, touchStartY = 0, touchMoved = false, touchIsPinch = false;
         let touchDragPoint = null, touchDragActive = false, touchHoldTimer = null;
 
-        // Pinch-gesture anchor state — reset at every 2-finger touchstart so zoom
-        // is computed from START (not cumulative) distance/zoom each pinch.
+        // Pinch-gesture anchor state. Captured ONCE per pinch at 2-finger touchstart.
+        // pinchAnchorX/Y freezes the zoom anchor at the midpoint where the pinch
+        // started — fingers drifting sideways during the pinch won't cause pan.
+        // gestureLock blocks single-finger pan while any multi-finger sequence is
+        // still resolving (e.g. one of two fingers just lifted).
         let pinchStartDist = null, pinchStartZoom = 1;
+        let pinchAnchorX = 0, pinchAnchorY = 0;
+        let gestureLock = false;
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
             if (e.touches.length === 2) {
@@ -6355,6 +6360,11 @@
                 pinchStartDist = Math.sqrt(dx*dx+dy*dy);
                 pinchStartZoom = state.zoom;
                 lastTouchDist = pinchStartDist;
+                // Freeze the zoom anchor at the pinch midpoint (in canvas coords).
+                const r = canvas.getBoundingClientRect();
+                pinchAnchorX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
+                pinchAnchorY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
+                gestureLock = true;
             } else if (e.touches.length === 1) {
                 touchIsPinch = false; touchMoved = false;
                 touchStartTime = Date.now();
@@ -6394,19 +6404,18 @@
                 const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY;
                 const d = Math.sqrt(dx*dx+dy*dy);
                 if (pinchStartDist && pinchStartDist > 0) {
-                    const r = canvas.getBoundingClientRect();
-                    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left;
-                    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top;
                     const rawRatio = d / pinchStartDist;
                     // Damping exponent below 1 reduces sensitivity. 0.7 gives
-                    // a natural "match finger movement" feel without overshoot.
+                    // a natural feel without overshoot.
                     const damping = 0.7;
                     const dampedRatio = Math.pow(rawRatio, damping);
                     const newZoom = pinchStartZoom * dampedRatio;
-                    setZoom(newZoom, cx, cy);
+                    // Always zoom around the FIXED start anchor so lateral finger
+                    // drift during the pinch doesn't translate the canvas.
+                    setZoom(newZoom, pinchAnchorX, pinchAnchorY);
                 }
                 lastTouchDist = d;
-            } else if (e.touches.length === 1 && !touchIsPinch) {
+            } else if (e.touches.length === 1 && !touchIsPinch && !gestureLock) {
                 const dx = e.touches[0].clientX - touchStartX, dy = e.touches[0].clientY - touchStartY;
                 const dist = Math.sqrt(dx*dx + dy*dy);
 
@@ -6441,6 +6450,15 @@
 
         canvas.addEventListener('touchend', (e) => {
             clearTimeout(touchHoldTimer);
+
+            // If fingers remain down (e.g. one of two pinch fingers lifted), keep
+            // the gesture lock on so the remaining finger doesn't become a pan.
+            // The lock is released only when the final finger lifts.
+            if (e.touches && e.touches.length > 0) {
+                // Don't dispatch click, don't reset pinch state yet, stay locked.
+                return;
+            }
+            gestureLock = false;
 
             if (touchDragActive && touchDragPoint) {
                 // Finished dragging a point
