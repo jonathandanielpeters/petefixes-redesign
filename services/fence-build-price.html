@@ -3908,6 +3908,9 @@
                 state.selectedLineIdx = -1;
                 state.selectedGateIdx = -1;
                 state.selectedHouseIdx = -1;
+                // Cancel any pending draw that was seeded by tapping this post
+                if (typeof cancelPending === 'function') cancelPending();
+                else state.pendingPoint = null;
                 hide();
                 drawCanvas();
                 updateDeletePointBtn();
@@ -6417,13 +6420,19 @@
                     return;
                 }
 
-                // ── Touch: if tapping an EXISTING element (post/line/gate/house), select it
-                // and show the contextual popover near the tap. Skip if the user is in the
-                // middle of drawing (pendingPoint !== null). ──
+                // ── Touch: tapping an EXISTING post selects it AND starts/continues draw
+                // mode from it. In draw tool, the post becomes pendingPoint so the very
+                // next tap extends a fence line from here (same flow as first-time drawing).
+                // The popover appears alongside for Delete/Move actions. ──
                 const nearby = findNearbyPoint(sx, sy);
                 if (nearby && state.pendingPoint === null) {
                     state.selectedPointId = nearby.id;
                     state.selectedLineIdx = -1; state.selectedGateIdx = -1; state.selectedHouseIdx = -1;
+                    // Seed pendingPoint so the NEXT tap extends a fence from this post.
+                    // Applies only to draw + gate tools; pan/house modes skip this.
+                    if (state.activeTool === 'draw' || state.activeTool === 'gate') {
+                        state.pendingPoint = nearby.id;
+                    }
                     drawCanvas();
                     updateDeletePointBtn && updateDeletePointBtn();
                     updateHint && updateHint();
@@ -6434,6 +6443,8 @@
                     }
                     return;
                 } else if (window.__hideSelPopover) {
+                    // Tapping empty space dismisses any lingering popover so it doesn't
+                    // obscure the drawing.
                     window.__hideSelPopover();
                 }
 
