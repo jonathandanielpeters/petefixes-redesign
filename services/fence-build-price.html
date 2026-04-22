@@ -3157,8 +3157,9 @@
         const SNAP_RADIUS = 15;
         const POST_MAX_SPACING = 8;
         const POINT_RADIUS = 7;
-        const MIN_ZOOM = 0.15;
+        const MIN_ZOOM = 0.02;   // shows ~1000ft on a standard 800px canvas
         const MAX_ZOOM = 5;
+        const DEFAULT_VIEW_WIDTH_FT = 80;  // default view shows ~80ft across
         const ZOOM_STEP = 1.02;
         function gridSpacing() { return BASE_GRID_SPACING * state.zoom; }
 
@@ -3983,12 +3984,42 @@
         const wrapper = document.getElementById('canvasWrapper');
         let canvasW, canvasH;
 
+        // Returns the zoom level that makes DEFAULT_VIEW_WIDTH_FT span the canvas width
+        // with a small margin, clamped to the allowed range.
+        function defaultZoomForCanvas() {
+            if (!canvasW || canvasW <= 0) return 0.25;
+            const availW = Math.max(200, canvasW - 80);
+            const z = availW / (DEFAULT_VIEW_WIDTH_FT * BASE_GRID_SPACING);
+            return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+        }
+        // Centers the origin and applies default zoom. Called when there's nothing
+        // drawn (empty canvas) or when the user hits the "reset zoom" shortcut.
+        function resetToDefaultView() {
+            state.zoom = defaultZoomForCanvas();
+            state.panX = canvasW / 2;
+            state.panY = canvasH / 2;
+            updateZoomLabel && updateZoomLabel();
+            drawCanvas && drawCanvas();
+        }
+
+        let canvasInited = false;
         function resizeCanvas() {
             const rect = wrapper.getBoundingClientRect();
             canvasW = rect.width; canvasH = rect.height;
             canvas.width = canvasW * devicePixelRatio; canvas.height = canvasH * devicePixelRatio;
             canvas.style.width = canvasW + 'px'; canvas.style.height = canvasH + 'px';
             ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+            // On first successful size, apply the "show 80ft across" default.
+            if (!canvasInited && canvasW > 0) {
+                canvasInited = true;
+                // Only apply default if user hasn't already drawn/loaded anything
+                if (state.points.length === 0 && state.houses.length === 0) {
+                    state.zoom = defaultZoomForCanvas();
+                    state.panX = canvasW / 2;
+                    state.panY = canvasH / 2;
+                    updateZoomLabel && updateZoomLabel();
+                }
+            }
             drawCanvas();
         }
         window.addEventListener('resize', resizeCanvas);
@@ -4012,14 +4043,12 @@
 
         document.getElementById('zoomInBtn').addEventListener('click', () => setZoom(state.zoom * ZOOM_STEP));
         document.getElementById('zoomOutBtn').addEventListener('click', () => setZoom(state.zoom / ZOOM_STEP));
-        document.getElementById('zoomLevel').addEventListener('click', () => { state.zoom = 1; state.panX = 0; state.panY = 0; updateZoomLabel(); drawCanvas(); });
+        document.getElementById('zoomLevel').addEventListener('click', () => { resetToDefaultView(); });
         // "Fit to view" — reframes and zooms to show the entire drawing.
         // Both the toolbar button and the floating canvas button route to the same handler.
         function fitToViewHandler() {
             if (state.points.length === 0 && state.houses.length === 0) {
-                // Nothing drawn — just reset to origin-centered 100%
-                state.zoom = 1; state.panX = canvasW / 2; state.panY = canvasH / 2;
-                updateZoomLabel(); drawCanvas();
+                resetToDefaultView();
                 return;
             }
             fitDrawingToView(60);
@@ -4153,12 +4182,8 @@
                 ys.push(h.y, h.y + h.height);
             }
             if (xs.length === 0) {
-                // Nothing drawn — reset to centered origin
-                state.zoom = 1;
-                state.panX = canvasW / 2;
-                state.panY = canvasH / 2;
-                updateZoomLabel();
-                drawCanvas();
+                // Nothing drawn — reset to the default 80ft view
+                resetToDefaultView();
                 return;
             }
             const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -4171,8 +4196,10 @@
             const zoomX = availW / (wFt * BASE_GRID_SPACING);
             const zoomY = availH / (hFt * BASE_GRID_SPACING);
             let z = Math.min(zoomX, zoomY);
-            // Clamp to a sensible range so we don't over-zoom on tiny fences
-            z = Math.max(0.15, Math.min(z, 2.5));
+            // Clamp: allow zooming out enough for a 1000ft fence, but don't over-zoom
+            // on tiny drawings (cap at 2× the default view density).
+            const maxFit = defaultZoomForCanvas() * 2;
+            z = Math.max(MIN_ZOOM, Math.min(z, maxFit));
             state.zoom = z;
             // Pan so the bounding-box center lands at the canvas center
             const cxWorld = (minX + maxX) / 2;
@@ -6141,7 +6168,7 @@
             if (e.key === 'Backspace' || e.key === 'Delete') { deleteSelected(); }
             if (e.key === '=' || e.key === '+') setZoom(state.zoom * ZOOM_STEP);
             if (e.key === '-') setZoom(state.zoom / ZOOM_STEP);
-            if (e.key === '0') { state.zoom = 1; state.panX = 0; state.panY = 0; updateZoomLabel(); drawCanvas(); }
+            if (e.key === '0') { resetToDefaultView(); }
             if (e.key === 'f' || e.key === 'F') autoFitIfNeeded();
             if (e.key === 'g' || e.key === 'G') setActiveTool('gate');
             if (e.key === 'd' || e.key === 'D') setActiveTool('draw');
@@ -6410,9 +6437,12 @@
                     const damping = 0.7;
                     const dampedRatio = Math.pow(rawRatio, damping);
                     const newZoom = pinchStartZoom * dampedRatio;
-                    // Always zoom around the FIXED start anchor so lateral finger
-                    // drift during the pinch doesn't translate the canvas.
-                    setZoom(newZoom, pinchAnchorX, pinchAnchorY);
+                    // ALWAYS anchor pinch zoom at the canvas center. Users perceive
+                    // canvas-center zoom as "the drawing growing/shrinking in place" —
+                    // any off-center anchor makes the opposite corner visibly shift,
+                    // which reads as accidental panning during the pinch. This is the
+                    // simplest, most predictable model: pinch zooms, one-finger pans.
+                    setZoom(newZoom, canvasW / 2, canvasH / 2);
                 }
                 lastTouchDist = d;
             } else if (e.touches.length === 1 && !touchIsPinch && !gestureLock) {
