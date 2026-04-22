@@ -267,20 +267,22 @@
 
         .zoom-vert-slider-wrap {
             display: flex; align-items: center; justify-content: center;
-            height: 120px; position: relative;
+            height: 120px; width: 32px; position: relative;
         }
-        /* Vertical range input — work across Chromium, Safari, Firefox */
+        /* Horizontal range input rotated 90° — gives us a vertical slider with
+           the thumb always dead-center on the track, cross-browser consistent. */
         .zoom-vert-slider {
-            writing-mode: vertical-lr;
-            direction: rtl; /* so slider handle grows upward = zoom in */
-            -webkit-appearance: slider-vertical; /* Webkit */
-            appearance: slider-vertical;
-            width: 32px; height: 120px;
+            -webkit-appearance: none; appearance: none;
+            width: 120px; height: 20px;
+            position: absolute;
+            transform: rotate(-90deg);
+            transform-origin: center;
             margin: 0; padding: 0; background: transparent; cursor: pointer;
             touch-action: manipulation;
+            outline: none;
         }
         .zoom-vert-slider::-webkit-slider-runnable-track {
-            width: 4px; background: var(--gray-100); border-radius: 2px;
+            height: 4px; width: 120px; background: var(--gray-100); border-radius: 2px;
         }
         .zoom-vert-slider::-webkit-slider-thumb {
             -webkit-appearance: none; appearance: none;
@@ -288,9 +290,10 @@
             background: var(--accent); border: 2px solid var(--white);
             box-shadow: 0 1px 3px rgba(0,0,0,0.18);
             cursor: grab;
+            margin-top: -6px;  /* visually center thumb on 4px track */
         }
         .zoom-vert-slider::-moz-range-track {
-            width: 4px; background: var(--gray-100); border-radius: 2px;
+            height: 4px; background: var(--gray-100); border-radius: 2px;
         }
         .zoom-vert-slider::-moz-range-thumb {
             width: 16px; height: 16px; border-radius: 50%;
@@ -311,8 +314,9 @@
         @media (max-width: 768px) {
             .canvas-zoom-vertical { right: 12px; top: 66px; width: 42px; padding: 3px; }
             .zoom-vert-btn { width: 36px; height: 30px; font-size: 18px; }
-            .zoom-vert-slider-wrap { height: 110px; }
-            .zoom-vert-slider { width: 36px; height: 110px; }
+            .zoom-vert-slider-wrap { height: 110px; width: 36px; }
+            .zoom-vert-slider { width: 110px; height: 20px; }
+            .zoom-vert-slider::-webkit-slider-runnable-track { width: 110px; }
             .zoom-vert-pct { font-size: 9px; padding: 3px 0; }
         }
 
@@ -461,7 +465,7 @@
         .touch-hint-toast.visible { opacity: 1; }
 
         /* Onboarding overlay */
-        .onboarding-overlay { position: absolute; inset: 0; z-index: 20; background: rgba(250,250,253,0.92); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .onboarding-overlay { position: absolute; inset: 0; z-index: 40; background: rgba(250,250,253,0.92); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; padding: 20px; }
         .onboarding-card { max-width: 420px; background: var(--white); border: 1px solid var(--gray-100); border-radius: 16px; padding: 28px 30px; box-shadow: 0 8px 40px rgba(0,0,0,0.1); }
         .onboarding-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 16px; color: var(--black); }
         .onboarding-card ol { padding-left: 20px; margin-bottom: 16px; }
