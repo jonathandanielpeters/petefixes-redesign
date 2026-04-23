@@ -6072,8 +6072,47 @@
                 labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
             }
 
-            const total = Math.round(matSell + labourCharge);
-            return { total, matCost, matSell, labourCost, labourCharge, endCount, cornerCount, linePostCount, totalFt };
+            let total = Math.round(matSell + labourCharge);
+
+            // ── Profit-target price floor ───────────────────────────────
+            // If the admin has enabled "enforce profit target", bump the total
+            // up to at least (material cost + labour cost + per-job target
+            // profit).  Per-job target = dayFraction × daily target, where
+            // dayFraction = (perPersonPerDay / hoursPerDay) × daysNeeded.
+            // Small / short jobs that would otherwise lose money get priced
+            // to meet the per-day target share.
+            let profitTargetFloor = 0;
+            if (lab && lab.enforceProfitTarget && lab.tasks) {
+                const hoursPerDay = lab.hoursPerDay || 8;
+                const targetPerDay = lab.targetProfitPerDay || 0;
+                // perPersonPerDay + daysNeeded already exist in the labour
+                // block above — recompute from the same numbers here so the
+                // floor uses the same day-share the sample previews show.
+                const crewForFloor = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                // Re-derive perPersonHrs and daysNeeded from the numbers
+                // we already computed above (we closed the block, so pull
+                // them through the closure by re-computing):
+                const counts2 = { perJob: 1, perLine: clLines.length, perPost: endCount + cornerCount + linePostCount, perFoot: totalFt, perHookup: endCount + cornerCount, perGate: state.gates.length };
+                let workMin2 = 0;
+                for (const t of Object.values(lab.tasks)) {
+                    const units = counts2[t.unit || 'perJob'] || 0;
+                    workMin2 += (t.minutes || 0) * units * (t.employees || 1);
+                }
+                const breakMinPerDay2 = lab.breakMinPerDay || 0;
+                const breakMin2 = (hoursPerDay > 0 && breakMinPerDay2 > 0) ? (workMin2 / (hoursPerDay * 60)) * breakMinPerDay2 : 0;
+                const overhead2 = (lab.travelMinOneWay || 0) * 2 * crewForFloor + (lab.loadUpMin || 0) * crewForFloor;
+                const totalMin2 = workMin2 + breakMin2 + overhead2;
+                const perPersonHrs2 = (totalMin2 / 60) / crewForFloor;
+                const maxHours2 = lab.maxHoursPerDay || 12;
+                const daysNeeded2 = Math.max(1, Math.ceil(perPersonHrs2 / maxHours2));
+                const perPersonPerDay2 = perPersonHrs2 / daysNeeded2;
+                const dayFraction = hoursPerDay > 0 ? (perPersonPerDay2 / hoursPerDay) * daysNeeded2 : 0;
+                const targetProfit = dayFraction * targetPerDay;
+                profitTargetFloor = matCost + labourCost + targetProfit;
+                if (profitTargetFloor > total) total = Math.round(profitTargetFloor);
+            }
+
+            return { total, matCost, matSell, labourCost, labourCharge, endCount, cornerCount, linePostCount, totalFt, profitTargetFloor: Math.round(profitTargetFloor) };
         }
 
 

@@ -791,6 +791,17 @@ a{color:var(--accent);text-decoration:none}
         Per-job target = (job hours ÷ hours per workday) × target profit / workday
       </div>
     </div>
+    <div class="card-row" style="margin-top:10px;padding:10px;background:var(--gray-50);border-radius:6px">
+      <div class="field" style="flex:1">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+          <input type="checkbox" id="lab2-enforce-profit-target" oninput="markDirty();refreshSamplePrices()" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+          <span>Enforce as price floor on customer quotes</span>
+        </label>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:4px;margin-left:28px;line-height:1.4">
+          When on, the Build &amp; Price tool bumps the customer's total up to <code>materials&nbsp;cost + labour&nbsp;cost + per-job&nbsp;target</code> whenever the natural quote falls below that floor. Small / short jobs that would otherwise be unprofitable get priced to meet the target.
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="card">
@@ -5534,6 +5545,7 @@ function ensureLab2() {
   if (config.labour2.otChargeMult == null) config.labour2.otChargeMult = 1.5;
   if (config.labour2.maxHoursPerDay == null) config.labour2.maxHoursPerDay = 12;
   if (config.labour2.targetProfitPerDay == null) config.labour2.targetProfitPerDay = 800;
+  if (config.labour2.enforceProfitTarget == null) config.labour2.enforceProfitTarget = false;
   delete config.labour2.breakPct;
   delete config.labour2.cushioningPct;
   if (!config.labour2.customTaskOrder) config.labour2.customTaskOrder = [];
@@ -5630,6 +5642,8 @@ function loadLabourUI() {
   setV('lab2-ot-cost-mult', lab.otCostMult);
   setV('lab2-ot-charge-mult', lab.otChargeMult);
   setV('lab2-target-profit-day', lab.targetProfitPerDay);
+  const enforceEl = document.getElementById('lab2-enforce-profit-target');
+  if (enforceEl) enforceEl.checked = !!lab.enforceProfitTarget;
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
   setV('lab2-travel-min', lab.travelMinOneWay);
@@ -5651,6 +5665,8 @@ function collectLabourUI() {
   lab.otCostMult = gn('lab2-ot-cost-mult') || 1;
   lab.otChargeMult = gn('lab2-ot-charge-mult') || 1;
   lab.targetProfitPerDay = gn('lab2-target-profit-day');
+  const enforceEl = document.getElementById('lab2-enforce-profit-target');
+  lab.enforceProfitTarget = enforceEl ? !!enforceEl.checked : false;
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
   lab.travelMinOneWay = gn('lab2-travel-min');
@@ -5852,8 +5868,22 @@ function computeFenceSample(spec) {
   const lineCount = spec.lines != null ? spec.lines : 1;
   const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates, lines: lineCount });
 
-  const totalCost = matCost + lab.cost;
-  const totalCharge = matSell + lab.charge;
+  let totalCost = matCost + lab.cost;
+  let totalCharge = matSell + lab.charge;
+  // Honor the profit-target floor if it's enabled in admin settings.  Keeps
+  // the sample card in lock-step with what the live tool will actually quote.
+  const labCfgEarly = ensureLab2();
+  let enforcedByFloor = false;
+  if (labCfgEarly.enforceProfitTarget) {
+    const hpd = labCfgEarly.hoursPerDay || 8;
+    const dayFrac = hpd > 0 ? ((lab.perPersonPerDay || 0) / hpd) * (lab.daysNeeded || 1) : 0;
+    const tgtProfit = dayFrac * (labCfgEarly.targetProfitPerDay || 0);
+    const floorCharge = totalCost + tgtProfit;
+    if (floorCharge > totalCharge) {
+      totalCharge = floorCharge;
+      enforcedByFloor = true;
+    }
+  }
   const profit = totalCharge - totalCost;
   const profitPct = totalCost > 0 ? (profit / totalCharge) * 100 : 0;
 
@@ -5877,6 +5907,7 @@ function computeFenceSample(spec) {
     otHrs: lab.otHrs,
     totalCost, totalCharge, profit, profitPct,
     dayFraction, targetProfit, minimumCharge, profitGap,
+    enforcedByFloor,
     matLines: lines
   };
 }
@@ -5949,7 +5980,7 @@ function renderSamplePriceCard(title, spec) {
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px;padding-top:6px;border-top:1px dashed var(--gray-200);margin-top:4px">
       <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Day share · Target profit</div><div style="font-weight:600">${(r.dayFraction * 100).toFixed(0)}% · ${money(r.targetProfit)}</div></div>
       <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Min charge to hit target</div><div style="font-weight:700">${money(r.minimumCharge)}</div></div>
-      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Gap vs. target</div><div style="font-weight:700;color:${r.profitGap <= 0 ? '#27ae60' : '#c44'}">${r.profitGap <= 0 ? '✓ ahead ' + money(-r.profitGap) : '✗ short ' + money(r.profitGap)}</div></div>
+      <div><div style="color:var(--gray-400);font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Gap vs. target</div><div style="font-weight:700;color:${r.enforcedByFloor ? '#27ae60' : (r.profitGap <= 0 ? '#27ae60' : '#c44')}">${r.enforcedByFloor ? '↑ bumped to floor' : (r.profitGap <= 0 ? '✓ ahead ' + money(-r.profitGap) : '✗ short ' + money(r.profitGap))}</div></div>
     </div>` : ''}
   </div>`;
 }
