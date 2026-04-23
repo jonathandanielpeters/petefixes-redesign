@@ -847,12 +847,42 @@ a{color:var(--accent);text-decoration:none}
     </div>
   </div>
 
-  <!-- Sample Fence Prices -->
+  <!-- Sample Fence Price — interactive, single card -->
   <div class="card" id="cl-sample-prices-card">
-    <div class="card-title">Sample Fence Prices</div>
-    <div class="card-desc">Live preview using your Materials, Recipes, and Labour Calculator settings. Updates every time you edit a cost or markup. Every sample uses 6ft galvanized with 2-3/8" posts and 8ft post spacing.</div>
+    <div class="card-title">Sample Fence Price</div>
+    <div class="card-desc">Live quote preview — every change to your Materials, Recipes, Labour or the sample dimensions re-prices instantly. Uses 6ft galvanized with 2-3/8" posts and 8ft post spacing.</div>
+
+    <!-- Dimension inputs: length / corners / gates / gate type / lines -->
+    <div id="cl-sample-controls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:12px;background:var(--gray-50);border-radius:6px;margin-bottom:10px">
+      <div class="field">
+        <label>Length (ft)</label>
+        <input type="number" id="sample-lengthFt" min="1" step="1" value="200" oninput="onSampleSpecChange()">
+      </div>
+      <div class="field">
+        <label>Corners</label>
+        <input type="number" id="sample-corners" min="0" step="1" value="0" oninput="onSampleSpecChange()">
+      </div>
+      <div class="field">
+        <label>Gates</label>
+        <input type="number" id="sample-gates" min="0" step="1" value="0" oninput="onSampleSpecChange()">
+      </div>
+      <div class="field">
+        <label>Gate type</label>
+        <select id="sample-gateType" onchange="onSampleSpecChange()">
+          <option value="single-swing">Single swing</option>
+          <option value="double-swing">Double swing</option>
+          <option value="slide">Slide / cantilever</option>
+          <option value="pedestrian">Pedestrian</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Line segments</label>
+        <input type="number" id="sample-lines" min="1" step="1" value="1" oninput="onSampleSpecChange()" title="How many straight runs the fence breaks into (e.g. a 3-sided yard = 3).">
+      </div>
+    </div>
+
     <div id="cl-sample-prices"></div>
-    <button class="btn btn-sm" style="margin-top:10px" onclick="refreshSamplePrices()">↻ Refresh samples</button>
+    <button class="btn btn-sm" style="margin-top:10px" onclick="refreshSamplePrices()">↻ Refresh</button>
   </div>
 </div>
 
@@ -5768,19 +5798,42 @@ function renderSamplePriceCard(title, spec) {
   </div>`;
 }
 
+// Read the interactive sample spec from the dimension inputs.  Falls back to
+// sensible defaults when fields haven't rendered yet (first paint).
+function readSampleSpec() {
+  const gn = (id, d) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isFinite(v) ? v : d; };
+  const gs = (id, d) => { const el = document.getElementById(id); return el ? el.value : d; };
+  return {
+    lengthFt: Math.max(1, gn('sample-lengthFt', 200)),
+    corners:  Math.max(0, gn('sample-corners',  0)),
+    gates:    Math.max(0, gn('sample-gates',    0)),
+    gateType: gs('sample-gateType', 'single-swing'),
+    lines:    Math.max(1, gn('sample-lines',    1))
+  };
+}
+
+// Build a short title describing the current sample spec — "200ft, 2 corners,
+// 1 single-swing gate, 3 lines".
+function sampleSpecTitle(spec) {
+  const parts = [spec.lengthFt + ' ft'];
+  if (spec.corners > 0) parts.push(spec.corners + ' corner' + (spec.corners === 1 ? '' : 's'));
+  if (spec.gates > 0)   parts.push(spec.gates + '× ' + spec.gateType.replace('-', ' '));
+  if (spec.lines > 1)   parts.push(spec.lines + ' line segments');
+  return parts.join(' · ');
+}
+
+function onSampleSpecChange() {
+  refreshSamplePrices();
+}
+
 function refreshSamplePrices() {
   const container = document.getElementById('cl-sample-prices');
   if (!container) return;
-  // Pull the latest labour values out of the DOM before we render the sample
-  // cards — this is what makes the preview respond live to edits in the
-  // labour inputs above it.
+  // Pull the latest labour values out of the DOM before we render — this is
+  // what makes the preview respond live to edits in the labour inputs above.
   try { collectLabourUI(); } catch (e) { /* fields may not be rendered yet */ }
-  const samples = [
-    { title: '16ft straight line fence',                       spec: { lengthFt: 16,  corners: 0, gates: 0, lines: 1 } },
-    { title: '200ft straight line fence',                      spec: { lengthFt: 200, corners: 0, gates: 0, lines: 1 } },
-    { title: '200ft 3-sided fence with 1 single-swing gate',   spec: { lengthFt: 200, corners: 2, gates: 1, gateType: 'single-swing', lines: 3 } }
-  ];
-  container.innerHTML = samples.map(s => renderSamplePriceCard(s.title, s.spec)).join('');
+  const spec = readSampleSpec();
+  container.innerHTML = renderSamplePriceCard(sampleSpecTitle(spec), spec);
 }
 
 // Hook load/save pipeline — showSection wrap already exists; also fire on direct load
