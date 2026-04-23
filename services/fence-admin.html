@@ -5595,6 +5595,10 @@ async function calcDistanceFromShop() {
 }
 
 function updateLabourPreview() {
+  // Sync current DOM values into config.labour2 before computing.  Otherwise the
+  // preview (and any downstream refreshSamplePrices call) reads stale config
+  // while the user is still typing into the top-level labour fields.
+  try { collectLabourUI(); } catch (e) { /* fields may not be rendered yet */ }
   // Sample: 200ft straight fence, 6ft chain link, 1 line segment
   const lengthFt = 200;
   const totalPosts = Math.ceil(lengthFt / 8) + 1;
@@ -5767,6 +5771,10 @@ function renderSamplePriceCard(title, spec) {
 function refreshSamplePrices() {
   const container = document.getElementById('cl-sample-prices');
   if (!container) return;
+  // Pull the latest labour values out of the DOM before we render the sample
+  // cards — this is what makes the preview respond live to edits in the
+  // labour inputs above it.
+  try { collectLabourUI(); } catch (e) { /* fields may not be rendered yet */ }
   const samples = [
     { title: '16ft straight line fence',                       spec: { lengthFt: 16,  corners: 0, gates: 0, lines: 1 } },
     { title: '200ft straight line fence',                      spec: { lengthFt: 200, corners: 0, gates: 0, lines: 1 } },
@@ -5788,11 +5796,14 @@ function refreshSamplePrices() {
   };
 })();
 
-// Save labour settings via existing saveConfig flow — collect right before save
+// Save labour settings via existing saveConfig flow — collect right before save.
+// The save pipeline calls collectAll(), not collectForm, so we wrap collectAll.
+// (The earlier "collectForm" wrap was a no-op because that function doesn't
+// exist, which is why labour settings weren't being persisted to saved config.)
 (function hookLabourSave() {
-  if (typeof collectForm === 'function') {
-    const _orig = window.collectForm;
-    window.collectForm = function() {
+  if (typeof collectAll === 'function') {
+    const _orig = window.collectAll;
+    window.collectAll = function() {
       _orig();
       try { collectLabourUI(); } catch (e) { console.warn('[labour] collect failed:', e); }
     };
