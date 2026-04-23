@@ -1402,8 +1402,52 @@ a{color:var(--accent);text-decoration:none}
       <div class="field">
         <label>Accent Color</label>
         <div style="display:flex;gap:8px;align-items:center">
-          <input type="color" id="cfg-brand-accentColor" style="width:60px" oninput="syncColorText()" onchange="markDirty()">
-          <input type="text" id="cfg-brand-accentColorText" style="width:100px;font-family:monospace" oninput="syncColorPicker()" onchange="markDirty()" placeholder="#C8A55A">
+          <input type="color" id="cfg-brand-accentColor" style="width:60px" oninput="syncColorText();themeOnAccentChange();markDirty()" onchange="markDirty()">
+          <input type="text" id="cfg-brand-accentColorText" style="width:100px;font-family:monospace" oninput="syncColorPicker();themeOnAccentChange();markDirty()" onchange="markDirty()" placeholder="#C8A55A">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Build & Price Theme ── -->
+  <div class="card">
+    <div class="card-title">Build &amp; Price Theme</div>
+    <div class="card-desc">Appearance options for the customer-facing <em>Build &amp; Price</em> tool. Every change here deploys with the rest of your saved config — each site using this tool pulls its own theme.</div>
+
+    <!-- Theme mode (Light / Dark / Auto) -->
+    <div class="field" style="margin-bottom:14px">
+      <label>Theme mode</label>
+      <div class="config-toggle" id="cfg-theme-mode" style="display:inline-flex;background:var(--gray-50);border-radius:8px;overflow:hidden;margin-top:4px">
+        <button type="button" class="theme-mode-btn" data-mode="light" onclick="setThemeMode('light')" style="padding:8px 18px;font-size:13px;font-weight:500;background:transparent;border:none;cursor:pointer;color:var(--gray-500)">☀︎ Light</button>
+        <button type="button" class="theme-mode-btn" data-mode="dark" onclick="setThemeMode('dark')" style="padding:8px 18px;font-size:13px;font-weight:500;background:transparent;border:none;cursor:pointer;color:var(--gray-500)">☾ Dark</button>
+        <button type="button" class="theme-mode-btn" data-mode="auto" onclick="setThemeMode('auto')" style="padding:8px 18px;font-size:13px;font-weight:500;background:transparent;border:none;cursor:pointer;color:var(--gray-500)">⚙︎ Auto</button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Light = always light. Dark = always dark. Auto = match the visitor's OS preference.</div>
+    </div>
+
+    <!-- Accent presets -->
+    <div class="field">
+      <label>Accent color — quick presets</label>
+      <div id="cfg-theme-presets" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+        <button type="button" class="theme-preset" data-color="#C8A55A" onclick="applyThemePreset('#C8A55A')" title="Classic Gold" style="width:40px;height:40px;border:2px solid var(--gray-200);border-radius:50%;background:#C8A55A;cursor:pointer;transition:transform .15s,border-color .15s"></button>
+        <button type="button" class="theme-preset" data-color="#3B6FA8" onclick="applyThemePreset('#3B6FA8')" title="Royal Blue" style="width:40px;height:40px;border:2px solid var(--gray-200);border-radius:50%;background:#3B6FA8;cursor:pointer;transition:transform .15s,border-color .15s"></button>
+        <button type="button" class="theme-preset" data-color="#2E7D32" onclick="applyThemePreset('#2E7D32')" title="Deep Green" style="width:40px;height:40px;border:2px solid var(--gray-200);border-radius:50%;background:#2E7D32;cursor:pointer;transition:transform .15s,border-color .15s"></button>
+        <button type="button" class="theme-preset" data-color="#C0392B" onclick="applyThemePreset('#C0392B')" title="Crimson" style="width:40px;height:40px;border:2px solid var(--gray-200);border-radius:50%;background:#C0392B;cursor:pointer;transition:transform .15s,border-color .15s"></button>
+        <button type="button" class="theme-preset" data-color="#8B5CF6" onclick="applyThemePreset('#8B5CF6')" title="Violet" style="width:40px;height:40px;border:2px solid var(--gray-200);border-radius:50%;background:#8B5CF6;cursor:pointer;transition:transform .15s,border-color .15s"></button>
+        <button type="button" class="theme-preset" data-color="#525252" onclick="applyThemePreset('#525252')" title="Graphite" style="width:40px;height:40px;border:2px solid var(--gray-200);border-radius:50%;background:#525252;cursor:pointer;transition:transform .15s,border-color .15s"></button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Click any swatch to set the accent colour (saves the hex into <code>Accent Color</code> above). Or use the colour picker above for a custom shade.</div>
+    </div>
+
+    <!-- Live preview -->
+    <div style="margin-top:18px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--gray-400);margin-bottom:6px">Preview</div>
+      <div id="cfg-theme-preview" style="padding:20px;border-radius:12px;border:1px solid var(--gray-200);background:#fbfbfd;transition:background .2s,border-color .2s">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="theme-preview-btn" style="padding:10px 20px;border-radius:999px;border:none;background:var(--tp-accent,#C8A55A);color:#fff;font-weight:600;font-size:13px;cursor:pointer">Get a Free Quote</button>
+          <div style="padding:6px 14px;border-radius:999px;border:1.5px solid var(--tp-accent,#C8A55A);background:var(--tp-accent-light,rgba(200,165,90,0.1));color:var(--tp-accent,#C8A55A);font-weight:500;font-size:12px">Active Pill</div>
+          <div style="padding:4px 10px;border-radius:6px;background:var(--tp-gray-50,#f5f5f7);color:var(--tp-text,#1d1d1f);font-family:monospace;font-size:11px;border:1px solid var(--tp-gray-100,#e8e8ed)">button { background: accent; }</div>
+          <div style="flex:1;min-width:120px;font-size:12px;color:var(--tp-text,#1d1d1f);line-height:1.4">Headline text + <span style="color:var(--tp-muted,#86868b)">muted caption</span> — both adapt to the theme mode.</div>
         </div>
       </div>
     </div>
@@ -1506,6 +1550,12 @@ const DEFAULT_CONFIG = {
     emailjsServiceId: "",
     emailjsCustomerTemplate: "",
     emailjsInternalTemplate: ""
+  },
+  theme: {
+    // Build & Price tool appearance.  `mode` = light | dark | auto
+    // (auto follows the visitor's OS preference via prefers-color-scheme).
+    // `accentColor` is read from branding.accentColor so there's only one source of truth.
+    mode: "light"
   },
   pricingMode: "material",
   materialPricing: {
@@ -2071,6 +2121,9 @@ function populateAll() {
   setVal('cfg-brand-emailjsCustomerTemplate', config.branding.emailjsCustomerTemplate);
   setVal('cfg-brand-emailjsInternalTemplate', config.branding.emailjsInternalTemplate);
 
+  // Build & Price theme — sync mode buttons + preset ring + live preview
+  if (typeof loadThemeUI === 'function') loadThemeUI();
+
   updateAllPreviews();
   dirty = false;
   document.getElementById('unsavedDot').classList.remove('visible');
@@ -2093,6 +2146,9 @@ function collectAll() {
   config.branding.emailjsServiceId = getVal('cfg-brand-emailjsServiceId');
   config.branding.emailjsCustomerTemplate = getVal('cfg-brand-emailjsCustomerTemplate');
   config.branding.emailjsInternalTemplate = getVal('cfg-brand-emailjsInternalTemplate');
+
+  // Build & Price theme (mode is mutated directly by setThemeMode)
+  if (typeof collectThemeUI === 'function') collectThemeUI();
 
   // Markup
   config.minimumJobCharge = getNum('cfg-minimumJobCharge');
@@ -4043,6 +4099,106 @@ function syncColorPicker() {
   if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
     document.getElementById('cfg-brand-accentColor').value = v;
   }
+}
+
+// ═══════ Build & Price Theme — preset, mode, preview ═══════
+function ensureTheme() {
+  if (!config.theme) config.theme = { mode: 'light' };
+  if (!config.theme.mode) config.theme.mode = 'light';
+  return config.theme;
+}
+
+// Lighten a hex for "accent-light" tint (8% opacity-equivalent rgba).
+function hexToRgba(hex, a) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return 'rgba(200,165,90,' + a + ')';
+  const n = parseInt(m[1], 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+}
+
+// Darken a hex by N% (for the accent-hover state).
+function hexDarken(hex, pct) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const r = Math.max(0, Math.min(255, Math.round(((n >> 16) & 255) * (1 - pct))));
+  const g = Math.max(0, Math.min(255, Math.round(((n >> 8) & 255) * (1 - pct))));
+  const b = Math.max(0, Math.min(255, Math.round((n & 255) * (1 - pct))));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+function setThemeMode(mode) {
+  ensureTheme().mode = mode;
+  document.querySelectorAll('.theme-mode-btn').forEach(b => {
+    const on = b.dataset.mode === mode;
+    b.style.background = on ? 'var(--accent)' : 'transparent';
+    b.style.color = on ? 'var(--white)' : 'var(--gray-500)';
+    b.style.borderRadius = on ? '8px' : '0';
+  });
+  markDirty();
+  updateThemePreview();
+}
+
+function applyThemePreset(hex) {
+  document.getElementById('cfg-brand-accentColor').value = hex;
+  document.getElementById('cfg-brand-accentColorText').value = hex;
+  themeOnAccentChange();
+  markDirty();
+}
+
+// Called whenever the accent colour changes — visually ring the matching preset
+// swatch and refresh the preview.
+function themeOnAccentChange() {
+  const hex = (document.getElementById('cfg-brand-accentColor')?.value || '').toLowerCase();
+  document.querySelectorAll('.theme-preset').forEach(sw => {
+    const match = (sw.dataset.color || '').toLowerCase() === hex;
+    sw.style.borderColor = match ? '#1d1d1f' : 'var(--gray-200)';
+    sw.style.transform = match ? 'scale(1.15)' : 'scale(1)';
+  });
+  updateThemePreview();
+}
+
+function updateThemePreview() {
+  const preview = document.getElementById('cfg-theme-preview');
+  if (!preview) return;
+  const hex = document.getElementById('cfg-brand-accentColor')?.value || '#C8A55A';
+  const mode = ensureTheme().mode || 'light';
+  const isDark = mode === 'dark' || (mode === 'auto' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+
+  preview.style.setProperty('--tp-accent', hex);
+  preview.style.setProperty('--tp-accent-light', hexToRgba(hex, 0.14));
+  if (isDark) {
+    preview.style.background = '#16161a';
+    preview.style.borderColor = '#2a2a2d';
+    preview.style.setProperty('--tp-text', '#f0f0f0');
+    preview.style.setProperty('--tp-muted', '#8b8b8f');
+    preview.style.setProperty('--tp-gray-50', '#23232a');
+    preview.style.setProperty('--tp-gray-100', '#33333a');
+  } else {
+    preview.style.background = '#fbfbfd';
+    preview.style.borderColor = 'var(--gray-200)';
+    preview.style.setProperty('--tp-text', '#1d1d1f');
+    preview.style.setProperty('--tp-muted', '#86868b');
+    preview.style.setProperty('--tp-gray-50', '#f5f5f7');
+    preview.style.setProperty('--tp-gray-100', '#e8e8ed');
+  }
+}
+
+function loadThemeUI() {
+  const t = ensureTheme();
+  document.querySelectorAll('.theme-mode-btn').forEach(b => {
+    const on = b.dataset.mode === (t.mode || 'light');
+    b.style.background = on ? 'var(--accent)' : 'transparent';
+    b.style.color = on ? 'var(--white)' : 'var(--gray-500)';
+    b.style.borderRadius = on ? '8px' : '0';
+  });
+  themeOnAccentChange();
+}
+
+function collectThemeUI() {
+  // mode is mutated directly by setThemeMode; accent is mirrored from branding.accentColor.
+  // Just make sure the object exists so it persists.
+  ensureTheme();
 }
 
 // ═══════ SAVE / LOAD / EXPORT ═══════
