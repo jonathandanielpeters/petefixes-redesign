@@ -9,9 +9,11 @@
  *  - /api/book-installation  → Square payment + Google Calendar booking
  */
 
-// ── Credentials (wrangler.toml [vars] overrides these defaults) ─────
+// ── Credentials ─────────────────────────────────────────────────────
+// ADMIN_USER is set in wrangler.toml [vars]; ADMIN_PASS must be set as a
+// Wrangler secret (`wrangler secret put ADMIN_PASS`). If the secret is
+// missing, auth fails closed rather than falling back to a known default.
 const DEFAULT_USER = "admin";
-const DEFAULT_PASS = "changethings2";
 
 // ── Paths that require auth ─────────────────────────────────────────
 const PROTECTED = ["/services/fence-admin"];
@@ -37,7 +39,9 @@ function checkBasicAuth(request, env) {
   if (!header.startsWith("Basic ")) return false;
 
   const expectedUser = env.ADMIN_USER || DEFAULT_USER;
-  const expectedPass = env.ADMIN_PASS || DEFAULT_PASS;
+  const expectedPass = env.ADMIN_PASS;
+  // Fail closed if the secret isn't set — never allow auth with an empty pass.
+  if (!expectedPass) return false;
 
   try {
     const decoded = atob(header.slice(6));
