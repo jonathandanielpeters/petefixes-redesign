@@ -5464,6 +5464,102 @@ function cl3PriceFor(code) {
 }
 function cl3FmtPrice(n) { return n == null ? '<span style="color:#b42c2c">?</span>' : '$' + (+n).toFixed(2); }
 
+// ── Auto-populate helpers ──
+// Each `+ Add` button uses these to pre-fill new rows with sensible picks
+// from the master pricelist instead of dropping in an empty placeholder.
+
+// Find the cheapest galv item + its black counterpart for a given material
+// classification, optionally filtered by a per-item predicate.
+function _cl3PairForMaterial(materialName, predicate) {
+  const m = ensureClMaster();
+  const items = m.items.filter(it => {
+    if (it.showToCustomer === false) return false;
+    const a = resolveClItemAssignment(it);
+    return a.materialName === materialName && (predicate ? predicate(it, a) : true);
+  });
+  items.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+  const galv = items.find(it => resolveClItemAssignment(it).color === 'galvanized');
+  const black = items.find(it => resolveClItemAssignment(it).color === 'black');
+  return { galv: galv?.itemCode || '', black: black?.itemCode || '' };
+}
+
+// For a galv code like "171785", find the black counterpart "171785BL".
+// First tries the +BL convention, falls back to looking up by name+size+color.
+function _cl3BlackCounterpart(galvCode) {
+  if (!galvCode) return '';
+  const m = ensureClMaster();
+  // Common pattern: BL suffix
+  const bl = m.items.find(i => i.itemCode === galvCode + 'BL');
+  if (bl) return bl.itemCode;
+  // Otherwise: same materialName + variantSize but black color
+  const galvItem = m.items.find(i => i.itemCode === galvCode);
+  if (!galvItem) return '';
+  const a = resolveClItemAssignment(galvItem);
+  const blackItem = m.items.find(i => {
+    if (i.itemCode === galvCode || i.showToCustomer === false) return false;
+    const b = resolveClItemAssignment(i);
+    return b.color === 'black' && b.materialName === a.materialName && b.variantSize === a.variantSize;
+  });
+  return blackItem?.itemCode || '';
+}
+
+// Walk an existing list of options and collect the diameters/gauges already used,
+// so the "+ Add" can pick the next unused size from a preference order.
+function _cl3UsedFromOptions(opts, getCode, regex) {
+  const used = new Set();
+  const m = ensureClMaster();
+  opts.forEach(o => {
+    const code = getCode(o);
+    if (!code) return;
+    const it = m.items.find(i => i.itemCode === code);
+    if (!it) return;
+    const a = resolveClItemAssignment(it);
+    const match = a.materialName.match(regex);
+    if (match) used.add(match[1]);
+  });
+  return used;
+}
+
+// Given a preference list of diameters (e.g. ['2-3/8','2-7/8','1-7/8']),
+// return the cheapest galv item for the first diameter not yet used.
+function _cl3PickNextTubing(opts, prefs, minLen) {
+  const used = _cl3UsedFromOptions(opts, o => o.galv || o.black, /Post Tubing (\S+?)"/);
+  const m = ensureClMaster();
+  for (const dia of prefs) {
+    if (used.has(dia)) continue;
+    const items = m.items.filter(it => {
+      if (it.showToCustomer === false) return false;
+      const a = resolveClItemAssignment(it);
+      if (a.materialName !== 'Post Tubing ' + dia + '"') return false;
+      if (a.color !== 'galvanized') return false;
+      if (minLen != null) {
+        const len = parseFloat((a.variantSize || '').replace(/'/g, ''));
+        return len >= minLen;
+      }
+      return true;
+    });
+    items.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+    if (items[0]) return { diameter: dia, galvItem: items[0] };
+  }
+  return null;
+}
+
+function _cl3PickNextFabricGauge(opts, prefs, heightFt) {
+  const used = _cl3UsedFromOptions(opts, o => o.galv || o.black, /(\d+(?:\.5)?)ga/);
+  const m = ensureClMaster();
+  for (const g of prefs) {
+    if (used.has(g)) continue;
+    const items = m.items.filter(it => {
+      if (it.showToCustomer === false) return false;
+      const a = resolveClItemAssignment(it);
+      return /^Chain Link Fabric/.test(a.materialName) && a.materialName.includes(g + 'ga') && a.variantSize === heightFt + 'ft' && a.color === 'galvanized';
+    });
+    items.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+    if (items[0]) return { gauge: g, galvItem: items[0] };
+  }
+  return null;
+}
+
 // ═══════ Card 1 of 5: MAIN ASSEMBLY (end + corner posts) ═══════
 function renderCl3MainAssembly(recipe) {
   const opts = recipe.mainAssembly.postOptions;
@@ -5502,7 +5598,45 @@ function renderCl3MainAssembly(recipe) {
     '</div>';
 }
 function _cl3CurRecipe() { const cl3 = ensureCl3(); return cl3[cl3._uiTier][cl3._uiHeight]; }
-function addCl3Main() { const r = _cl3CurRecipe(); if (!r) return; const o = blankCl3PostOpt(); if (r.mainAssembly.postOptions.length === 0) o.isDefault = true; r.mainAssembly.postOptions.push(o); markDirty(); renderClRecipesV3(); }
+function addCl3Main() {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const cl3 = ensureCl3();
+  const heightFt = parseFloat(cl3._uiHeight) || 6;
+  const minLen = heightFt + 2;
+  const o = blankCl3PostOpt();
+  // Pick next-unused diameter from preference order: std → HD → light
+  const pick = _cl3PickNextTubing(r.mainAssembly.postOptions, ['2-3/8', '2-7/8', '3-1/2', '1-7/8'], minLen);
+  if (pick) {
+    o.galv = pick.galvItem.itemCode;
+    o.black = _cl3BlackCounterpart(pick.galvItem.itemCode);
+    o.label = pick.diameter + '" ≥' + minLen + "'";
+    const cap = _cl3PairForMaterial('Post Cap', (it, a) => a.variantSize === pick.diameter + '"');
+    o.capGalv = cap.galv;
+    o.capBlack = cap.black;
+  }
+  if (r.mainAssembly.postOptions.length === 0) o.isDefault = true;
+  r.mainAssembly.postOptions.push(o);
+  // Auto-create paired connection block sized to the new main post
+  if (pick) {
+    const heightInches = Math.round(heightFt * 12);
+    const conn = blankCl3Connection();
+    const tbar = _cl3PairForMaterial('Tension Bar', (it, a) => Math.abs(parseFloat(a.variantSize || '') - heightInches) <= 6);
+    conn.tensionBarGalv = tbar.galv; conn.tensionBarBlack = tbar.black;
+    const rend = _cl3PairForMaterial('Rail End', (it, a) => a.variantSize === '1-5/16"');
+    conn.railEndGalv = rend.galv; conn.railEndBlack = rend.black;
+    // Bands sized to wrap around the main post diameter — for 2-3/8" tubing
+    // the band stamp is "2"" or "2-3/8""; check both.
+    const bandSizeMatch = s => s === pick.diameter + '"' || s === '2"';
+    const bb = _cl3PairForMaterial('Brace Band', (it, a) => bandSizeMatch(a.variantSize));
+    conn.braceBandGalv = bb.galv; conn.braceBandBlack = bb.black;
+    const tband = _cl3PairForMaterial('Tension Band', (it, a) => bandSizeMatch(a.variantSize));
+    conn.tensionBandGalv = tband.galv; conn.tensionBandBlack = tband.black;
+    conn.tensionBandQty = Math.max(4, Math.ceil(heightFt));
+    r.connections.perMainPost[o.id] = conn;
+  }
+  markDirty();
+  renderClRecipesV3();
+}
 function removeCl3Main(id) { const r = _cl3CurRecipe(); if (!r) return; const wasDef = r.mainAssembly.postOptions.find(o => o.id === id)?.isDefault; r.mainAssembly.postOptions = r.mainAssembly.postOptions.filter(o => o.id !== id); if (wasDef && r.mainAssembly.postOptions[0]) r.mainAssembly.postOptions[0].isDefault = true; if (r.connections.perMainPost[id]) delete r.connections.perMainPost[id]; markDirty(); renderClRecipesV3(); }
 function setCl3MainDefault(id) { const r = _cl3CurRecipe(); if (!r) return; r.mainAssembly.postOptions.forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
 function updCl3Main(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.mainAssembly.postOptions.find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label') renderClRecipesV3(); }
@@ -5558,7 +5692,39 @@ function renderCl3LinePostAssembly(recipe, tier) {
     '<button class="btn btn-sm" style="margin-top:8px" onclick="addCl3Line()">+ Add line post option</button>' +
     '</div>';
 }
-function addCl3Line() { const r = _cl3CurRecipe(); if (!r) return; const o = blankCl3LinePostOpt(); if (r.linePostAssembly.postOptions.length === 0) o.isDefault = true; r.linePostAssembly.postOptions.push(o); markDirty(); renderClRecipesV3(); }
+function addCl3Line() {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const cl3 = ensureCl3();
+  const heightFt = parseFloat(cl3._uiHeight) || 6;
+  const minLen = heightFt + 2;
+  const o = blankCl3LinePostOpt();
+  // Line post preference: 1-7/8 (std), 2-3/8 (commercial-grade line), 1-5/8 (light)
+  const pick = _cl3PickNextTubing(r.linePostAssembly.postOptions, ['1-7/8', '2-3/8', '1-5/8'], minLen);
+  if (pick) {
+    o.galv = pick.galvItem.itemCode;
+    o.black = _cl3BlackCounterpart(pick.galvItem.itemCode);
+    o.label = pick.diameter + '" ≥' + minLen + "'";
+    // Line post cap variant: first dimension matches post diameter (ET17856 = 1-7/8")
+    const lcap = _cl3PairForMaterial('Line Post Cap', (it, a) => (a.variantSize || '').startsWith(pick.diameter + '"') || a.variantSize === pick.diameter + '"');
+    o.capGalv = lcap.galv;
+    o.capBlack = lcap.black;
+  }
+  // Fence tie — cheapest available
+  const tie = _cl3PairForMaterial('Fence Tie');
+  o.fenceTieGalv = tie.galv;
+  o.fenceTieBlack = tie.black;
+  o.fenceTiesPerPost = 4;
+  // Commercial: also surface a barb arm pick
+  if (cl3._uiTier === 'commercial') {
+    const arm = _cl3PairForMaterial('Barb Wire Arm');
+    o.barbArmGalv = arm.galv;
+    o.barbArmBlack = arm.black;
+  }
+  if (r.linePostAssembly.postOptions.length === 0) o.isDefault = true;
+  r.linePostAssembly.postOptions.push(o);
+  markDirty();
+  renderClRecipesV3();
+}
 function removeCl3Line(id) { const r = _cl3CurRecipe(); if (!r) return; const wasDef = r.linePostAssembly.postOptions.find(o => o.id === id)?.isDefault; r.linePostAssembly.postOptions = r.linePostAssembly.postOptions.filter(o => o.id !== id); if (wasDef && r.linePostAssembly.postOptions[0]) r.linePostAssembly.postOptions[0].isDefault = true; markDirty(); renderClRecipesV3(); }
 function setCl3LineDefault(id) { const r = _cl3CurRecipe(); if (!r) return; r.linePostAssembly.postOptions.forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
 function updCl3Line(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.linePostAssembly.postOptions.find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label' && field !== 'fenceTiesPerPost') renderClRecipesV3(); }
@@ -5604,7 +5770,75 @@ function renderCl3PerFoot(recipe) {
     '</div>' +
     '</div>';
 }
-function addCl3Pf(kind) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const o = blankCl3PerFootOpt(kind); if (list.length === 0) o.isDefault = true; list.push(o); markDirty(); renderClRecipesV3(); }
+function addCl3Pf(kind) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const cl3 = ensureCl3();
+  const heightFt = parseFloat(cl3._uiHeight) || 6;
+  const list = r.perFoot[kind + 'Options'];
+  const o = blankCl3PerFootOpt(kind);
+
+  if (kind === 'fabric') {
+    // Cycle gauges: 11ga (residential std) → 9ga (heavier upgrade) → 11.5ga (lightest)
+    const pick = _cl3PickNextFabricGauge(list, ['11', '9', '11.5'], heightFt);
+    if (pick) {
+      o.galv = pick.galvItem.itemCode;
+      o.black = _cl3BlackCounterpart(pick.galvItem.itemCode);
+      o.label = pick.gauge + 'ga ' + heightFt + 'ft';
+    }
+  } else if (kind === 'topRail') {
+    // Real top rail sticks are typically 10' SW or 21' (full length).
+    // 3' DBL-SW pieces are brace tubes — exclude them.
+    const usedCodes = new Set(list.map(x => x.galv).filter(Boolean));
+    const m = ensureClMaster();
+    const candidates = m.items.filter(it => {
+      if (it.showToCustomer === false) return false;
+      if (usedCodes.has(it.itemCode)) return false;
+      const a = resolveClItemAssignment(it);
+      if (!/^Top Rail/.test(a.materialName)) return false;
+      if (a.color !== 'galvanized') return false;
+      // Variant must be a plain length like "10'" — skip "3' DBL-SW" brace tubes
+      const v = a.variantSize || '';
+      if (!/^\d+(\.\d+)?'$/.test(v)) return false;
+      const lenFt = parseFloat(v);
+      return lenFt >= 6;  // real top rail sticks: 10', 21', or special order
+    });
+    candidates.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+    if (candidates[0]) {
+      o.galv = candidates[0].itemCode;
+      o.black = _cl3BlackCounterpart(candidates[0].itemCode);
+      const a = resolveClItemAssignment(candidates[0]);
+      o.label = 'Top rail ' + a.materialName.replace('Top Rail ', '') + ' ' + a.variantSize;
+    }
+  } else if (kind === 'bottomWire') {
+    // Pick cheapest /ft variant first; fall back to any
+    const usedCodes = new Set(list.map(x => x.galv).filter(Boolean));
+    const m = ensureClMaster();
+    const candidates = m.items.filter(it => {
+      if (it.showToCustomer === false) return false;
+      if (usedCodes.has(it.itemCode)) return false;
+      const a = resolveClItemAssignment(it);
+      return a.materialName === 'Bottom Wire' && a.color === 'galvanized';
+    });
+    // Prefer per-foot variants for fence applications
+    candidates.sort((x, y) => {
+      const xPerFt = /\/ft/.test(resolveClItemAssignment(x).variantSize || '') ? 0 : 1;
+      const yPerFt = /\/ft/.test(resolveClItemAssignment(y).variantSize || '') ? 0 : 1;
+      if (xPerFt !== yPerFt) return xPerFt - yPerFt;
+      return (x.priceAfterTax || 0) - (y.priceAfterTax || 0);
+    });
+    if (candidates[0]) {
+      o.galv = candidates[0].itemCode;
+      o.black = _cl3BlackCounterpart(candidates[0].itemCode);
+      const a = resolveClItemAssignment(candidates[0]);
+      o.label = 'Bottom wire ' + (a.variantSize || '');
+    }
+  }
+
+  if (list.length === 0) o.isDefault = true;
+  list.push(o);
+  markDirty();
+  renderClRecipesV3();
+}
 function removeCl3Pf(kind, id) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const wasDef = list.find(o => o.id === id)?.isDefault; r.perFoot[kind + 'Options'] = list.filter(o => o.id !== id); if (wasDef && r.perFoot[kind + 'Options'][0]) r.perFoot[kind + 'Options'][0].isDefault = true; markDirty(); renderClRecipesV3(); }
 function setCl3PfDefault(kind, id) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[kind + 'Options'].forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
 function updCl3Pf(kind, id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.perFoot[kind + 'Options'].find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label') renderClRecipesV3(); }
@@ -5686,7 +5920,54 @@ function renderCl3Gates(recipe) {
     '<button class="btn btn-sm" style="margin-top:10px" onclick="addCl3Gate()">+ Add gate</button>' +
     '</div>';
 }
-function addCl3Gate() { const r = _cl3CurRecipe(); if (!r) return; r.gates.push(blankCl3Gate()); markDirty(); renderClRecipesV3(); }
+function addCl3Gate() {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const cl3 = ensureCl3();
+  const heightFt = parseFloat(cl3._uiHeight) || 6;
+  const heightInches = Math.round(heightFt * 12);
+  const tier = cl3._uiTier;
+
+  const g = blankCl3Gate();
+  g.heightInches = heightInches;
+  // Cycle widths: residential typically 3.5/4/5; commercial 4/6/12
+  const usedWidths = new Set(r.gates.map(x => x.widthFt));
+  const widthPrefs = tier === 'commercial' ? [4, 6, 12, 8] : [3.5, 4, 5, 6];
+  g.widthFt = widthPrefs.find(w => !usedWidths.has(w)) || (tier === 'commercial' ? 4 : 3.5);
+  g.label = g.widthFt + "'W × " + heightInches + '"H';
+
+  // Match a gate item by exact W×H
+  const gateMaterialName = tier === 'commercial' ? 'Industrial Single Swing Gate' : 'Residential Single Gate';
+  const widthMatch = (a) => {
+    const v = a.variantSize || '';
+    return v.includes(heightInches + '"H') && v.startsWith(g.widthFt + "'W");
+  };
+  const gatePair = _cl3PairForMaterial(gateMaterialName, (it, a) => widthMatch(a));
+  g.gateGalv = gatePair.galv;
+  g.gateBlack = gatePair.black;
+
+  // Pre-fill standard hardware: hinges + latches
+  const hwSpecs = [
+    { label: 'Hinge bolt', material: 'Hinge Bolt', qty: 2 },
+    { label: 'Drop latch', material: 'Drop Latch', qty: 1 },
+    { label: 'Latch catch', material: 'Latch Catch', qty: 1 },
+    { label: 'Fork latch', material: 'Fork Latch', qty: 1 }
+  ];
+  hwSpecs.forEach(spec => {
+    const pair = _cl3PairForMaterial(spec.material);
+    if (pair.galv || pair.black) {
+      const hw = blankCl3GateHardware();
+      hw.label = spec.label;
+      hw.galv = pair.galv;
+      hw.black = pair.black;
+      hw.qty = spec.qty;
+      g.hardware.push(hw);
+    }
+  });
+
+  r.gates.push(g);
+  markDirty();
+  renderClRecipesV3();
+}
 function removeCl3Gate(id) { const r = _cl3CurRecipe(); if (!r) return; r.gates = r.gates.filter(g => g.id !== id); markDirty(); renderClRecipesV3(); }
 function updCl3Gate(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === id); if (!g) return; g[field] = value; markDirty(); if (field === 'gateGalv' || field === 'gateBlack') renderClRecipesV3(); }
 function addCl3GateHw(gateId) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; if (!g.hardware) g.hardware = []; g.hardware.push(blankCl3GateHardware()); markDirty(); renderClRecipesV3(); }
@@ -5807,11 +6088,13 @@ function seedCl3Recipe() {
     recipe.perFoot.fabricOptions.push(opt);
   }
 
-  // ── Top rail (must have a real stick length, not "PER FT" specials) ──
+  // ── Top rail (must be a real stick: not "PER FT", not 3' DBL-SW brace tube) ──
   const rail = cheapestPair((it, asn) => {
     if (!/^Top Rail/.test(asn.materialName)) return false;
-    if (!asn.variantSize) return false;  // skips 5608FTX-style PER FT pipe
-    return /\d/.test(asn.variantSize);
+    const v = asn.variantSize || '';
+    // Plain length like "10'" — excludes empty (PER FT pipe) and "3' DBL-SW" (brace tube)
+    if (!/^\d+(\.\d+)?'$/.test(v)) return false;
+    return parseFloat(v) >= 6;
   });
   if (rail.galv || rail.black) {
     const opt = blankCl3PerFootOpt('topRail');
