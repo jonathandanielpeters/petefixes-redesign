@@ -566,6 +566,35 @@ a{color:var(--accent);text-decoration:none}
   <h2 class="section-title">Chainlink Pricing</h2>
   <p class="section-subtitle">Master material list + build recipes. The fence drawing tool uses these recipes to calculate the parts needed for each post type, per foot of fence, and per gate type. Color variants (galvanized/black) are matched automatically to the customer's selection.</p>
 
+  <!-- 2026 Pricelist (importable Excel data) -->
+  <div class="card">
+    <div class="card-title">Chain Link Pricelist 2026</div>
+    <div class="card-desc">
+      Wholesale price list with <b>444 SKUs</b> across Fabric, Posts, Rails, Fittings, Gate hardware, Wire, etc. Each item is tagged
+      <span style="color:#3c8a1d">Residential</span>, <span style="color:#b42c2c">Commercial</span> or
+      <span style="color:#2a63a5">Both</span>. Use the per-row controls to mark items as <em>shown to customer</em>, group similar
+      items into an <em>upgrade group</em> (siblings appear as upgrade options on the customer side), and edit costs/markups inline.
+    </div>
+    <div style="margin:10px 0 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-sm" onclick="clMasterImport2026()" title="Load the 2026 wholesale price list (one-time seed; preserves any per-item edits you've made)">⤓ Import 2026 pricelist</button>
+      <input type="text" id="cl-master-search" placeholder="Search code or description…" oninput="renderClMasterList()" style="flex:1;min-width:160px;max-width:320px;padding:5px 10px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
+      <select id="cl-master-use" onchange="renderClMasterList()" style="padding:4px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
+        <option value="">All uses</option>
+        <option value="Residential">Residential</option>
+        <option value="Commercial">Commercial</option>
+        <option value="Both">Both</option>
+      </select>
+      <select id="cl-master-cat" onchange="renderClMasterList()" style="padding:4px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
+        <option value="">All categories</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500)">
+        <input type="checkbox" id="cl-master-only-shown" onchange="renderClMasterList()" style="width:14px;height:14px"> Only shown
+      </label>
+      <span id="cl-master-count" style="margin-left:auto;font-size:11px;color:var(--gray-400)"></span>
+    </div>
+    <div id="cl-master-list" style="max-height:600px;overflow-y:auto;border:1px solid var(--gray-100);border-radius:6px"></div>
+  </div>
+
   <!-- Materials Master List -->
   <div class="card">
     <div class="card-title">Materials — Master List</div>
@@ -855,6 +884,57 @@ a{color:var(--accent);text-decoration:none}
         <span class="preview-value" id="lab2-preview-charge">--</span>
       </div>
       <div class="preview-detail" id="lab2-preview-detail">Fill in task times to calculate.</div>
+    </div>
+  </div>
+
+  <!-- Commercial Edition — separate config layer -->
+  <div class="card" id="cl-commercial-card" style="border-left:3px solid var(--accent)">
+    <div class="card-title">⚙︎ Commercial Edition <span style="font-size:10px;font-weight:700;letter-spacing:0.05em;background:var(--accent);color:#fff;padding:2px 8px;border-radius:4px;margin-left:6px">HEAVY-DUTY</span></div>
+    <div class="card-desc">
+      Commercial pricing is a separate layer applied when the customer flips the
+      <em>Commercial</em> toggle on the Build &amp; Price tool. It uses its own materials,
+      recipes, labour, and gates so heavy-duty work doesn't get residential prices.
+      Items above tagged <span style="color:#b42c2c">Commercial</span> or
+      <span style="color:#2a63a5">Both</span> are eligible — wire them into the recipes below.
+    </div>
+    <div class="card-row" style="margin-top:8px">
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="cfg-commercial-enabled" oninput="markDirty()" style="width:18px;height:18px;accent-color:var(--accent)">
+          <span>Enable commercial mode for customers</span>
+        </label>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:4px;margin-left:26px">When off, the toggle is hidden in the Build &amp; Price tool. When on, customers see a Mode banner they can flip to commercial.</div>
+      </div>
+    </div>
+    <div class="card-row" style="margin-top:10px">
+      <div class="field">
+        <label>Commercial labour cost / hour ($)</label>
+        <input type="number" id="cfg-comm-cost-hour" step="0.01" min="0" value="40" oninput="markDirty()">
+      </div>
+      <div class="field">
+        <label>Commercial charge / hour ($)</label>
+        <input type="number" id="cfg-comm-charge-hour" step="0.01" min="0" value="125" oninput="markDirty()">
+      </div>
+      <div class="field">
+        <label>Commercial target profit / day ($)</label>
+        <input type="number" id="cfg-comm-target-profit" step="25" min="0" value="1500" oninput="markDirty()">
+      </div>
+    </div>
+    <div class="card-row" style="margin-top:10px">
+      <div class="field">
+        <label>Commercial post spacing default (ft)</label>
+        <select id="cfg-comm-post-spacing" onchange="markDirty()">
+          <option value="8">8 ft</option>
+          <option value="10" selected>10 ft</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Commercial markup multiplier (× residential markup)</label>
+        <input type="number" id="cfg-comm-markup-mult" step="0.05" min="1" value="1.25" oninput="markDirty()" title="Apply this multiplier on top of every chain link material's markup when running in commercial mode. 1.0 = same as residential, 1.25 = 25% more, etc.">
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:10px 12px;background:var(--gray-50);border-radius:6px;font-size:11px;color:var(--gray-500);line-height:1.55">
+      <b>Next:</b> we can add a dedicated Commercial recipe builder (separate from the residential recipes above) and a commercial-only gate pricing chart. The 2026 pricelist already has <b>199 commercial-tagged items + 67 dual-use items</b> ready to wire in.
     </div>
   </div>
 
@@ -2142,6 +2222,27 @@ function populateAll() {
     try { loadLabourUI(); } catch (e) { /* fields may not be in DOM yet */ }
   }
 
+  // Chain Link Master Pricelist (2026) — render after every load so the
+  // import button + 444-row table reflect the current saved data.
+  if (typeof renderClMasterList === 'function') {
+    try { renderClMasterList(); } catch (e) { console.warn('[cl-master] render failed:', e); }
+  }
+
+  // Commercial Edition — hydrate the separate commercial config layer.
+  // Mirrors the residential fields but lives at config.commercial so the
+  // Build & Price tool can swap pricing when the customer flips the toggle.
+  if (config.commercial) {
+    const c = config.commercial;
+    const enabledEl = document.getElementById('cfg-commercial-enabled');
+    if (enabledEl) enabledEl.checked = !!c.enabled;
+    setVal('cfg-comm-cost-hour', c.costPerHour != null ? c.costPerHour : 40);
+    setVal('cfg-comm-charge-hour', c.chargePerHour != null ? c.chargePerHour : 125);
+    setVal('cfg-comm-target-profit', c.targetProfitPerDay != null ? c.targetProfitPerDay : 1500);
+    const psEl = document.getElementById('cfg-comm-post-spacing');
+    if (psEl) psEl.value = String(c.postSpacing || 10);
+    setVal('cfg-comm-markup-mult', c.markupMultiplier != null ? c.markupMultiplier : 1.25);
+  }
+
   updateAllPreviews();
   dirty = false;
   document.getElementById('unsavedDot').classList.remove('visible');
@@ -2412,6 +2513,19 @@ function collectAll() {
   if (typeof collectLabourUI === 'function') {
     try { collectLabourUI(); } catch (e) { console.warn('[labour] collect failed:', e); }
   }
+
+  // Commercial Edition — separate config layer for the customer-facing
+  // commercial toggle. Master pricelist (config.chainlinkMaster) is mutated
+  // in-place by per-row inputs so it doesn't need a collect step here.
+  if (!config.commercial) config.commercial = {};
+  const commEnEl = document.getElementById('cfg-commercial-enabled');
+  config.commercial.enabled = commEnEl ? !!commEnEl.checked : false;
+  config.commercial.costPerHour = getNum('cfg-comm-cost-hour');
+  config.commercial.chargePerHour = getNum('cfg-comm-charge-hour');
+  config.commercial.targetProfitPerDay = getNum('cfg-comm-target-profit');
+  const commPsEl = document.getElementById('cfg-comm-post-spacing');
+  config.commercial.postSpacing = commPsEl ? (parseInt(commPsEl.value, 10) || 10) : 10;
+  config.commercial.markupMultiplier = parseFloat(getVal('cfg-comm-markup-mult')) || 1.25;
 }
 
 // ═══════ LUMBER TABLE RENDERING ═══════
@@ -4606,6 +4720,145 @@ const CL_GATE_TYPES = [
 function clEscAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function clEscHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function clNewId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+// ═══════ CHAIN LINK MASTER PRICELIST (2026) ═══════
+// Holds the 444-item Pete chain link wholesale pricelist with admin-tunable
+// fields per row (showToCustomer / upgradeGroupKey / usedAs / cost edits).
+// Loaded once via the import button — preserves any per-row edits the admin
+// has made (we re-use the existing item id so admin overrides survive re-imports).
+function ensureClMaster() {
+  if (!config.chainlinkMaster) config.chainlinkMaster = { items: [], importedAt: null };
+  if (!Array.isArray(config.chainlinkMaster.items)) config.chainlinkMaster.items = [];
+  return config.chainlinkMaster;
+}
+
+async function clMasterImport2026() {
+  const m = ensureClMaster();
+  try {
+    const res = await fetch('configs/chainlink-pricelist-2026.json?v=' + Date.now());
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!Array.isArray(data.items)) throw new Error('Bad payload');
+    // Merge: keep admin overrides on existing rows, add new ones, leave nothing stale removed
+    const byId = {};
+    m.items.forEach(it => { byId[it.id] = it; });
+    let added = 0, updated = 0;
+    data.items.forEach(src => {
+      const existing = byId[src.id];
+      if (existing) {
+        // Update wholesale-side fields (cost, weight, etc.) but PRESERVE admin tags
+        existing.cost = src.cost; existing.priceAfterTax = src.priceAfterTax;
+        existing.unitWeight = src.unitWeight; existing.pricingUnit = src.pricingUnit;
+        existing.description = src.description; existing.use = src.use; existing.color = src.color;
+        existing.category = src.category; existing.subcategory = src.subcategory;
+        if (existing.usedAs == null) existing.usedAs = [];
+        if (existing.showToCustomer == null) existing.showToCustomer = true;
+        if (existing.isUpgradeOption == null) existing.isUpgradeOption = false;
+        if (existing.upgradeGroupKey == null) existing.upgradeGroupKey = '';
+        if (existing.markupOverride == null) existing.markupOverride = null;
+        updated++;
+      } else {
+        m.items.push(Object.assign({ markupOverride: null }, src));
+        added++;
+      }
+    });
+    m.importedAt = new Date().toISOString();
+    markDirty();
+    renderClMasterList();
+    toast('Pricelist imported: ' + added + ' added, ' + updated + ' updated (' + m.items.length + ' total)', 'success');
+  } catch (err) {
+    toast('Import failed: ' + err.message, 'error');
+  }
+}
+
+function renderClMasterList() {
+  const list = document.getElementById('cl-master-list');
+  const cnt = document.getElementById('cl-master-count');
+  if (!list) return;
+  const m = ensureClMaster();
+  if (m.items.length === 0) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray-400);font-size:12px">No items yet — click <b>Import 2026 pricelist</b> to seed the master list.</div>';
+    if (cnt) cnt.textContent = '';
+    return;
+  }
+  // Populate category select once
+  const catSel = document.getElementById('cl-master-cat');
+  if (catSel && catSel.options.length <= 1) {
+    const cats = [...new Set(m.items.map(i => i.category))].sort();
+    cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o); });
+  }
+  // Filters
+  const q = (document.getElementById('cl-master-search')?.value || '').toLowerCase().trim();
+  const fUse = document.getElementById('cl-master-use')?.value || '';
+  const fCat = document.getElementById('cl-master-cat')?.value || '';
+  const onlyShown = document.getElementById('cl-master-only-shown')?.checked;
+  const filtered = m.items.filter(it => {
+    if (fUse && it.use !== fUse) return false;
+    if (fCat && it.category !== fCat) return false;
+    if (onlyShown && !it.showToCustomer) return false;
+    if (q && !(it.itemCode.toLowerCase().includes(q) || it.description.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  if (cnt) cnt.textContent = filtered.length + ' / ' + m.items.length + ' items';
+  // Group by category > subcategory
+  const groups = {};
+  filtered.forEach(it => {
+    const k = it.category + '||' + (it.subcategory || '');
+    (groups[k] = groups[k] || []).push(it);
+  });
+  // Render
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  html += '<thead style="position:sticky;top:0;background:var(--gray-50);z-index:1"><tr style="text-align:left">' +
+    '<th style="padding:6px 8px">Code</th>' +
+    '<th style="padding:6px 8px">Description</th>' +
+    '<th style="padding:6px 8px;text-align:right">Cost ($)</th>' +
+    '<th style="padding:6px 8px;text-align:right">After tax ($)</th>' +
+    '<th style="padding:6px 8px">Unit</th>' +
+    '<th style="padding:6px 8px">Use</th>' +
+    '<th style="padding:6px 8px">Color</th>' +
+    '<th style="padding:6px 8px;text-align:center" title="Show this item as an upgrade option to customers">Show</th>' +
+    '<th style="padding:6px 8px" title="Items sharing this group key surface together as upgrade choices on the customer side">Upgrade group</th>' +
+    '</tr></thead><tbody>';
+  Object.keys(groups).sort().forEach(k => {
+    const [cat, sub] = k.split('||');
+    html += '<tr><td colspan="9" style="padding:8px 8px 4px;background:var(--gray-50);font-weight:700;color:var(--gray-500);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;border-top:1px solid var(--gray-100)">' +
+      clEscHtml(cat) + (sub ? ' › ' + clEscHtml(sub) : '') + ' <span style="color:var(--gray-400);font-weight:500">(' + groups[k].length + ')</span></td></tr>';
+    groups[k].forEach(it => {
+      const useColor = it.use === 'Residential' ? '#3c8a1d' : it.use === 'Commercial' ? '#b42c2c' : '#2a63a5';
+      html += '<tr style="border-top:1px solid var(--gray-100)">' +
+        '<td style="padding:4px 8px;font-family:monospace;font-size:10px;color:var(--gray-500);white-space:nowrap">' + clEscHtml(it.itemCode) + '</td>' +
+        '<td style="padding:4px 8px">' + clEscHtml(it.description) + '</td>' +
+        '<td style="padding:4px 8px;text-align:right"><input type="number" value="' + (it.cost || 0) + '" step="0.01" min="0" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'cost\',this.value)" style="width:64px;text-align:right;padding:2px 4px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:4px 8px;text-align:right;color:var(--gray-500)">$' + (it.priceAfterTax || 0).toFixed(2) + '</td>' +
+        '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px">' + clEscHtml(it.pricingUnit) + '</td>' +
+        '<td style="padding:4px 8px"><span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + useColor + '15;color:' + useColor + '">' + clEscHtml(it.use) + '</span></td>' +
+        '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px">' + clEscHtml(it.color) + '</td>' +
+        '<td style="padding:4px 8px;text-align:center"><input type="checkbox" ' + (it.showToCustomer ? 'checked' : '') + ' onchange="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'showToCustomer\',this.checked)"></td>' +
+        '<td style="padding:4px 8px"><input type="text" value="' + clEscAttr(it.upgradeGroupKey || '') + '" placeholder="(none)" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'upgradeGroupKey\',this.value)" style="width:100%;padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '</tr>';
+    });
+  });
+  html += '</tbody></table>';
+  list.innerHTML = html;
+}
+
+function updateClMasterField(id, field, value) {
+  const m = ensureClMaster();
+  const it = m.items.find(x => x.id === id);
+  if (!it) return;
+  if (field === 'cost') {
+    it.cost = parseFloat(value) || 0;
+    // Re-derive after-tax with the same 12% multiplier the source data uses
+    it.priceAfterTax = +(it.cost * 1.12).toFixed(4);
+  } else if (field === 'showToCustomer') {
+    it.showToCustomer = !!value;
+  } else {
+    it[field] = value;
+  }
+  markDirty();
+  // Light re-render only if the row visibility might have changed
+  if (field === 'showToCustomer' && document.getElementById('cl-master-only-shown')?.checked) renderClMasterList();
+}
 
 function ensureCl2() {
   if (!config.chainlinkV2) {
