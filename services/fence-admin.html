@@ -261,6 +261,7 @@ a{color:var(--accent);text-decoration:none}
   <div class="sidebar-nav-item" data-section="lumberPrices" onclick="showSection('lumberPrices')"><span class="nav-icon">&#129717;</span>Lumber Prices</div>
   <div class="sidebar-nav-item" data-section="woodBuild" onclick="showSection('woodBuild')"><span class="nav-icon">&#128736;</span>Wood Build Designer</div>
   <div class="sidebar-nav-item" data-section="chainlinkPricing" onclick="showSection('chainlinkPricing')"><span class="nav-icon">&#9939;</span>Chainlink Pricing</div>
+  <div class="sidebar-nav-item" data-section="clRecipesV3" onclick="showSection('clRecipesV3')"><span class="nav-icon">&#129520;</span>Chain Link Recipes</div>
   <div class="sidebar-nav-item" data-section="ornamentalPricing" onclick="showSection('ornamentalPricing')"><span class="nav-icon">&#11044;</span>Ornamental Pricing</div>
   <div class="sidebar-nav-item" data-section="weldedWirePricing" onclick="showSection('weldedWirePricing')"><span class="nav-icon">&#9618;</span>Welded Wire Pricing</div>
   <div class="sidebar-nav-item" data-section="vinylPricing" onclick="showSection('vinylPricing')"><span class="nav-icon">&#9634;</span>Vinyl Pricing</div>
@@ -566,41 +567,45 @@ a{color:var(--accent);text-decoration:none}
   <h2 class="section-title">Chainlink Pricing</h2>
   <p class="section-subtitle">Master material list + build recipes. The fence drawing tool uses these recipes to calculate the parts needed for each post type, per foot of fence, and per gate type. Color variants (galvanized/black) are matched automatically to the customer's selection.</p>
 
-  <!-- 2026 Pricelist (importable Excel data) -->
+  <!-- 2026 Pricelist — upstream parts catalog -->
   <div class="card">
-    <div class="card-title">Chain Link Pricelist 2026</div>
+    <div class="card-title">Chain Link Pricelist 2026 <span style="font-size:10px;font-weight:600;letter-spacing:0.05em;background:#e7f5e0;color:#3c8a1d;padding:2px 8px;border-radius:4px;margin-left:6px">PARTS CATALOG</span></div>
     <div class="card-desc">
-      Wholesale price list with <b>444 SKUs</b> across Fabric, Posts, Rails, Fittings, Gate hardware, Wire, etc. Each item is tagged
-      <span style="color:#3c8a1d">Residential</span>, <span style="color:#b42c2c">Commercial</span> or
-      <span style="color:#2a63a5">Both</span>. Edit costs inline, untick <em>Show</em> to hide an SKU from customers, and use
-      <em>Upgrade group</em> to bundle alternative versions of the same part (see below).
+      The full <b>444-SKU wholesale parts catalog</b>. Every row is auto-classified into a target
+      <em>Material</em> (e.g. "Brace Band", "Chain Link Fabric 2"KK 11ga", "Post Tubing 2-3/8&quot;") and a
+      <em>Variant</em> (size / height / length within that material). Click <b>Sync to Materials</b> to
+      push every shown item into the Materials Master List below — that's where the Build &amp; Price
+      recipes pick from. Re-syncs are merge-safe (matched by SKU code).
     </div>
 
-    <!-- Inline explainer: what is an upgrade group? -->
+    <!-- Inline explainer for the model -->
     <details style="margin:8px 0 0;background:var(--gray-50);border:1px solid var(--gray-100);border-radius:6px;padding:8px 12px">
-      <summary style="cursor:pointer;font-weight:600;font-size:12px;color:var(--gray-600)">What's an "upgrade group"? &nbsp;<span style="font-weight:400;color:var(--gray-400)">— click to expand</span></summary>
+      <summary style="cursor:pointer;font-weight:600;font-size:12px;color:var(--gray-600)">How does this fit with the Materials Master List? &nbsp;<span style="font-weight:400;color:var(--gray-400)">— click to expand</span></summary>
       <div style="margin-top:8px;font-size:12px;color:var(--gray-500);line-height:1.6">
-        An <b>upgrade group</b> is a label you give to <em>siblings</em> — items that do the same
-        job but at different price/quality points. On the Build &amp; Price tool, the customer
-        picks the cheapest option by default and the rest surface as <em>"Upgrade →"</em> choices.
+        <b>Two views, one catalog.</b> This pricelist is the upstream wholesale source of truth.
+        The <em>Materials Master List</em> (next card down) is the working catalog the recipes
+        reference. Sync flows pricelist → materials.
         <br><br>
-        <b>Example.</b> Say you carry 9-gauge, 11-gauge, and 11½-gauge chain link fabric
-        in 6&nbsp;ft. Tag all three with the group <code style="background:#fff;padding:1px 5px;border-radius:3px;border:1px solid var(--gray-200)">fabric-6ft</code>.
-        On the build tool the customer sees:
-        <div style="margin:8px 0 4px 12px;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid var(--gray-100);font-size:11px">
-          🟢 11½ ga. fabric — included &nbsp; <small style="color:var(--gray-400)">(cheapest in group)</small><br>
-          ⬆ Upgrade to 11 ga. — <span style="color:#3c8a1d">+$0.33/ft</span><br>
-          ⬆ Upgrade to 9 ga. — <span style="color:#3c8a1d">+$1.10/ft</span>
-        </div>
-        <b>Tips.</b> Use short, lowercase keys (<code>fabric-6ft</code>, <code>post-2-3/8-end</code>).
-        Items <em>not</em> in any group ship as-is with no choices shown. The "Upgrade group" cell
-        autocompletes from groups you've already created.
+        <b>Same material, different heights.</b> The four SKUs <code>2K1136WG/2K1142WG/2K1148WG/2K1160WG</code>
+        are all <em>2"&nbsp;KK 11&nbsp;ga galvanized fabric</em> — just at 36/42/48/60" heights.
+        The classifier groups them under <b>"Chain Link Fabric 2"KK 11ga"</b> as four height variants
+        (3ft, 3.5ft, 4ft, 5ft). The recipe picks the right one based on the customer's fence height.
+        <br><br>
+        <b>Different material at the same height.</b> The SKU <code>2K936WG</code> is 9&nbsp;ga fabric
+        at 36" — different gauge, different material. It becomes <b>"Chain Link Fabric 2"KK 9ga"</b>.
+        Recipes can offer it as an upgrade choice next to the standard 11&nbsp;ga.
+        <br><br>
+        <b>Override the auto-classification.</b> Edit the <em>Material</em> or <em>Variant</em>
+        cell on any row to manually re-target where it lands in the master list. Untick <em>Show</em>
+        to skip a SKU during sync entirely.
       </div>
     </details>
 
     <div style="margin:10px 0 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="clMasterImport2026()" title="Load the 2026 wholesale price list (one-time seed; preserves any per-item edits you've made)">⤓ Import 2026 pricelist</button>
-      <input type="text" id="cl-master-search" placeholder="Search code or description…" oninput="renderClMasterList()" style="flex:1;min-width:160px;max-width:320px;padding:5px 10px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
+      <button class="btn btn-sm" onclick="syncClMasterToMaterials({preview:true})" title="Preview what will change before committing — counts only, no edits">🔎 Sync preview</button>
+      <button class="btn btn-sm" style="background:#3c8a1d;color:#fff;border-color:#3c8a1d" onclick="syncClMasterToMaterials()" title="Push every shown row into the Materials Master List below — adds new entries, updates existing matches by SKU, leaves untouched everything else">🔄 Sync to Materials</button>
+      <input type="text" id="cl-master-search" placeholder="Search code or description…" oninput="renderClMasterList()" style="flex:1;min-width:160px;max-width:300px;padding:5px 10px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
       <select id="cl-master-use" onchange="renderClMasterList()" style="padding:4px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
         <option value="">All uses</option>
         <option value="Residential">Residential</option>
@@ -610,17 +615,18 @@ a{color:var(--accent);text-decoration:none}
       <select id="cl-master-cat" onchange="renderClMasterList()" style="padding:4px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
         <option value="">All categories</option>
       </select>
+      <select id="cl-master-mat" onchange="renderClMasterList()" style="padding:4px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px" title="Filter to one auto-classified material">
+        <option value="">All materials</option>
+      </select>
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gray-500)">
         <input type="checkbox" id="cl-master-only-shown" onchange="renderClMasterList()" style="width:14px;height:14px"> Only shown
       </label>
       <span id="cl-master-count" style="margin-left:auto;font-size:11px;color:var(--gray-400)"></span>
     </div>
-    <!-- Active group-filter pill (only visible when filtering by group via the chip click) -->
-    <div id="cl-master-group-pill" style="display:none;margin:0 0 8px;padding:6px 10px;background:#e7f5e0;border:1px solid #c8e0b8;border-radius:6px;font-size:11px;color:#3c8a1d;align-items:center;gap:8px"></div>
     <!-- horizontal scroll on narrow viewports so the rightmost columns can't be cropped off -->
     <div id="cl-master-list" style="max-height:600px;overflow:auto;border:1px solid var(--gray-100);border-radius:6px"></div>
-    <!-- shared datalist of upgrade groups (autocomplete) — populated by renderClMasterList -->
-    <datalist id="cl-master-groups-list"></datalist>
+    <!-- shared datalist of detected material names (autocomplete on the Material cell) -->
+    <datalist id="cl-master-materials-list"></datalist>
   </div>
 
   <!-- Materials Master List -->
@@ -1003,6 +1009,38 @@ a{color:var(--accent);text-decoration:none}
     <div id="cl-sample-prices"></div>
     <button class="btn btn-sm" style="margin-top:10px" onclick="refreshSamplePrices()">↻ Refresh</button>
   </div>
+</div>
+
+<!-- ────── 5b. Chain Link Recipes V3 ────── -->
+<div class="section" id="sec-clRecipesV3">
+  <h2 class="section-title">Chain Link Build Recipes</h2>
+  <p class="section-subtitle">
+    Define which materials get used at each fence height. All pricing pulls live from the
+    <em>Pricelist 2026</em> above (after-tax price). Black and galvanized fences use completely
+    separate material codes — pick both for every slot. Commercial is its own world.
+  </p>
+
+  <!-- Tier picker (Residential | Commercial) -->
+  <div class="card">
+    <div class="card-title">Recipe Tier</div>
+    <div class="card-desc">Switch between residential and commercial recipe sets. Commercial uses 10ft post spacing by default and surfaces barb-arm options on line posts.</div>
+    <div id="cl3-tier-tabs" style="display:flex;gap:8px;margin-top:8px"></div>
+  </div>
+
+  <!-- Height tabs (driven by tier) -->
+  <div class="card">
+    <div class="card-title">Fence Height</div>
+    <div class="card-desc">Each height has its own complete recipe — different posts, different fabric height, different gate sizes. Pick the height to edit below.</div>
+    <div id="cl3-height-tabs" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"></div>
+    <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+      <input type="text" id="cl3-add-height" placeholder="Add height (e.g. 7ft)" style="flex:0 0 160px;padding:5px 10px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
+      <button class="btn btn-sm" onclick="addCl3Height()">+ Add height</button>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="removeCl3Height()" title="Delete the current height from the active tier">− Remove current</button>
+    </div>
+  </div>
+
+  <!-- Recipe body — 5 stacked cards rebuilt every time tier or height changes -->
+  <div id="cl3-recipe-body"></div>
 </div>
 
 <!-- ────── 6. Ornamental Pricing ────── -->
@@ -2254,6 +2292,11 @@ function populateAll() {
   // import button + 444-row table reflect the current saved data.
   if (typeof renderClMasterList === 'function') {
     try { renderClMasterList(); } catch (e) { console.warn('[cl-master] render failed:', e); }
+  }
+
+  // Chain Link Recipes V3 — paint the per-tier × per-height editor.
+  if (typeof renderClRecipesV3 === 'function') {
+    try { ensureCl3(); renderClRecipesV3(); } catch (e) { console.warn('[cl3] render failed:', e); }
   }
 
   // Commercial Edition — hydrate the separate commercial config layer.
@@ -4750,10 +4793,181 @@ function clEscHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;')
 function clNewId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
 // ═══════ CHAIN LINK MASTER PRICELIST (2026) ═══════
-// Holds the 444-item Pete chain link wholesale pricelist with admin-tunable
-// fields per row (showToCustomer / upgradeGroupKey / usedAs / cost edits).
-// Loaded once via the import button — preserves any per-row edits the admin
-// has made (we re-use the existing item id so admin overrides survive re-imports).
+// Holds the 444-item Pete chain link wholesale pricelist as the upstream parts
+// catalog. Each item is auto-classified into a target Material (groupable name)
+// + Variant (size/length/height facet) so it can be promoted into the V2
+// Materials Master List below — where the Build & Price recipes already pull
+// from. Admin overrides (cost edits, custom material names, hide-from-customer)
+// are preserved across re-imports.
+
+// ── Classifier: parse category + subcategory + description → material assignment ──
+// Returns { role, materialName, variantSize, color }. Pure function so it can run
+// on every render without mutating the item. Admin manual overrides
+// (it.materialName / it.variantSize) take precedence over parsed defaults.
+function parseClItemFacets(it) {
+  const desc = (it.description || '').toUpperCase();
+  const cat = it.category || '';
+  const sub = it.subcategory || '';
+  const colorRaw = (it.color || '').toLowerCase();
+  const r = {
+    role: '',
+    materialName: '',
+    variantSize: '',
+    color: colorRaw.includes('black') ? 'black' : 'galvanized',
+    heightInches: null,
+    heightFt: null,
+    lengthFt: null,
+    gauge: null,
+    diameter: '',
+    width: null
+  };
+  // Black is sometimes embedded only in description (e.g. "BLACK PAINTED")
+  if (/BLACK/.test(desc)) r.color = 'black';
+
+  // Height in inches — gates use "(H)", fabric uses "X NN\""
+  const hH = desc.match(/(\d+(?:\.\d+)?)\s*"\s*\(\s*H\s*\)/);
+  if (hH) { r.heightInches = parseFloat(hH[1]); r.heightFt = r.heightInches / 12; }
+  if (!r.heightInches && cat === 'CHAIN LINK FABRIC') {
+    const hX = desc.match(/X\s*(\d+(?:\.\d+)?)\s*"/);
+    if (hX) { r.heightInches = parseFloat(hX[1]); r.heightFt = r.heightInches / 12; }
+  }
+  // Width (gate frames): "4 FT.(W)" or fallback "3.5 FT. X 36\"(H)"
+  const wM = desc.match(/(\d+(?:\.\d+)?)\s*FT\.?\s*\(\s*W\s*\)/);
+  if (wM) r.width = parseFloat(wM[1]);
+  if (!r.width) {
+    const wM2 = desc.match(/(\d+(?:\.\d+)?)\s*FT\.?\s+X\s+\d+(?:\.\d+)?\s*"\s*\(\s*H\s*\)/);
+    if (wM2) r.width = parseFloat(wM2[1]);
+  }
+  // Length (posts/rails): " X 7.5 FT" or "X 10 FT.SW" — and sliding-track style "6 FT. - #31"
+  const lM = desc.match(/X\s*(\d+(?:\.\d+)?)\s*FT/);
+  if (lM) r.lengthFt = parseFloat(lM[1]);
+  if (!r.lengthFt) {
+    const lM2 = desc.match(/^(\d+(?:\.\d+)?)\s*FT\.?\s*-/);
+    if (lM2) r.lengthFt = parseFloat(lM2[1]);
+  }
+  // Privacy weave / leading-inches variants: "48\" - BLACK VERTICAL PRIVACY WEAVE"
+  if (!r.heightInches) {
+    const hI = desc.match(/^(\d+)\s*"\s*-/);
+    if (hI) { r.heightInches = parseFloat(hI[1]); r.heightFt = r.heightInches / 12; }
+  }
+  // Gauge
+  const gM = desc.match(/(\d+(?:\.5)?)\s*GA/);
+  if (gM) r.gauge = parseFloat(gM[1]);
+  // Initial size/diameter — also accept fractions like "1/2\"" or "5/16\""
+  const dM = desc.match(/^(\d+(?:\/\d+|\s+\d+\/\d+)?)\s*"/);
+  if (dM) r.diameter = dM[1].trim().replace(/\s+/g, '-');
+  // Bolt-style "1/2\" X 24\"" or "5/16\" X 1 1/4\"" — pull a longer size string when present
+  const boltM = desc.match(/^(\d+(?:\/\d+)?\s*"\s*X\s*\d+(?:\s+\d+\/\d+|\/\d+)?\s*")/);
+  if (boltM) r._boltSize = boltM[1].trim().replace(/\s*X\s*/, ' × ').replace(/\s+/g, ' ');
+
+  const tc = s => (s || '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+
+  if (cat === 'CHAIN LINK FABRIC') {
+    r.role = 'fabric';
+    const mesh = sub.replace(/\s+/g, '');
+    const g = r.gauge ? r.gauge + 'ga' : '';
+    r.materialName = ('Chain Link Fabric ' + mesh + ' ' + g).trim().replace(/\s+/g, ' ');
+    r.variantSize = r.heightFt ? r.heightFt + 'ft' : '';
+  } else if (cat === 'POSTS') {
+    r.role = 'post';
+    r.materialName = ('Post Tubing ' + r.diameter + '"').trim();
+    r.variantSize = r.lengthFt ? r.lengthFt + "'" : '';
+  } else if (cat === 'RAILS') {
+    r.role = 'rail';
+    r.materialName = ('Top Rail ' + r.diameter + '"').trim();
+    const swType = /DBLE\s*SW/.test(desc) ? ' DBL-SW' : '';
+    r.variantSize = (r.lengthFt ? r.lengthFt + "'" : '') + swType;
+  } else if (cat === 'CHAIN LINK FITTINGS') {
+    const map = { 'BRACE BANDS': 'Brace Band', 'TENSION BANDS': 'Tension Band',
+      'RAIL ENDS': 'Rail End', 'LINE POST CAPS': 'Line Post Cap',
+      'MAIN POST CAPS': 'Post Cap', 'TENSION BARS': 'Tension Bar',
+      'SLEEVES': 'Sleeve', 'BARB WIRE ARMS': 'Barb Wire Arm',
+      'CORNER BARB ARMS': 'Corner Barb Arm' };
+    r.materialName = map[sub] || tc(sub);
+    r.role = r.materialName.toLowerCase().replace(/\s+/g, '-');
+    if (sub === 'TENSION BARS' && r.heightInches) r.variantSize = (r.heightInches / 12) + "'";
+    else r.variantSize = r.diameter ? r.diameter + '"' : '';
+  } else if (cat === 'GATE FITTINGS') {
+    const map = { 'DROP LATCH': 'Drop Latch', 'FORK LATCHES': 'Fork Latch',
+      'HINGE BOLT': 'Hinge Bolt', 'CANTILEVER ROLLER': 'Cantilever Roller',
+      'FOOTBOLT': 'Footbolt', 'LATCH CATCH': 'Latch Catch',
+      'SPRING CLOSURE': 'Spring Closure', 'GATE CLIP': 'Gate Clip',
+      'GATE FINGER': 'Gate Finger', 'GATE FRAME COLLAR': 'Gate Frame Collar',
+      'GATE POST COLLAR': 'Gate Post Collar', 'GATE TOP INSERT': 'Gate Top Insert' };
+    r.materialName = map[sub] || tc(sub);
+    r.role = r.materialName.toLowerCase().replace(/\s+/g, '-');
+    // Bolts use full size (1/2" × 24"); other fittings use diameter
+    r.variantSize = (sub === 'HINGE BOLT' || sub === 'FOOTBOLT') && r._boltSize
+      ? r._boltSize
+      : (r.diameter ? r.diameter + '"' : '');
+  } else if (cat === 'WIRE PRODUCTS') {
+    const map = { 'TIE WIRES': 'Fence Tie', 'BARBED WIRE': 'Barbed Wire',
+      'BOTTOM/WIRE': 'Bottom Wire' };
+    r.materialName = map[sub] || tc(sub);
+    r.role = r.materialName.toLowerCase().replace(/\s+/g, '-');
+    let v = r.gauge ? r.gauge + ' ga' : '';
+    if (/PER FT/.test(desc) || /\bFT\.?\b/.test(desc)) v += ' /ft';
+    else if (/LBS|SPOOL/.test(desc)) v += ' /pkg';
+    r.variantSize = v.trim();
+  } else if (cat === 'RES.GATE') {
+    if (/FRAME/.test(sub)) {
+      r.role = 'gate-frame-residential';
+      r.materialName = (/DBLE/.test(sub) ? 'Residential Double' : 'Residential Single') + ' Gate Frame';
+    } else {
+      r.role = 'gate-residential';
+      r.materialName = (/DBLE/.test(sub) ? 'Residential Double' : 'Residential Single') + ' Gate';
+    }
+    r.variantSize = r.width && r.heightInches ? (r.width + "'W × " + r.heightInches + '"H') : '';
+  } else if (cat === 'IND.GATE') {
+    r.role = 'gate-industrial';
+    r.materialName = 'Industrial ' + (/DBLE/.test(sub) ? 'Double' : 'Single') + ' Swing Gate';
+    r.variantSize = r.width && r.heightInches ? (r.width + "'W × " + r.heightInches + '"H') : '';
+  } else if (cat === 'MISC.') {
+    const map = { 'SLIDING GATE TRACK': 'Sliding Gate Track',
+      'SLIDING GATE HARDWARE': 'Sliding Gate Hardware',
+      'VERTICAL PRIVACY WEAVE': 'Privacy Weave',
+      'WHEEL ASSEMBLY': 'Wheel Assembly', 'STEEL BASEPLATE': 'Steel Baseplate' };
+    r.materialName = map[sub] || tc(sub);
+    r.role = r.materialName.toLowerCase().replace(/\s+/g, '-');
+    if (sub === 'VERTICAL PRIVACY WEAVE' && r.heightInches) r.variantSize = r.heightInches + '"';
+    else if (sub === 'SLIDING GATE TRACK' && r.lengthFt) r.variantSize = r.lengthFt + "'";
+    else if (sub === 'STEEL BASEPLATE') {
+      // "4\" X 4\" X 1/4\" STEEL BASEPLATE" → "4\" × 4\" × 1/4\""
+      const dM2 = desc.match(/^([\d/]+"\s*X\s*[\d/]+"\s*X\s*[\d/]+")/);
+      if (dM2) r.variantSize = dM2[1].replace(/\s*X\s*/g, ' × ').trim();
+    }
+  } else if (cat === 'EXTRAS 2026') {
+    const map = { 'BARB WIRE ARMS': 'Barb Wire Arm', 'BOULEVARD CLAMPS': 'Boulevard Clamp',
+      'FITTINGS': 'Panel Clamp', 'GATE FRAME COLLAR': 'Gate Frame Collar',
+      'HOCKEY RINK HDWR': 'Hockey Rink Bracket', 'HOG RINGS': 'Hog Rings',
+      'PIPE (PER FOOT)': 'Special Pipe', 'RAIL ENDS': 'Rail End' };
+    r.materialName = map[sub] || tc(sub);
+    r.role = r.materialName.toLowerCase().replace(/\s+/g, '-');
+    r.variantSize = r.diameter ? r.diameter + '"' : '';
+  } else if (cat === 'FASTENERS') {
+    const map = { 'ANCHOR BOLTS': 'Anchor Bolt', 'CARRIAGE BOLTS/NUTS': 'Nuts & Bolts' };
+    r.materialName = map[sub] || tc(sub);
+    r.role = r.materialName.toLowerCase().replace(/\s+/g, '-');
+    if (r._boltSize) r.variantSize = r._boltSize;
+    else {
+      const sM = desc.match(/^([\d/\s]+"\s*X\s*\d[\d/\s]*")/);
+      if (sM) r.variantSize = sM[1].trim().replace(/\s+/g, ' ');
+    }
+  }
+  return r;
+}
+
+// Resolve final (name, size, color) for an item — admin override beats parsed default.
+function resolveClItemAssignment(it) {
+  const f = parseClItemFacets(it);
+  return {
+    materialName: ((it.materialName || '').trim()) || f.materialName,
+    variantSize: ((it.variantSize || '').trim()) || f.variantSize,
+    color: f.color,
+    role: f.role
+  };
+}
+
 function ensureClMaster() {
   if (!config.chainlinkMaster) config.chainlinkMaster = { items: [], importedAt: null };
   if (!Array.isArray(config.chainlinkMaster.items)) config.chainlinkMaster.items = [];
@@ -4779,14 +4993,13 @@ async function clMasterImport2026() {
         existing.unitWeight = src.unitWeight; existing.pricingUnit = src.pricingUnit;
         existing.description = src.description; existing.use = src.use; existing.color = src.color;
         existing.category = src.category; existing.subcategory = src.subcategory;
-        if (existing.usedAs == null) existing.usedAs = [];
         if (existing.showToCustomer == null) existing.showToCustomer = true;
-        if (existing.isUpgradeOption == null) existing.isUpgradeOption = false;
-        if (existing.upgradeGroupKey == null) existing.upgradeGroupKey = '';
+        if (existing.materialName == null) existing.materialName = ''; // admin override (parsed default fills the gap)
+        if (existing.variantSize == null) existing.variantSize = '';   // admin override
         if (existing.markupOverride == null) existing.markupOverride = null;
         updated++;
       } else {
-        m.items.push(Object.assign({ markupOverride: null }, src));
+        m.items.push(Object.assign({ markupOverride: null, materialName: '', variantSize: '' }, src));
         added++;
       }
     });
@@ -4805,114 +5018,126 @@ function renderClMasterList() {
   if (!list) return;
   const m = ensureClMaster();
   if (m.items.length === 0) {
-    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray-400);font-size:12px">No items yet — click <b>Import 2026 pricelist</b> to seed the master list.</div>';
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gray-400);font-size:12px">No items yet — click <b>Import 2026 pricelist</b> to seed the parts catalog.</div>';
     if (cnt) cnt.textContent = '';
     return;
   }
-  // Populate category select once
+  // Pre-resolve every item's material assignment once. Used both for filter dropdowns
+  // and for the per-row inputs.
+  const assignments = m.items.map(it => ({ it, asn: resolveClItemAssignment(it) }));
+
+  // Populate category dropdown once
   const catSel = document.getElementById('cl-master-cat');
   if (catSel && catSel.options.length <= 1) {
     const cats = [...new Set(m.items.map(i => i.category))].sort();
     cats.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; catSel.appendChild(o); });
   }
+
+  // Material name → count map (for filter dropdown + datalist suggestions)
+  const matCounts = {};
+  assignments.forEach(({ asn }) => {
+    if (asn.materialName) matCounts[asn.materialName] = (matCounts[asn.materialName] || 0) + 1;
+  });
+  // Material filter dropdown — rebuild every render since it's data-driven
+  const matSel = document.getElementById('cl-master-mat');
+  if (matSel) {
+    const cur = matSel.value;
+    matSel.innerHTML = '<option value="">All materials</option>' +
+      Object.keys(matCounts).sort().map(n => '<option value="' + clEscAttr(n) + '"' + (cur === n ? ' selected' : '') + '>' + clEscHtml(n) + ' (' + matCounts[n] + ')</option>').join('');
+  }
+  // Datalist for autocomplete on per-row Material input
+  const dl = document.getElementById('cl-master-materials-list');
+  if (dl) {
+    dl.innerHTML = Object.keys(matCounts).sort()
+      .map(n => '<option value="' + clEscAttr(n) + '">').join('');
+  }
+
   // Filters
   const q = (document.getElementById('cl-master-search')?.value || '').toLowerCase().trim();
   const fUse = document.getElementById('cl-master-use')?.value || '';
   const fCat = document.getElementById('cl-master-cat')?.value || '';
+  const fMat = document.getElementById('cl-master-mat')?.value || '';
   const onlyShown = document.getElementById('cl-master-only-shown')?.checked;
-  const groupFilter = window._clMasterGroupFilter;
-  const filtered = m.items.filter(it => {
-    if (groupFilter && (it.upgradeGroupKey || '').trim() !== groupFilter) return false;
+  const filtered = assignments.filter(({ it, asn }) => {
     if (fUse && it.use !== fUse) return false;
     if (fCat && it.category !== fCat) return false;
+    if (fMat && asn.materialName !== fMat) return false;
     if (onlyShown && !it.showToCustomer) return false;
     if (q && !(it.itemCode.toLowerCase().includes(q) || it.description.toLowerCase().includes(q))) return false;
     return true;
   });
   if (cnt) cnt.textContent = filtered.length + ' / ' + m.items.length + ' items';
 
-  // Group-filter pill: show / hide based on active group filter
-  const pill = document.getElementById('cl-master-group-pill');
-  if (pill) {
-    if (groupFilter) {
-      pill.style.display = 'inline-flex';
-      pill.innerHTML = 'Showing only items in upgrade group: <b>' + clEscHtml(groupFilter) + '</b>' +
-        ' &nbsp;<button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:11px" onclick="clearClMasterGroupFilter()">Clear</button>';
-    } else {
-      pill.style.display = 'none';
-    }
-  }
-
-  // Build sibling-count map across the whole master list (not just filtered) so the
-  // datalist suggestions and the per-row chip both reflect the full picture.
-  const groupCounts = {};
-  m.items.forEach(it => {
-    const g = (it.upgradeGroupKey || '').trim();
-    if (g) groupCounts[g] = (groupCounts[g] || 0) + 1;
+  // Group rows by Material → Variant — that's the natural shape for sync, and lets the
+  // admin instantly see "Brace Band has 14 size variants across galv + black" etc.
+  const matGroups = {};
+  filtered.forEach(({ it, asn }) => {
+    const matKey = asn.materialName || '(unclassified)';
+    (matGroups[matKey] = matGroups[matKey] || []).push({ it, asn });
   });
-  // Populate the shared datalist so all "Upgrade group" inputs autocomplete
-  const dl = document.getElementById('cl-master-groups-list');
-  if (dl) {
-    const opts = Object.keys(groupCounts).sort()
-      .map(g => '<option value="' + clEscAttr(g) + '">' + clEscHtml(g) + ' (' + groupCounts[g] + ' siblings)</option>')
-      .join('');
-    dl.innerHTML = opts;
-  }
 
-  // Group by category > subcategory
-  const groups = {};
-  filtered.forEach(it => {
-    const k = it.category + '||' + (it.subcategory || '');
-    (groups[k] = groups[k] || []).push(it);
-  });
   // Render — table-layout:fixed + explicit colgroup widths so the rightmost column
-  // (Upgrade group) can never be squeezed off-screen by a long Description, and an
-  // outer min-width forces horizontal scroll on narrow viewports rather than clipping.
-  let html = '<table style="width:100%;min-width:1100px;border-collapse:collapse;font-size:11px;table-layout:fixed">';
+  // can never be clipped; outer min-width forces horizontal scroll on narrow viewports.
+  let html = '<table style="width:100%;min-width:1180px;border-collapse:collapse;font-size:11px;table-layout:fixed">';
   html += '<colgroup>' +
     '<col style="width:90px">' +    // Code
     '<col>' +                        // Description (flex)
+    '<col style="width:200px">' +    // Material (editable)
+    '<col style="width:100px">' +    // Variant (editable)
     '<col style="width:80px">' +     // Cost
-    '<col style="width:80px">' +     // After tax
+    '<col style="width:75px">' +     // After tax
     '<col style="width:50px">' +     // Unit
     '<col style="width:90px">' +     // Use
     '<col style="width:60px">' +     // Color
     '<col style="width:48px">' +     // Show
-    '<col style="width:220px">' +    // Upgrade group
     '</colgroup>';
   html += '<thead style="position:sticky;top:0;background:var(--gray-50);z-index:1"><tr style="text-align:left">' +
     '<th style="padding:6px 8px">Code</th>' +
     '<th style="padding:6px 8px">Description</th>' +
+    '<th style="padding:6px 8px" title="Auto-classified target material in the Master List. Edit to override.">Material →</th>' +
+    '<th style="padding:6px 8px" title="Size/height/length facet within the material (e.g. 6ft, 1-5/16&quot;, 4&apos;W × 48&quot;H)">Variant</th>' +
     '<th style="padding:6px 8px;text-align:right">Cost ($)</th>' +
-    '<th style="padding:6px 8px;text-align:right">After tax ($)</th>' +
+    '<th style="padding:6px 8px;text-align:right">After tax</th>' +
     '<th style="padding:6px 8px">Unit</th>' +
     '<th style="padding:6px 8px">Use</th>' +
     '<th style="padding:6px 8px">Color</th>' +
-    '<th style="padding:6px 8px;text-align:center" title="Untick to hide this SKU from customers entirely">Show</th>' +
-    '<th style="padding:6px 8px" title="Items with the same key appear as alternatives — see the explainer above">Upgrade group <span style="color:var(--gray-400);font-weight:400">(?)</span></th>' +
+    '<th style="padding:6px 8px;text-align:center" title="Untick to skip this SKU during Sync to Materials">Show</th>' +
     '</tr></thead><tbody>';
-  Object.keys(groups).sort().forEach(k => {
-    const [cat, sub] = k.split('||');
-    html += '<tr><td colspan="9" style="padding:8px 8px 4px;background:var(--gray-50);font-weight:700;color:var(--gray-500);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;border-top:1px solid var(--gray-100)">' +
-      clEscHtml(cat) + (sub ? ' › ' + clEscHtml(sub) : '') + ' <span style="color:var(--gray-400);font-weight:500">(' + groups[k].length + ')</span></td></tr>';
-    groups[k].forEach(it => {
+
+  Object.keys(matGroups).sort().forEach(matKey => {
+    const rows = matGroups[matKey];
+    // Material header row — shows material name + variant count + a one-click "filter to this"
+    html += '<tr><td colspan="10" style="padding:8px 8px 4px;background:var(--gray-50);font-weight:700;color:var(--gray-500);font-size:10px;text-transform:uppercase;letter-spacing:0.05em;border-top:1px solid var(--gray-100)">' +
+      '⚙ ' + clEscHtml(matKey) + ' <span style="color:var(--gray-400);font-weight:500">(' + rows.length + ' variant' + (rows.length === 1 ? '' : 's') + ')</span>' +
+      (matKey !== '(unclassified)' ? ' &nbsp;<a href="#" onclick="event.preventDefault();document.getElementById(\'cl-master-mat\').value=\'' + clEscAttr(matKey) + '\';renderClMasterList()" style="font-size:9px;color:var(--accent);text-decoration:none">isolate ↓</a>' : '') +
+      '</td></tr>';
+    rows.forEach(({ it, asn }) => {
       const useColor = it.use === 'Residential' ? '#3c8a1d' : it.use === 'Commercial' ? '#b42c2c' : '#2a63a5';
-      const ug = (it.upgradeGroupKey || '').trim();
-      const sibs = ug ? (groupCounts[ug] || 0) : 0;
-      // Sibling count chip — only shows when item is in a group; click to filter
-      const chip = ug
-        ? '<span title="' + sibs + ' item(s) share this group" style="display:inline-block;margin-left:4px;font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:#e7f5e0;color:#3c8a1d;cursor:pointer" onclick="filterClMasterByGroup(\'' + clEscAttr(ug) + '\')">' + sibs + '×</span>'
-        : '';
+      // Material override = it.materialName, parsed default = asn.materialName when override empty
+      const matValue = (it.materialName || '').trim();
+      const matPlaceholder = asn.materialName || '(unclassified)';
+      const variantValue = (it.variantSize || '').trim();
+      const variantPlaceholder = asn.variantSize || '—';
+      // If the user has overridden, show in solid; otherwise the placeholder (parsed default)
+      // is what will be used. To keep this honest, we pre-fill the input with the resolved
+      // value so the admin sees exactly what would be synced.
+      const matDisplay = matValue || asn.materialName;
+      const variantDisplay = variantValue || asn.variantSize;
+      // Visual cue: italic gray if using parsed default; solid black if admin override
+      const matStyle = matValue ? 'color:#000' : 'color:var(--gray-500);font-style:italic';
+      const variantStyle = variantValue ? 'color:#000' : 'color:var(--gray-500);font-style:italic';
+
       html += '<tr style="border-top:1px solid var(--gray-100)">' +
         '<td style="padding:4px 8px;font-family:monospace;font-size:10px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + clEscHtml(it.itemCode) + '</td>' +
         '<td style="padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + clEscAttr(it.description) + '">' + clEscHtml(it.description) + '</td>' +
+        '<td style="padding:4px 8px"><input type="text" list="cl-master-materials-list" value="' + clEscAttr(matDisplay) + '" placeholder="' + clEscAttr(matPlaceholder) + '" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'materialName\',this.value)" style="width:100%;padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;' + matStyle + '"></td>' +
+        '<td style="padding:4px 8px"><input type="text" value="' + clEscAttr(variantDisplay) + '" placeholder="' + clEscAttr(variantPlaceholder) + '" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'variantSize\',this.value)" style="width:100%;padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;' + variantStyle + '"></td>' +
         '<td style="padding:4px 8px;text-align:right"><input type="number" value="' + (it.cost || 0) + '" step="0.01" min="0" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'cost\',this.value)" style="width:100%;text-align:right;padding:2px 4px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
         '<td style="padding:4px 8px;text-align:right;color:var(--gray-500)">$' + (it.priceAfterTax || 0).toFixed(2) + '</td>' +
         '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + clEscHtml(it.pricingUnit) + '</td>' +
         '<td style="padding:4px 8px"><span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + useColor + '15;color:' + useColor + ';white-space:nowrap">' + clEscHtml(it.use) + '</span></td>' +
         '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + clEscHtml(it.color) + '</td>' +
         '<td style="padding:4px 8px;text-align:center"><input type="checkbox" ' + (it.showToCustomer ? 'checked' : '') + ' onchange="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'showToCustomer\',this.checked)"></td>' +
-        '<td style="padding:4px 8px;white-space:nowrap"><input type="text" list="cl-master-groups-list" value="' + clEscAttr(ug) + '" placeholder="(none — type or pick)" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'upgradeGroupKey\',this.value)" style="width:calc(100% - 36px);padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;vertical-align:middle">' + chip + '</td>' +
         '</tr>';
     });
   });
@@ -4920,28 +5145,89 @@ function renderClMasterList() {
   list.innerHTML = html;
 }
 
-// Quick-filter helper called by the sibling-count chip — shows only items
-// in the clicked group so the admin can audit/adjust the whole set at once.
-function filterClMasterByGroup(group) {
-  const search = document.getElementById('cl-master-search');
-  if (search) search.value = '';
-  const useSel = document.getElementById('cl-master-use');
-  if (useSel) useSel.value = '';
-  // Use the search box as a free-text filter that we already match against description+code.
-  // Simpler: temporarily render only matching items by stuffing the group key into search
-  // and rely on the existing search filter (matches code OR description). Group keys won't
-  // typically appear in code/desc, so we add a true group filter:
-  window._clMasterGroupFilter = group;
-  renderClMasterList();
-  toast('Filtered to upgrade group "' + group + '"', 'info');
-}
+// ── Sync master pricelist → V2 Materials Master List ──
+// Each shown master item becomes one variant in chainlinkV2.materials, keyed
+// by sourceItemCode for idempotent re-syncs. Existing materials matching by
+// (name, size, color) get their cost updated rather than duplicated.
+function syncClMasterToMaterials(opts) {
+  opts = opts || {};
+  const m = ensureClMaster();
+  const cl2 = ensureCl2();
+  const preview = !!opts.preview;
 
-// Clear group filter when user changes any other filter
-function clearClMasterGroupFilter() {
-  if (window._clMasterGroupFilter) {
-    window._clMasterGroupFilter = null;
-    renderClMasterList();
+  if (m.items.length === 0) {
+    toast('Import the pricelist first.', 'error');
+    return;
   }
+
+  // Build lookup tables on the existing v2 materials
+  const bySrc = {};
+  const byKey = {};
+  cl2.materials.forEach(mat => {
+    if (mat.sourceItemCode) bySrc[mat.sourceItemCode] = mat;
+    byKey[(mat.name || '') + '||' + (mat.size || '') + '||' + (mat.color || '')] = mat;
+  });
+
+  let added = 0, updated = 0, skipped = 0, unclassified = 0;
+  const matsTouched = new Set();
+  const ops = [];
+  m.items.forEach(it => {
+    if (it.showToCustomer === false) { skipped++; return; }
+    const asn = resolveClItemAssignment(it);
+    if (!asn.materialName) { unclassified++; return; }
+
+    let target = bySrc[it.itemCode] || byKey[asn.materialName + '||' + asn.variantSize + '||' + asn.color];
+
+    if (target) {
+      ops.push({ kind: 'update', code: it.itemCode, name: asn.materialName, size: asn.variantSize, color: asn.color, cost: it.cost });
+      if (!preview) {
+        target.name = asn.materialName;
+        target.size = asn.variantSize;
+        target.color = asn.color;
+        target.cost = it.cost;
+        target.sellPrice = +(it.cost * (1 + (target.markup || 70) / 100)).toFixed(2);
+        target.sourceItemCode = it.itemCode;
+        if (!target.type || target.type === 'other') target.type = asn.role || 'other';
+      }
+      updated++;
+    } else {
+      ops.push({ kind: 'add', code: it.itemCode, name: asn.materialName, size: asn.variantSize, color: asn.color, cost: it.cost });
+      if (!preview) {
+        const cost = it.cost;
+        const markup = 70;
+        cl2.materials.push({
+          id: clNewId('mat'),
+          name: asn.materialName, size: asn.variantSize, color: asn.color,
+          type: asn.role || 'other',
+          cost, markup,
+          sellPrice: +(cost * (1 + markup / 100)).toFixed(2),
+          sourceItemCode: it.itemCode
+        });
+      }
+      added++;
+    }
+    matsTouched.add(asn.materialName);
+  });
+
+  if (preview) {
+    // Render a modal-ish preview as a simple alert for now — small enough to be readable.
+    const summary = 'Sync preview:\n' +
+      '  ' + added + ' new variants will be added\n' +
+      '  ' + updated + ' existing variants will be updated\n' +
+      '  ' + skipped + ' SKUs skipped (Show=off)\n' +
+      '  ' + unclassified + ' SKUs unclassified (need a Material name)\n\n' +
+      'Materials touched: ' + matsTouched.size + '\n\n' +
+      'Click "Sync to Materials" to apply.';
+    alert(summary);
+    return;
+  }
+
+  if (added > 0 || updated > 0) {
+    if (typeof renderClMaterials === 'function') renderClMaterials();
+    if (typeof renderAllClRecipes === 'function') renderAllClRecipes();
+    markDirty();
+  }
+  toast('Synced: ' + added + ' added, ' + updated + ' updated, ' + skipped + ' hidden, ' + unclassified + ' unclassified', 'success');
 }
 
 function updateClMasterField(id, field, value) {
@@ -4954,13 +5240,441 @@ function updateClMasterField(id, field, value) {
     it.priceAfterTax = +(it.cost * 1.12).toFixed(4);
   } else if (field === 'showToCustomer') {
     it.showToCustomer = !!value;
+  } else if (field === 'materialName' || field === 'variantSize') {
+    // String overrides — empty means "use the parsed default"
+    it[field] = (value || '').trim();
   } else {
     it[field] = value;
   }
   markDirty();
-  // Light re-render only if the row visibility might have changed
+  // Re-render when filter visibility could change OR a material/variant assignment changed
+  // (which affects grouping headers + datalist + filter dropdown counts)
   if (field === 'showToCustomer' && document.getElementById('cl-master-only-shown')?.checked) renderClMasterList();
+  else if (field === 'materialName' || field === 'variantSize') {
+    // Debounce a single re-render so typing doesn't thrash the table on every keystroke
+    clearTimeout(window._clMasterRerenderTimer);
+    window._clMasterRerenderTimer = setTimeout(renderClMasterList, 400);
+  }
 }
+
+// ═══════ CHAIN LINK RECIPES V3 ═══════
+// Per-tier × per-height recipes that source every material from the master
+// pricelist by itemCode. Pricing always pulls live priceAfterTax — no
+// duplicated cost values. Black ≠ galvanized at the material level: every
+// slot stores a galv code AND a black code, and the customer's color choice
+// picks one at quote time. Commercial is structurally identical but has
+// extra slots (barb arm on line posts) and lives in a separate recipe tree
+// so heavy-duty doesn't accidentally inherit residential settings.
+//
+// State shape:
+//   config.chainlinkRecipesV3 = {
+//     residential: { '4ft': recipe, '5ft': recipe, ... },
+//     commercial:  { '4ft': recipe, '6ft': recipe, ... }
+//   }
+//   recipe = { mainAssembly, linePostAssembly, perFoot, connections, gates }
+
+const CL3_DEFAULT_HEIGHTS = {
+  residential: ['4ft', '5ft', '6ft'],
+  commercial: ['6ft', '8ft', '10ft']
+};
+
+function ensureCl3() {
+  if (!config.chainlinkRecipesV3) config.chainlinkRecipesV3 = { residential: {}, commercial: {} };
+  ['residential', 'commercial'].forEach(tier => {
+    if (!config.chainlinkRecipesV3[tier]) config.chainlinkRecipesV3[tier] = {};
+    if (Object.keys(config.chainlinkRecipesV3[tier]).length === 0) {
+      CL3_DEFAULT_HEIGHTS[tier].forEach(h => { config.chainlinkRecipesV3[tier][h] = blankCl3Recipe(); });
+    }
+  });
+  // Initialize UI state on first call
+  if (!config.chainlinkRecipesV3._uiTier) config.chainlinkRecipesV3._uiTier = 'residential';
+  if (!config.chainlinkRecipesV3._uiHeight) {
+    config.chainlinkRecipesV3._uiHeight = Object.keys(config.chainlinkRecipesV3.residential)[0] || '4ft';
+  }
+  return config.chainlinkRecipesV3;
+}
+
+// ── Blank templates ──
+function cl3NewId(prefix) { return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+function blankCl3Recipe() {
+  return {
+    mainAssembly: { postOptions: [] },
+    linePostAssembly: { postOptions: [] },
+    perFoot: { fabricOptions: [], bottomWireOptions: [], topRailOptions: [], tiesPerFoot: 1 },
+    connections: { perMainPost: {} },
+    gates: []
+  };
+}
+function blankCl3PostOpt() {
+  return { id: cl3NewId('post'), label: '', galv: '', black: '', capGalv: '', capBlack: '', isDefault: false };
+}
+function blankCl3LinePostOpt() {
+  return { id: cl3NewId('lpost'), label: '', galv: '', black: '', capGalv: '', capBlack: '',
+    fenceTieGalv: '', fenceTieBlack: '', fenceTiesPerPost: 4,
+    barbArmGalv: '', barbArmBlack: '',  // commercial only
+    isDefault: false };
+}
+function blankCl3PerFootOpt(kind) {
+  return { id: cl3NewId(kind), label: '', galv: '', black: '', isDefault: false };
+}
+function blankCl3Connection() {
+  return {
+    tensionBarGalv: '', tensionBarBlack: '', tensionBarQty: 1,
+    railEndGalv: '', railEndBlack: '', railEndQty: 1,
+    braceBandGalv: '', braceBandBlack: '', braceBandQty: 1,
+    tensionBandGalv: '', tensionBandBlack: '', tensionBandQty: 4
+  };
+}
+function blankCl3Gate() {
+  return { id: cl3NewId('gate'), label: '', widthFt: 3.5, heightInches: 48,
+    gateGalv: '', gateBlack: '', hardware: [] };
+}
+function blankCl3GateHardware(kind) {
+  return { id: cl3NewId('hw'), label: '', galv: '', black: '', qty: 1, kind: kind || '' };
+}
+
+// ── Master-pricelist filtered lookup ──
+// Returns master items matching a material name (string equals OR regex OR predicate)
+// AND a color, sorted by priceAfterTax ascending. Used to populate the picker dropdowns.
+function cl3PickerItems(materialPattern, color) {
+  const m = ensureClMaster();
+  const out = m.items.filter(it => {
+    if (it.showToCustomer === false) return false;
+    const a = resolveClItemAssignment(it);
+    if (color && a.color !== color) return false;
+    if (typeof materialPattern === 'string') return a.materialName === materialPattern;
+    if (materialPattern instanceof RegExp) return materialPattern.test(a.materialName);
+    if (typeof materialPattern === 'function') return materialPattern(a.materialName);
+    return true;
+  });
+  out.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+  return out;
+}
+
+// Render a <select> picker. handler: onchange="..." string. value: current itemCode.
+function cl3PickerHtml(currentCode, materialPattern, color, handler, placeholder) {
+  const items = cl3PickerItems(materialPattern, color);
+  let html = '<select onchange="' + handler + '" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;background:#fff">';
+  html += '<option value="">' + clEscHtml(placeholder || '— pick —') + '</option>';
+  items.forEach(it => {
+    const sel = currentCode === it.itemCode ? ' selected' : '';
+    const label = it.itemCode + ' — $' + (it.priceAfterTax || 0).toFixed(2) + ' ' + (it.pricingUnit || '') + ' — ' + it.description.slice(0, 50);
+    html += '<option value="' + clEscAttr(it.itemCode) + '"' + sel + '>' + clEscHtml(label) + '</option>';
+  });
+  html += '</select>';
+  // Hint when current code isn't in the filtered set — we still preserve it but flag it
+  if (currentCode && !items.find(i => i.itemCode === currentCode)) {
+    html += '<div style="font-size:9px;color:#b42c2c;margin-top:2px">⚠ ' + clEscHtml(currentCode) + ' not in filtered list (still saved)</div>';
+  }
+  return html;
+}
+
+// ── Top-level render ──
+function renderClRecipesV3() {
+  const cl3 = ensureCl3();
+  // Tier tabs
+  const tierEl = document.getElementById('cl3-tier-tabs');
+  if (tierEl) {
+    tierEl.innerHTML = ['residential', 'commercial'].map(t => {
+      const active = t === cl3._uiTier;
+      return '<button class="btn btn-sm" style="' + (active ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : '') + '" onclick="setCl3Tier(\'' + t + '\')">' +
+        (t === 'residential' ? 'Residential' : 'Commercial') + '</button>';
+    }).join('');
+  }
+  // Height tabs
+  const heightEl = document.getElementById('cl3-height-tabs');
+  if (heightEl) {
+    const heights = Object.keys(cl3[cl3._uiTier] || {});
+    if (heights.length === 0) {
+      heightEl.innerHTML = '<span style="font-size:11px;color:var(--gray-400)">No heights defined for ' + cl3._uiTier + '. Add one below.</span>';
+    } else {
+      heightEl.innerHTML = heights.map(h => {
+        const active = h === cl3._uiHeight;
+        return '<button class="btn btn-sm" style="' + (active ? 'background:var(--accent);color:#fff;border-color:var(--accent)' : '') + '" onclick="setCl3Height(\'' + h + '\')">' + clEscHtml(h) + '</button>';
+      }).join('');
+    }
+  }
+  // Body — 5 cards
+  const body = document.getElementById('cl3-recipe-body');
+  if (!body) return;
+  const recipe = (cl3[cl3._uiTier] || {})[cl3._uiHeight];
+  if (!recipe) {
+    body.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--gray-400)">Pick or add a height above.</div>';
+    return;
+  }
+  body.innerHTML = renderCl3MainAssembly(recipe) +
+    renderCl3LinePostAssembly(recipe, cl3._uiTier) +
+    renderCl3PerFoot(recipe) +
+    renderCl3Connections(recipe) +
+    renderCl3Gates(recipe);
+}
+function setCl3Tier(t) {
+  const cl3 = ensureCl3();
+  cl3._uiTier = t;
+  // Pick first available height for this tier
+  const heights = Object.keys(cl3[t] || {});
+  if (heights.length > 0 && !heights.includes(cl3._uiHeight)) cl3._uiHeight = heights[0];
+  renderClRecipesV3();
+}
+function setCl3Height(h) { ensureCl3()._uiHeight = h; renderClRecipesV3(); }
+function addCl3Height() {
+  const cl3 = ensureCl3();
+  const v = (document.getElementById('cl3-add-height')?.value || '').trim();
+  if (!v) { toast('Enter a height like "7ft"', 'error'); return; }
+  if (cl3[cl3._uiTier][v]) { toast('Height ' + v + ' already exists', 'info'); return; }
+  cl3[cl3._uiTier][v] = blankCl3Recipe();
+  cl3._uiHeight = v;
+  document.getElementById('cl3-add-height').value = '';
+  markDirty();
+  renderClRecipesV3();
+}
+function removeCl3Height() {
+  const cl3 = ensureCl3();
+  if (!confirm('Remove ' + cl3._uiHeight + ' from ' + cl3._uiTier + '? This deletes the recipe.')) return;
+  delete cl3[cl3._uiTier][cl3._uiHeight];
+  const heights = Object.keys(cl3[cl3._uiTier]);
+  cl3._uiHeight = heights[0] || '';
+  markDirty();
+  renderClRecipesV3();
+}
+
+// ── Helper for live-pricing summary (after-tax sum of selected variants) ──
+function cl3PriceFor(code) {
+  if (!code) return null;
+  const m = ensureClMaster();
+  const it = m.items.find(i => i.itemCode === code);
+  return it ? it.priceAfterTax : null;
+}
+function cl3FmtPrice(n) { return n == null ? '<span style="color:#b42c2c">?</span>' : '$' + (+n).toFixed(2); }
+
+// ═══════ Card 1 of 5: MAIN ASSEMBLY (end + corner posts) ═══════
+function renderCl3MainAssembly(recipe) {
+  const opts = recipe.mainAssembly.postOptions;
+  let rows = '';
+  opts.forEach((o, i) => {
+    rows += '<tr style="border-top:1px solid var(--gray-100)">' +
+      '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-main-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3MainDefault(\'' + o.id + '\')"></td>' +
+      '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. Std 2-3/8&quot;" oninput="updCl3Main(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Main('" + o.id + "','galv',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Main('" + o.id + "','black',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Post Cap', 'galvanized', "updCl3Main('" + o.id + "','capGalv',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Post Cap', 'black', "updCl3Main('" + o.id + "','capBlack',this.value)") + '</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap">' +
+      '<div>G: ' + cl3FmtPrice((cl3PriceFor(o.galv) || 0) + (cl3PriceFor(o.capGalv) || 0)) + '</div>' +
+      '<div>B: ' + cl3FmtPrice((cl3PriceFor(o.black) || 0) + (cl3PriceFor(o.capBlack) || 0)) + '</div>' +
+      '</td>' +
+      '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Main(\'' + o.id + '\')" title="Delete this option">×</button></td>' +
+      '</tr>';
+  });
+  return '<div class="card">' +
+    '<div class="card-title">Main Assembly <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— end &amp; corner posts (terminal posts)</span></div>' +
+    '<div class="card-desc">Heavy-duty posts at every fence end and direction change. Each option is one post style the customer can pick from; the default is auto-selected. Pair each post with the right post cap. Black + galv codes are independent.</div>' +
+    '<div style="overflow:auto;margin-top:8px"><table style="width:100%;min-width:900px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+    '<colgroup><col style="width:60px"><col style="width:160px"><col><col><col><col><col style="width:110px"><col style="width:50px"></colgroup>' +
+    '<thead><tr style="background:var(--gray-50);text-align:left">' +
+    '<th style="padding:6px 8px;text-align:center">Default</th>' +
+    '<th style="padding:6px 8px">Label</th>' +
+    '<th style="padding:6px 8px">Galv post</th>' +
+    '<th style="padding:6px 8px">Black post</th>' +
+    '<th style="padding:6px 8px">Galv cap</th>' +
+    '<th style="padding:6px 8px">Black cap</th>' +
+    '<th style="padding:6px 8px;text-align:right">Per post</th>' +
+    '<th></th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<button class="btn btn-sm" style="margin-top:8px" onclick="addCl3Main()">+ Add post option</button>' +
+    '</div>';
+}
+function _cl3CurRecipe() { const cl3 = ensureCl3(); return cl3[cl3._uiTier][cl3._uiHeight]; }
+function addCl3Main() { const r = _cl3CurRecipe(); if (!r) return; const o = blankCl3PostOpt(); if (r.mainAssembly.postOptions.length === 0) o.isDefault = true; r.mainAssembly.postOptions.push(o); markDirty(); renderClRecipesV3(); }
+function removeCl3Main(id) { const r = _cl3CurRecipe(); if (!r) return; const wasDef = r.mainAssembly.postOptions.find(o => o.id === id)?.isDefault; r.mainAssembly.postOptions = r.mainAssembly.postOptions.filter(o => o.id !== id); if (wasDef && r.mainAssembly.postOptions[0]) r.mainAssembly.postOptions[0].isDefault = true; if (r.connections.perMainPost[id]) delete r.connections.perMainPost[id]; markDirty(); renderClRecipesV3(); }
+function setCl3MainDefault(id) { const r = _cl3CurRecipe(); if (!r) return; r.mainAssembly.postOptions.forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
+function updCl3Main(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.mainAssembly.postOptions.find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label') renderClRecipesV3(); }
+
+// ═══════ Card 2 of 5: LINE POST ASSEMBLY ═══════
+function renderCl3LinePostAssembly(recipe, tier) {
+  const opts = recipe.linePostAssembly.postOptions;
+  const isComm = tier === 'commercial';
+  let rows = '';
+  opts.forEach(o => {
+    rows += '<tr style="border-top:1px solid var(--gray-100)">' +
+      '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-line-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3LineDefault(\'' + o.id + '\')"></td>' +
+      '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 1-7/8&quot;" oninput="updCl3Line(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Line('" + o.id + "','galv',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Line('" + o.id + "','black',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Line Post Cap', 'galvanized', "updCl3Line('" + o.id + "','capGalv',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Line Post Cap', 'black', "updCl3Line('" + o.id + "','capBlack',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieGalv, 'Fence Tie', 'galvanized', "updCl3Line('" + o.id + "','fenceTieGalv',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieBlack, 'Fence Tie', 'black', "updCl3Line('" + o.id + "','fenceTieBlack',this.value)") + '</td>' +
+      '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (o.fenceTiesPerPost || 0) + '" oninput="updCl3Line(\'' + o.id + '\',\'fenceTiesPerPost\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      (isComm
+        ? '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmGalv, /Barb Wire Arm/, 'galvanized', "updCl3Line('" + o.id + "','barbArmGalv',this.value)") + '</td>' +
+          '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmBlack, /Barb Wire Arm/, 'black', "updCl3Line('" + o.id + "','barbArmBlack',this.value)") + '</td>'
+        : '') +
+      '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Line(\'' + o.id + '\')">×</button></td>' +
+      '</tr>';
+  });
+  const cmHdr = isComm
+    ? '<th style="padding:6px 8px">Galv barb arm</th><th style="padding:6px 8px">Black barb arm</th>'
+    : '';
+  const colWidths = isComm
+    ? '<col style="width:60px"><col style="width:130px"><col><col><col><col><col><col><col style="width:54px"><col><col><col style="width:40px">'
+    : '<col style="width:60px"><col style="width:130px"><col><col><col><col><col><col><col style="width:54px"><col style="width:40px">';
+  const minW = isComm ? '1200px' : '950px';
+  return '<div class="card">' +
+    '<div class="card-title">Line Post Assembly <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— intermediate posts along straight runs</span></div>' +
+    '<div class="card-desc">Lighter-duty posts placed at the spacing interval between mains. Includes the saddle-style line post cap, fence ties (qty per post)' + (isComm ? ', and barb arm options for commercial' : '') + '.</div>' +
+    '<div style="overflow:auto;margin-top:8px"><table style="width:100%;min-width:' + minW + ';border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+    '<colgroup>' + colWidths + '</colgroup>' +
+    '<thead><tr style="background:var(--gray-50);text-align:left">' +
+    '<th style="padding:6px 8px;text-align:center">Default</th>' +
+    '<th style="padding:6px 8px">Label</th>' +
+    '<th style="padding:6px 8px">Galv post</th>' +
+    '<th style="padding:6px 8px">Black post</th>' +
+    '<th style="padding:6px 8px">Galv cap</th>' +
+    '<th style="padding:6px 8px">Black cap</th>' +
+    '<th style="padding:6px 8px">Galv tie</th>' +
+    '<th style="padding:6px 8px">Black tie</th>' +
+    '<th style="padding:6px 8px;text-align:right">Ties / post</th>' +
+    cmHdr +
+    '<th></th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<button class="btn btn-sm" style="margin-top:8px" onclick="addCl3Line()">+ Add line post option</button>' +
+    '</div>';
+}
+function addCl3Line() { const r = _cl3CurRecipe(); if (!r) return; const o = blankCl3LinePostOpt(); if (r.linePostAssembly.postOptions.length === 0) o.isDefault = true; r.linePostAssembly.postOptions.push(o); markDirty(); renderClRecipesV3(); }
+function removeCl3Line(id) { const r = _cl3CurRecipe(); if (!r) return; const wasDef = r.linePostAssembly.postOptions.find(o => o.id === id)?.isDefault; r.linePostAssembly.postOptions = r.linePostAssembly.postOptions.filter(o => o.id !== id); if (wasDef && r.linePostAssembly.postOptions[0]) r.linePostAssembly.postOptions[0].isDefault = true; markDirty(); renderClRecipesV3(); }
+function setCl3LineDefault(id) { const r = _cl3CurRecipe(); if (!r) return; r.linePostAssembly.postOptions.forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
+function updCl3Line(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.linePostAssembly.postOptions.find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label' && field !== 'fenceTiesPerPost') renderClRecipesV3(); }
+
+// ═══════ Card 3 of 5: PER-FOOT ASSEMBLY ═══════
+function renderCl3PerFoot(recipe) {
+  function renderOptList(kind, opts, materialPattern, label) {
+    let rows = '';
+    opts.forEach(o => {
+      rows += '<tr style="border-top:1px solid var(--gray-100)">' +
+        '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-pf-' + kind + '" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3PfDefault(\'' + kind + '\',\'' + o.id + '\')"></td>' +
+        '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 11ga 2&quot;KK" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, materialPattern, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',this.value)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, materialPattern, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',this.value)") + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap"><div>G: ' + cl3FmtPrice(cl3PriceFor(o.galv)) + '</div><div>B: ' + cl3FmtPrice(cl3PriceFor(o.black)) + '</div></td>' +
+        '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Pf(\'' + kind + '\',\'' + o.id + '\')">×</button></td>' +
+        '</tr>';
+    });
+    return '<div style="margin-top:14px"><h4 style="margin:0 0 6px;font-size:13px;color:var(--gray-600)">' + label + '</h4>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+      '<colgroup><col style="width:60px"><col style="width:160px"><col><col><col style="width:90px"><col style="width:40px"></colgroup>' +
+      '<thead><tr style="background:var(--gray-50);text-align:left">' +
+      '<th style="padding:6px 8px;text-align:center">Default</th>' +
+      '<th style="padding:6px 8px">Label</th>' +
+      '<th style="padding:6px 8px">Galv</th>' +
+      '<th style="padding:6px 8px">Black</th>' +
+      '<th style="padding:6px 8px;text-align:right">Per ft</th>' +
+      '<th></th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3Pf(\'' + kind + '\')">+ Add ' + label.toLowerCase().replace(/\b./, c => c) + ' option</button>' +
+      '</div>';
+  }
+  return '<div class="card">' +
+    '<div class="card-title">Per-Foot Assembly <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— per linear foot of fence</span></div>' +
+    '<div class="card-desc">Materials that scale with fence length — fabric, optional bottom wire, optional top rail, plus tie-wires per ft.</div>' +
+    renderOptList('fabric', recipe.perFoot.fabricOptions, /^Chain Link Fabric/, 'Fabric') +
+    renderOptList('bottomWire', recipe.perFoot.bottomWireOptions, 'Bottom Wire', 'Bottom Wire (optional)') +
+    renderOptList('topRail', recipe.perFoot.topRailOptions, /^Top Rail/, 'Top Rail (optional)') +
+    '<div style="margin-top:14px;display:flex;gap:8px;align-items:center">' +
+    '<label style="font-size:12px;color:var(--gray-600);font-weight:600">Ties per foot:</label>' +
+    '<input type="number" min="0" step="0.25" value="' + (recipe.perFoot.tiesPerFoot || 0) + '" oninput="updCl3PfMeta(\'tiesPerFoot\',+this.value)" style="width:70px;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px">' +
+    '<span style="font-size:11px;color:var(--gray-400)">(uses the selected line-post fence tie code as the tie wire here too)</span>' +
+    '</div>' +
+    '</div>';
+}
+function addCl3Pf(kind) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const o = blankCl3PerFootOpt(kind); if (list.length === 0) o.isDefault = true; list.push(o); markDirty(); renderClRecipesV3(); }
+function removeCl3Pf(kind, id) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const wasDef = list.find(o => o.id === id)?.isDefault; r.perFoot[kind + 'Options'] = list.filter(o => o.id !== id); if (wasDef && r.perFoot[kind + 'Options'][0]) r.perFoot[kind + 'Options'][0].isDefault = true; markDirty(); renderClRecipesV3(); }
+function setCl3PfDefault(kind, id) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[kind + 'Options'].forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
+function updCl3Pf(kind, id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.perFoot[kind + 'Options'].find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label') renderClRecipesV3(); }
+function updCl3PfMeta(field, value) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[field] = value; markDirty(); }
+
+// ═══════ Card 4 of 5: CONNECTIONS (paired to each main post option) ═══════
+function renderCl3Connections(recipe) {
+  const mains = recipe.mainAssembly.postOptions;
+  if (mains.length === 0) {
+    return '<div class="card"><div class="card-title">Connections</div><div class="card-desc">Add at least one main post option above; this card pairs hookup hardware (tension bands, brace bands, rail ends, tension bars) per main post option.</div></div>';
+  }
+  let blocks = '';
+  mains.forEach(mp => {
+    const c = recipe.connections.perMainPost[mp.id] || (recipe.connections.perMainPost[mp.id] = blankCl3Connection());
+    const lbl = mp.label || '(unlabeled main post)';
+    blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:10px 12px;margin-top:10px">' +
+      '<div style="font-weight:700;font-size:12px;color:var(--gray-600);margin-bottom:8px">When customer picks main post: <span style="color:var(--accent)">' + clEscHtml(lbl) + '</span></div>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:900px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+      '<colgroup><col style="width:140px"><col><col><col style="width:60px"></colgroup>' +
+      '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Hookup item</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Qty</th></tr></thead><tbody>' +
+      _cl3ConnRow(mp.id, 'tensionBar', 'Tension Bar', /^Tension Bar/, c) +
+      _cl3ConnRow(mp.id, 'railEnd', 'Rail End', 'Rail End', c) +
+      _cl3ConnRow(mp.id, 'braceBand', 'Brace Band', 'Brace Band', c) +
+      _cl3ConnRow(mp.id, 'tensionBand', 'Tension Band', 'Tension Band', c) +
+      '</tbody></table></div></div>';
+  });
+  return '<div class="card">' +
+    '<div class="card-title">Connections <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— hookup hardware per main post option</span></div>' +
+    '<div class="card-desc">For each main post style above, define what hookup items go with it and how many. The Build &amp; Price tool multiplies by the count of corner+end+gate posts.</div>' +
+    blocks + '</div>';
+}
+function _cl3ConnRow(mainId, prefix, label, materialPattern, c) {
+  return '<tr style="border-top:1px solid var(--gray-100)">' +
+    '<td style="padding:6px 8px;font-weight:600;color:var(--gray-600)">' + label + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Galv'], materialPattern, 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "Galv',this.value)") + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Black'], materialPattern, 'black', "updCl3Conn('" + mainId + "','" + prefix + "Black',this.value)") + '</td>' +
+    '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c[prefix + 'Qty'] || 0) + '" oninput="updCl3Conn(\'' + mainId + '\',\'' + prefix + 'Qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+    '</tr>';
+}
+function updCl3Conn(mainId, field, value) { const r = _cl3CurRecipe(); if (!r) return; if (!r.connections.perMainPost[mainId]) r.connections.perMainPost[mainId] = blankCl3Connection(); r.connections.perMainPost[mainId][field] = value; markDirty(); if (field.endsWith('Galv') || field.endsWith('Black')) renderClRecipesV3(); }
+
+// ═══════ Card 5 of 5: GATES ═══════
+function renderCl3Gates(recipe) {
+  const gates = recipe.gates;
+  let blocks = '';
+  gates.forEach(g => {
+    let hwRows = '';
+    (g.hardware || []).forEach(hw => {
+      hwRows += '<tr style="border-top:1px solid var(--gray-100)">' +
+        '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(hw.label) + '" placeholder="e.g. Hinge" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, () => true, 'galvanized', "updCl3GateHw('" + g.id + "','" + hw.id + "','galv',this.value)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, () => true, 'black', "updCl3GateHw('" + g.id + "','" + hw.id + "','black',this.value)") + '</td>' +
+        '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (hw.qty || 0) + '" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\')">×</button></td>' +
+        '</tr>';
+    });
+    blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:12px;margin-top:10px">' +
+      '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
+      '<input type="text" value="' + clEscAttr(g.label) + '" placeholder="Gate label (e.g. 3.5\'W single)" oninput="updCl3Gate(\'' + g.id + '\',\'label\',this.value)" style="flex:1;min-width:160px;padding:5px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--gray-200);border-radius:6px">' +
+      '<label style="font-size:11px;color:var(--gray-500);display:flex;align-items:center;gap:4px">Width (ft)<input type="number" step="0.5" min="0" value="' + (g.widthFt || 0) + '" oninput="updCl3Gate(\'' + g.id + '\',\'widthFt\',+this.value)" style="width:60px;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></label>' +
+      '<label style="font-size:11px;color:var(--gray-500);display:flex;align-items:center;gap:4px">Height (in)<input type="number" step="6" min="0" value="' + (g.heightInches || 0) + '" oninput="updCl3Gate(\'' + g.id + '\',\'heightInches\',+this.value)" style="width:60px;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></label>' +
+      '<button class="btn btn-sm" onclick="removeCl3Gate(\'' + g.id + '\')">Delete gate</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',this.value)") + '</div>' +
+      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',this.value)") + '</div>' +
+      '</div>' +
+      '<div style="margin-top:10px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:4px;font-weight:600">Hardware list (hinges, latches, drop bolts, etc.)</div>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+      '<colgroup><col style="width:140px"><col><col><col style="width:60px"><col style="width:40px"></colgroup>' +
+      '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Qty</th><th></th></tr></thead><tbody>' + hwRows + '</tbody></table></div>' +
+      '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3GateHw(\'' + g.id + '\')">+ Add hardware</button></div>' +
+      '</div>';
+  });
+  return '<div class="card">' +
+    '<div class="card-title">Gates <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— per gate size, with hardware list</span></div>' +
+    '<div class="card-desc">Define every gate option for this fence height: width × height, the gate frame/leaf, and the hardware (hinges, latches, drop bolts, springs, footbolts…) that come with it.</div>' +
+    blocks +
+    '<button class="btn btn-sm" style="margin-top:10px" onclick="addCl3Gate()">+ Add gate</button>' +
+    '</div>';
+}
+function addCl3Gate() { const r = _cl3CurRecipe(); if (!r) return; r.gates.push(blankCl3Gate()); markDirty(); renderClRecipesV3(); }
+function removeCl3Gate(id) { const r = _cl3CurRecipe(); if (!r) return; r.gates = r.gates.filter(g => g.id !== id); markDirty(); renderClRecipesV3(); }
+function updCl3Gate(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === id); if (!g) return; g[field] = value; markDirty(); if (field === 'gateGalv' || field === 'gateBlack') renderClRecipesV3(); }
+function addCl3GateHw(gateId) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; if (!g.hardware) g.hardware = []; g.hardware.push(blankCl3GateHardware()); markDirty(); renderClRecipesV3(); }
+function removeCl3GateHw(gateId, hwId) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; g.hardware = (g.hardware || []).filter(h => h.id !== hwId); markDirty(); renderClRecipesV3(); }
+function updCl3GateHw(gateId, hwId, field, value) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; const hw = (g.hardware || []).find(h => h.id === hwId); if (!hw) return; hw[field] = value; markDirty(); if (field === 'galv' || field === 'black') renderClRecipesV3(); }
 
 function ensureCl2() {
   if (!config.chainlinkV2) {
@@ -5832,6 +6546,9 @@ function loadChainlinkV2UI() {
   window.showSection = function(name) {
     _origShowSection(name);
     if (name === 'chainlinkPricing') loadChainlinkV2UI();
+    if (name === 'clRecipesV3' && typeof renderClRecipesV3 === 'function') {
+      try { ensureCl3(); renderClRecipesV3(); } catch (e) { console.warn('[cl3] section render failed:', e); }
+    }
   };
 })();
 
