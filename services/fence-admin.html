@@ -2135,6 +2135,13 @@ function populateAll() {
   // Build & Price theme — sync mode buttons + preset ring + live preview
   if (typeof loadThemeUI === 'function') loadThemeUI();
 
+  // Labour Calculator — hydrate fields from saved config.labour2.  Done here
+  // (in addition to the deferred window.load handler) so a fresh page load
+  // reflects saved values immediately, with no flash of the defaults.
+  if (typeof loadLabourUI === 'function') {
+    try { loadLabourUI(); } catch (e) { /* fields may not be in DOM yet */ }
+  }
+
   updateAllPreviews();
   dirty = false;
   document.getElementById('unsavedDot').classList.remove('visible');
@@ -2397,6 +2404,14 @@ function collectAll() {
   collectBundles();
   collectPostMaterials();
   collectGateMaterials();
+
+  // Labour Calculator (inlined here, not wrapped — function declarations
+  // bind lexically inside the script, so wrapping window.collectAll later
+  // doesn't reach this caller). Same for the dead per-foot tables — they
+  // were unreachable but their collect functions are kept for parity.
+  if (typeof collectLabourUI === 'function') {
+    try { collectLabourUI(); } catch (e) { console.warn('[labour] collect failed:', e); }
+  }
 }
 
 // ═══════ LUMBER TABLE RENDERING ═══════
@@ -6036,19 +6051,11 @@ function refreshSamplePrices() {
   };
 })();
 
-// Save labour settings via existing saveConfig flow — collect right before save.
-// The save pipeline calls collectAll(), not collectForm, so we wrap collectAll.
-// (The earlier "collectForm" wrap was a no-op because that function doesn't
-// exist, which is why labour settings weren't being persisted to saved config.)
-(function hookLabourSave() {
-  if (typeof collectAll === 'function') {
-    const _orig = window.collectAll;
-    window.collectAll = function() {
-      _orig();
-      try { collectLabourUI(); } catch (e) { console.warn('[labour] collect failed:', e); }
-    };
-  }
-})();
+// Labour-collect is now invoked directly from inside collectAll() above —
+// the earlier IIFE wrap that reassigned window.collectAll was a no-op
+// because function declarations resolve via lexical scope (not window) when
+// called from inside the same script, so saveConfig was hitting the
+// unwrapped original.  This comment kept as a tombstone for the bug class.
 
 // Also refresh samples on page load after config is ready
 window.addEventListener('load', () => {
