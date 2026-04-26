@@ -705,8 +705,9 @@
         }
         .map-search-result:last-child { border-bottom: none; }
         .map-search-result:hover, .map-search-result.focused { background: var(--gray-50); }
-        .map-search-result-primary { font-weight: 600; color: var(--black); }
+        .map-search-result-primary { font-weight: 600; color: var(--black); display: flex; align-items: center; gap: 8px; }
         .map-search-result-secondary { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+        .map-search-result-chip { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; background: var(--accent-light); color: var(--accent); font-size: 11px; font-weight: 700; flex-shrink: 0; }
         .map-locate-btn {
             display: flex; align-items: center; gap: 6px; justify-content: center;
             width: 100%; padding: 10px; margin-top: 10px; font-size: 12px; font-weight: 600;
@@ -5346,18 +5347,35 @@
                 ctx.beginPath(); ctx.arc(pinX, pinY - 12, 3.5, 0, Math.PI * 2); ctx.fill();
             }
 
-            // Street name label at bottom
-            if (mapState.address) {
-                const short = mapState.address.split(',').slice(0, 2).join(',').trim();
-                const textColor = mapStyle === 'roadmap' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.8)';
-                const bgColor = mapStyle === 'roadmap' ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.6)';
-                ctx.font = '600 11px Inter, sans-serif';
-                const tw = ctx.measureText(short).width;
-                const ax = canvasW - tw - 28, ay = canvasH - 40;
+            // Address label at bottom — always lead with the house number when
+            // we have one, even if the formatted_address dropped it.  Line 1 is
+            // the primary (house # + street); line 2 is city/region.
+            if (mapState.address || mapState.primary) {
+                let line1 = (mapState.primary || '').trim();
+                if (!line1) line1 = (mapState.address || '').split(',').slice(0, 1).join('').trim();
+                if (mapState.houseNumber && !line1.startsWith(mapState.houseNumber)) {
+                    line1 = mapState.houseNumber + ' ' + line1.replace(/^#?\d+\s*/, '');
+                }
+                const line2 = ((mapState.address || '').split(',').slice(1, 3).join(',') || '').trim();
+                const textColor = mapStyle === 'roadmap' ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.92)';
+                const bgColor   = mapStyle === 'roadmap' ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.7)';
+                const subColor  = mapStyle === 'roadmap' ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)';
+                ctx.font = '700 13px Inter, sans-serif';
+                const tw1 = ctx.measureText('\uD83D\uDCCD ' + line1).width;
+                ctx.font = '500 10px Inter, sans-serif';
+                const tw2 = line2 ? ctx.measureText(line2).width : 0;
+                const tw = Math.max(tw1, tw2);
+                const ax = canvasW - tw - 18, ay = canvasH - 50;
                 ctx.fillStyle = bgColor;
-                ctx.beginPath(); ctx.roundRect(ax - 6, ay - 12, tw + 26, 18, 6); ctx.fill();
+                ctx.beginPath(); ctx.roundRect(ax - 10, ay - 16, tw + 20, line2 ? 36 : 22, 8); ctx.fill();
                 ctx.fillStyle = textColor;
-                ctx.fillText('\uD83D\uDCCD ' + short, ax, ay);
+                ctx.font = '700 13px Inter, sans-serif';
+                ctx.fillText('\uD83D\uDCCD ' + line1, ax, ay);
+                if (line2) {
+                    ctx.font = '500 10px Inter, sans-serif';
+                    ctx.fillStyle = subColor;
+                    ctx.fillText(line2, ax + 20, ay + 14);
+                }
             }
 
             // Scale bar — color depends on style
@@ -5377,9 +5395,15 @@
         function updateMapUI() {
             mapAddrBtn.style.display = canvasMode === 'map' ? '' : 'none';
             mapStyleToggle.style.display = canvasMode === 'map' ? '' : 'none';
-            if (mapState.address) {
-                const short = mapState.address.split(',').slice(0, 2).join(',');
-                mapAddrLabel.textContent = short;
+            if (mapState.address || mapState.primary) {
+                // Lead with the house number when we have one (toolbar chip
+                // matches the bottom-right map label so customers always see
+                // the resolved street number).
+                let label = mapState.primary || (mapState.address || '').split(',')[0];
+                if (mapState.houseNumber && !String(label).startsWith(mapState.houseNumber)) {
+                    label = mapState.houseNumber + ' ' + String(label).replace(/^#?\d+\s*/, '');
+                }
+                mapAddrLabel.textContent = label;
             }
         }
         document.querySelectorAll('.canvas-mode-btn[data-mode]').forEach(btn => {
@@ -5426,18 +5450,15 @@
         let currentSuggestions = [];
         let focusedIdx = -1;
 
-        function formatSuggestion(item) {
-            const a = item.address || {};
-            const house = a.house_number || '';
-            const road = a.road || a.pedestrian || a.footway || '';
-            const primary = [house, road].filter(Boolean).join(' ') || (item.display_name.split(',')[0] || '').trim();
-            const city = a.city || a.town || a.village || a.hamlet || a.municipality || a.county || '';
-            const region = a.state || a.province || a.state_district || '';
-            const country = a.country_code ? a.country_code.toUpperCase() : (a.country || '');
-            const secondary = [city, region, country].filter(Boolean).join(', ');
-            return { primary, secondary };
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
         }
 
+        // Render a flat list of geocode hits.  Each hit already has
+        // primary/secondary lines pre-formatted by /api/geocode (house
+        // number always leads when available).  We additionally surface a
+        // distinct house-number "chip" so even at a glance the customer
+        // can confirm the right address before tapping.
         function renderSuggestions(items) {
             currentSuggestions = items;
             focusedIdx = -1;
@@ -5447,50 +5468,49 @@
                 return;
             }
             mapSearchResults.innerHTML = items.map((it, i) => {
-                const f = formatSuggestion(it);
+                const primary = escapeHtml(it.primary || '');
+                const secondary = escapeHtml(it.secondary || '');
+                const chip = it.houseNumber ? '<span class="map-search-result-chip">#' + escapeHtml(it.houseNumber) + '</span>' : '';
                 return '<div class="map-search-result" role="option" data-idx="' + i + '">' +
-                    '<div class="map-search-result-primary">' + escapeHtml(f.primary) + '</div>' +
-                    '<div class="map-search-result-secondary">' + escapeHtml(f.secondary) + '</div>' +
+                    '<div class="map-search-result-primary">' + chip + primary + '</div>' +
+                    '<div class="map-search-result-secondary">' + secondary + '</div>' +
                     '</div>';
             }).join('');
             mapSearchResults.classList.add('visible');
         }
 
-        function escapeHtml(s) {
-            return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        }
-
+        // Hit our Worker's /api/geocode endpoint.  The worker proxies Google
+        // Geocoding (with a Nominatim fallback) so we get reliable
+        // house-number-resolved results on every query, regardless of CORS
+        // or rate limits the previous direct-Nominatim call ran into.
         async function fetchSuggestions(q) {
             const seq = ++suggestSeq;
             try {
-                // If query starts with a number and doesn't mention a city, append default city for better results
                 let searchQ = q;
-                const hasCity = /winnipeg|brandon|selkirk|steinbach|portage|thompson/i.test(q);
+                const hasCity = /winnipeg|brandon|selkirk|steinbach|portage|thompson|manitoba|MB/i.test(q);
                 const startsWithNumber = /^\d/.test(q.trim());
                 if (startsWithNumber && !hasCity && !q.includes(',')) {
                     searchQ = q + ', Winnipeg, MB';
                 }
-                const url = 'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(searchQ) +
-                    '&format=json&addressdetails=1&limit=5&countrycodes=ca,us';
-                const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+                const res = await fetch('/api/geocode?q=' + encodeURIComponent(searchQ));
                 let data = await res.json();
                 if (seq !== suggestSeq) return; // stale
-                // If appended city got no results, retry with original query
-                if (searchQ !== q && (!Array.isArray(data) || !data.length)) {
-                    const url2 = 'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(q) +
-                        '&format=json&addressdetails=1&limit=5&countrycodes=ca,us';
-                    const res2 = await fetch(url2, { headers: { 'Accept-Language': 'en' } });
-                    data = await res2.json();
+                let items = (data && data.ok && Array.isArray(data.results)) ? data.results : [];
+                // Retry with the original query if the city-augmented one got nothing
+                if (searchQ !== q && !items.length) {
+                    const res2 = await fetch('/api/geocode?q=' + encodeURIComponent(q));
+                    const data2 = await res2.json();
                     if (seq !== suggestSeq) return;
+                    items = (data2 && data2.ok && Array.isArray(data2.results)) ? data2.results : [];
                 }
-                if (!Array.isArray(data) || !data.length) {
+                if (!items.length) {
                     renderSuggestions([]);
                     mapSearchStatus.textContent = 'No matches. Try adding city/province.';
                     mapSearchStatus.className = 'map-search-status';
                     return;
                 }
-                renderSuggestions(data);
-                mapSearchStatus.textContent = data.length + ' match' + (data.length === 1 ? '' : 'es') + ' — pick one';
+                renderSuggestions(items);
+                mapSearchStatus.textContent = items.length + ' match' + (items.length === 1 ? '' : 'es') + ' — pick one';
                 mapSearchStatus.className = 'map-search-status';
             } catch (err) {
                 if (seq !== suggestSeq) return;
@@ -5500,22 +5520,25 @@
         }
 
         function selectSuggestion(item) {
-            mapState.lat = parseFloat(item.lat);
-            mapState.lng = parseFloat(item.lon);
-            mapState.address = item.display_name;
+            mapState.lat = item.lat;
+            mapState.lng = item.lng;
+            mapState.address = item.formatted || item.primary;
+            // Persist the resolved house number + street so the canvas can
+            // always render a label even if the formatted_address omits it.
+            mapState.houseNumber = item.houseNumber || '';
+            mapState.street = item.street || '';
+            mapState.primary = item.primary || '';
             mapSearchStatus.textContent = '';
             mapSearchStatus.className = 'map-search-status';
             renderSuggestions([]);
             document.getElementById('mapSearchOverlay').classList.remove('visible');
-            // Center on address at a zoom that actually shows satellite imagery (ESRI caps ~z19)
             state.panX = canvasW / 2;
             state.panY = canvasH / 2;
             state.zoom = 0.1;
             updateZoomLabel();
             updateMapUI();
             drawCanvas();
-            // Fire-and-forget: send locate reminder email to internal team
-            sendLocateReminder(item.display_name, item.lat, item.lon);
+            sendLocateReminder(mapState.address, item.lat, item.lng);
         }
 
         mapSearchInput.addEventListener('input', () => {

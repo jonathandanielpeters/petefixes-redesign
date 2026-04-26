@@ -263,6 +263,100 @@ async function handleDistance(request, env) {
   }
 }
 
+// ── Geocode handler ────────────────────────────────────────────────
+// Proxies Google's Geocoding API — same key as /api/distance.  Returns a
+// list of address candidates with formatted address, lat/lng, and the
+// broken-down address components (so the client can always show the house
+// number prominently).  We fall back to the free Nominatim service if
+// Google fails (zero results, missing key, billing not enabled, etc.) so
+// the address bar never goes completely dead.
+async function handleGeocode(request, env) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+  if (request.method !== "GET") {
+    return corsResponse({ ok: false, error: "Method not allowed" }, 405);
+  }
+
+  try {
+    const url = new URL(request.url);
+    const q = (url.searchParams.get("q") || "").trim();
+    if (!q) return corsResponse({ ok: false, error: "Query 'q' required" }, 400);
+
+    const apiKey = env.GOOGLE_MAPS_API_KEY || "AIzaSyBE17zClisJ1P4AYoBgyepsAA2SA3g2QNo";
+
+    // ── Try Google first ──
+    let results = [];
+    try {
+      // region=ca biases ambiguous results toward Canada; components also restricts
+      // to Canada+US (matches the prior nominatim countrycodes=ca,us behaviour).
+      const gUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(q)}&region=ca&components=country:CA|country:US&key=${apiKey}`;
+      const gRes = await fetch(gUrl);
+      const gData = await gRes.json();
+      if (gData.status === "OK" && Array.isArray(gData.results)) {
+        results = gData.results.map(r => {
+          const c = (type) => {
+            const comp = r.address_components.find(c => c.types.includes(type));
+            return comp ? comp.long_name : "";
+          };
+          const houseNumber = c("street_number");
+          const street = c("route");
+          const city = c("locality") || c("postal_town") || c("administrative_area_level_2");
+          const region = c("administrative_area_level_1");
+          const country = c("country");
+          const postcode = c("postal_code");
+          // Build a "primary" line that ALWAYS leads with the house number when present
+          const primary = [houseNumber, street].filter(Boolean).join(" ") || (r.formatted_address.split(",")[0] || "").trim();
+          const secondary = [city, region, postcode, country].filter(Boolean).join(", ");
+          return {
+            lat: r.geometry.location.lat,
+            lng: r.geometry.location.lng,
+            formatted: r.formatted_address,
+            houseNumber, street, city, region, postcode, country,
+            primary, secondary,
+            placeId: r.place_id,
+            source: "google"
+          };
+        });
+      }
+    } catch (e) { /* fall through to Nominatim */ }
+
+    // ── Nominatim fallback ──
+    if (!results.length) {
+      try {
+        const nUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&addressdetails=1&limit=5&countrycodes=ca,us`;
+        const nRes = await fetch(nUrl, { headers: { "User-Agent": "PeteFixes/1.0 (+https://www.petefixes.ca)", "Accept-Language": "en" } });
+        const nData = await nRes.json();
+        if (Array.isArray(nData)) {
+          results = nData.map(item => {
+            const a = item.address || {};
+            const houseNumber = a.house_number || "";
+            const street = a.road || a.pedestrian || a.footway || "";
+            const city = a.city || a.town || a.village || a.hamlet || a.municipality || a.county || "";
+            const region = a.state || a.province || a.state_district || "";
+            const country = a.country || (a.country_code ? a.country_code.toUpperCase() : "");
+            const postcode = a.postcode || "";
+            const primary = [houseNumber, street].filter(Boolean).join(" ") || (item.display_name.split(",")[0] || "").trim();
+            const secondary = [city, region, postcode, country].filter(Boolean).join(", ");
+            return {
+              lat: parseFloat(item.lat),
+              lng: parseFloat(item.lon),
+              formatted: item.display_name,
+              houseNumber, street, city, region, postcode, country,
+              primary, secondary,
+              source: "nominatim"
+            };
+          });
+        }
+      } catch (e) { /* both failed */ }
+    }
+
+    return corsResponse({ ok: true, results });
+  } catch (err) {
+    return corsResponse({ ok: false, error: err.message || "Geocode failed" }, 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -273,6 +367,9 @@ export default {
     }
     if (url.pathname === "/api/distance") {
       return handleDistance(request, env);
+    }
+    if (url.pathname === "/api/geocode") {
+      return handleGeocode(request, env);
     }
 
     // Only enforce auth on protected paths
