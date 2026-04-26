@@ -724,6 +724,7 @@
         .pricing-total { text-align: center; flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 6px; flex-wrap: wrap; }
         .pricing-total-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--gray-400); line-height: 1; }
         .pricing-total-value { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.02em; line-height: 1; }
+        .pricing-tax-note { font-size: 11px; font-weight: 500; color: var(--gray-400); letter-spacing: 0.02em; line-height: 1; margin-left: -2px; }
         .pricing-disclaimer { font-size: 8px; color: var(--gray-500); line-height: 1; white-space: nowrap; width: 100%; text-align: center; }
         .pricing-actions { display: flex; gap: 10px; align-items: center; }
         .pricing-actions .btn, .pricing-actions .btn-book { font-weight: 600; border-radius: 980px; padding: 7px 18px; border: none; cursor: pointer; font-size: 13px; transition: background 0.2s; white-space: nowrap; min-width: 140px; width: 150px; text-align: center; box-sizing: border-box; }
@@ -1832,11 +1833,14 @@
         <div class="pricing-summary">
             <div class="pricing-item"><span class="pricing-item-label">Total Fence</span><span class="pricing-item-value" id="totalLength">0 ft</span></div>
             <div class="pricing-item"><span class="pricing-item-label">Gates</span><span class="pricing-item-value" id="totalGates">0</span></div>
-            <div class="pricing-item"><span class="pricing-item-label">Posts</span><span class="pricing-item-value" id="totalPosts">0</span></div>
+            <div class="pricing-item"><span class="pricing-item-label">Corners</span><span class="pricing-item-value" id="totalCorners">0</span></div>
+            <div class="pricing-item"><span class="pricing-item-label">Ends + Gate Posts</span><span class="pricing-item-value" id="totalEnds">0</span></div>
+            <div class="pricing-item"><span class="pricing-item-label">Line Posts</span><span class="pricing-item-value" id="totalLinePosts">0</span></div>
         </div>
         <div class="pricing-total">
             <span class="pricing-total-label">Estimated Total</span>
             <span class="pricing-total-value" id="totalPrice">$0</span>
+            <span class="pricing-tax-note">+ tax</span>
             <span class="pricing-disclaimer">Estimate only — confirmed after site visit.</span>
         </div>
         <div class="pricing-actions">
@@ -5827,23 +5831,44 @@
         }
 
         function getTotalStats() {
-            let totalLengthFt = 0; const postSet = new Set();
+            let totalLengthFt = 0;
+            const endIds = new Set();
+            const cornerIds = new Set();
+            let linePostCount = 0;
+
+            // Tally each fence line's posts.  Endpoints fall into endIds or
+            // cornerIds via isCornerPost (≥2 connections = corner); the
+            // middle posts on each line are line posts.
             state.lines.forEach(line => {
                 const p1 = state.points.find(p => p.id === line.p1);
                 const p2 = state.points.find(p => p.id === line.p2);
                 if (!p1 || !p2) return;
                 totalLengthFt += getLineLengthFt(p1, p2);
                 const posts = calculatePostsForLine(p1, p2, line);
-                posts.forEach((pt, i) => {
-                    if (i === 0) postSet.add('pt-' + line.p1);
-                    else if (i === posts.length - 1) postSet.add('pt-' + line.p2);
-                    else postSet.add('mid-' + line.p1 + '-' + line.p2 + '-' + i);
+                linePostCount += Math.max(0, posts.length - 2);
+                [p1, p2].forEach(p => {
+                    if (isCornerPost(p.id)) cornerIds.add(p.id);
+                    else endIds.add(p.id);
                 });
             });
-            // Gate posts
-            let gatePostCount = 0;
-            state.gates.forEach(g => { gatePostCount += getGatePostContext(g).posts; });
-            return { totalLengthFt, totalPosts: postSet.size + gatePostCount, totalGates: state.gates.length };
+
+            // Gate posts count as end posts (per spec — they're the same hardware).
+            // Skip gate endpoints already classified as corners (fence + gate
+            // sharing a post) so we don't double-count.
+            state.gates.forEach(g => {
+                [g.p1, g.p2].forEach(pid => {
+                    if (cornerIds.has(pid) || endIds.has(pid)) return;
+                    endIds.add(pid);
+                });
+            });
+
+            const endCount = endIds.size;
+            const cornerCount = cornerIds.size;
+            const totalPosts = endCount + cornerCount + linePostCount;
+            return {
+                totalLengthFt, totalPosts, totalGates: state.gates.length,
+                endCount, cornerCount, linePostCount
+            };
         }
 
         // ============================================
@@ -5993,7 +6018,24 @@
             const total = v2 ? v2.total : price.total;
             document.getElementById('totalLength').textContent = price.totalLengthFt.toFixed(1) + ' ft';
             document.getElementById('totalGates').textContent = price.totalGates;
-            document.getElementById('totalPosts').textContent = price.totalPosts;
+
+            // Post count breakdown for display — always from getTotalStats so
+            // gate posts are included in the end-post count (per spec).  V2's
+            // internal endCount is line-endpoints-only since gate hardware is
+            // priced via gate recipes; we don't reuse it for display.
+            const corners = price.cornerCount || 0;
+            const linePosts = price.linePostCount || 0;
+            const ends = price.endCount || 0;
+            const elC = document.getElementById('totalCorners');
+            const elE = document.getElementById('totalEnds');
+            const elL = document.getElementById('totalLinePosts');
+            if (elC) elC.textContent = corners || 0;
+            if (elE) elE.textContent = ends || 0;
+            if (elL) elL.textContent = linePosts || 0;
+            // Legacy element kept for any old code that still queries it.
+            const elP = document.getElementById('totalPosts');
+            if (elP) elP.textContent = (corners || 0) + (ends || 0) + (linePosts || 0);
+
             document.getElementById('totalPrice').textContent = '$' + total.toLocaleString();
         }
 
