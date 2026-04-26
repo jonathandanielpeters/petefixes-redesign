@@ -153,6 +153,35 @@
         .config-toggle-btn.active { background: var(--accent); color: var(--white); border-radius: var(--radius-sm); }
         .config-section[data-show-for] { display: none; }
         .config-section[data-show-for].visible { display: block; }
+        /* ── Residential / Commercial mode banner ──
+           Sits above the style switcher.  Flipping it to Commercial:
+             • forces data-theme="dark" on <html>
+             • hides ornamental / welded-wire / vinyl tiles
+             • surfaces the 10 ft post-spacing pill
+             • tags new lines with mode='commercial' so pricing routes
+               through the commercial recipe layer when available */
+        .mode-banner {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; padding: 8px 12px; margin-bottom: 12px;
+            background: var(--gray-50); border-radius: var(--radius-sm);
+            border: 1px solid var(--gray-100);
+            transition: background .2s, border-color .2s;
+        }
+        .mode-banner-label { font-size: 11px; font-weight: 600; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.05em; }
+        .mode-banner-state { font-size: 12px; font-weight: 700; color: var(--black); margin-right: auto; margin-left: 4px; }
+        .mode-banner-state .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: var(--accent-light); color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: 0.04em; margin-left: 4px; }
+        html[data-theme="dark"] .mode-banner { background: rgba(200,165,90,0.06); border-color: rgba(200,165,90,0.3); }
+        /* In commercial mode, hide tiles for fence types we don't support yet */
+        body.commercial-mode #fenceTypeTiles [data-type="ornamental"],
+        body.commercial-mode #fenceTypeTiles [data-type="weldedWire"],
+        body.commercial-mode #fenceTypeTiles [data-type="vinyl"] { display: none; }
+        body.commercial-mode .config-panel-title::after {
+            content: 'COMMERCIAL';
+            display: inline-block; margin-left: 8px; padding: 2px 8px;
+            background: var(--accent); color: #1d1d1f;
+            border-radius: 4px; font-size: 9px; font-weight: 800;
+            letter-spacing: 0.08em; vertical-align: middle;
+        }
         .config-divider { height: 1px; background: var(--gray-100); margin: 8px 0; }
         .beta-banner { background: #FEF3C7; border-bottom: 1px solid #F59E0B; padding: 3px 20px; display: flex; gap: 6px; align-items: center; justify-content: center; position: fixed; top: 44px; left: 0; right: 0; z-index: 90; font-size: 10px; line-height: 1.3; }
         .beta-badge { background: #F59E0B; color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.1em; padding: 2px 6px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; }
@@ -1102,6 +1131,18 @@
             <h1 class="config-panel-title">Build & Price</h1>
             <p class="config-panel-subtitle">Design your fence and get an instant estimate.</p>
 
+            <!-- Residential ↔ Commercial mode toggle.  Flipping this banner
+                 also flips the canvas to dark mode + restricts tiles to the
+                 commercial-supported fence types (Wood, Chain Link). -->
+            <div class="mode-banner" id="modeBanner">
+                <span class="mode-banner-label">Mode</span>
+                <span class="mode-banner-state" id="modeBannerState">Residential</span>
+                <label class="fl-switch" title="Toggle Commercial Edition">
+                    <input type="checkbox" id="commercialModeToggle">
+                    <span class="fl-switch-track"></span><span class="fl-switch-thumb"></span>
+                </label>
+            </div>
+
             <div id="styleSwitcher" class="style-switcher" style="display:none"></div>
 
             <div class="config-section" id="fenceTypeSection">
@@ -1911,7 +1952,13 @@
             points: [], lines: [], gates: [], houses: [],
             actionHistory: [],
             pendingPoint: null, activeTool: 'draw',
-            zoom: 1, panX: 0, panY: 0, selectedLineIdx: -1, selectedGateIdx: -1, selectedHouseIdx: -1, selectedPointId: null
+            zoom: 1, panX: 0, panY: 0, selectedLineIdx: -1, selectedGateIdx: -1, selectedHouseIdx: -1, selectedPointId: null,
+            // 'residential' (default) or 'commercial' — flipped via the
+            // banner toggle.  Commercial mode swaps the theme to dark, hides
+            // ornamental/welded-wire/vinyl tiles, expands max post spacing
+            // to 10 ft, and routes pricing through the commercial recipe
+            // layer (PCFG.commercial.chainlinkV2 / commercial.woodBuild).
+            mode: 'residential'
         };
         let pointIdCounter = 0;
         let gateIdCounter = 0;
@@ -3599,13 +3646,23 @@
             container.innerHTML = html;
         }
 
-        // Populate post spacing pills from admin config
+        // Populate post spacing pills from admin config.  In commercial mode
+        // we surface the 10 ft pill (commercial chain link is rated for it)
+        // and bump the default from 8 ft → 10 ft.
         function populatePostSpacingPills() {
             const container = document.getElementById('postSpacingPills');
             if (!container) return;
             const ps = (PCFG.materialPricing && PCFG.materialPricing.postSpacing) || PCFG.postSpacing || {};
-            const options = ps.options || [6, 7, 8];
-            const defaultVal = ps.default || 8;
+            let options = (ps.options || [6, 7, 8]).slice();
+            let defaultVal = ps.default || 8;
+            if (state.mode === 'commercial') {
+                if (!options.includes(10)) options = options.concat([10]);
+                options.sort((a, b) => a - b);
+                defaultVal = 10;
+            } else {
+                // Trim 10 ft from residential view if it crept in via a saved style
+                options = options.filter(v => v <= 8);
+            }
             const current = state.postSpacing || defaultVal;
             const selected = options.includes(current) ? current : defaultVal;
             let html = '';
@@ -3616,6 +3673,8 @@
             container.innerHTML = html;
             state.postSpacing = selected;
         }
+        // Backwards-compat alias used by setCommercialMode
+        const renderPostSpacingPills = populatePostSpacingPills;
 
         // Update rail count pills based on height: 5'/6' → 2 or 3 rail, 8' → 3 or 4 rail
         function updateRailPillsByHeight() {
@@ -6149,7 +6208,15 @@
         // Compute full project cost using V2 chainlink recipes + labour2.
         // Returns null if V2 isn't set up with real costs — caller falls through to legacy.
         function calculateV2Project() {
-            const cl2 = PCFG.chainlinkV2;
+            // In commercial mode, prefer the commercial recipe layer when one
+            // exists in the saved config; otherwise fall back to the standard
+            // (residential) chainlinkV2 — heavy-duty lines are still better
+            // approximated with stock recipes than not priced at all.
+            const isCommercial = state.mode === 'commercial';
+            const commercialCl2 = (PCFG.commercial && PCFG.commercial.chainlinkV2) || null;
+            const cl2 = (isCommercial && commercialCl2 && Array.isArray(commercialCl2.materials) && commercialCl2.materials.length)
+                ? commercialCl2
+                : PCFG.chainlinkV2;
             const lab = PCFG.labour2;
             if (!cl2 || !cl2.materials || cl2.materials.length === 0) return null;
             if (!cl2.materials.some(m => (m.cost || 0) > 0)) return null; // no real prices yet
@@ -6559,7 +6626,7 @@
             if (isNaN(len) || len <= 0) return;
             pushUndo();
             const { p1, p2 } = createLineFromModal(len, dir, sf);
-            const newLine = { p1: p1.id, p2: p2.id, styleIdx: state.activeStyleIdx };
+            const newLine = { p1: p1.id, p2: p2.id, styleIdx: state.activeStyleIdx, mode: state.mode };
             state.lines.push(newLine);
             state.actionHistory.push({ type: 'line', ref: newLine });
             splitIntersectingLines();
@@ -6599,7 +6666,7 @@
             if (isNaN(w) || w < 2) return;
             pushUndo();
             const { p1, p2 } = createLineFromModal(w, dir, sf);
-            const newGate = { id: ++gateIdCounter, p1: p1.id, p2: p2.id, gateType: gt, hingePost: 'p1', swingDir: 'inward', slideDir: 'auto', styleIdx: state.activeStyleIdx };
+            const newGate = { id: ++gateIdCounter, p1: p1.id, p2: p2.id, gateType: gt, hingePost: 'p1', swingDir: 'inward', slideDir: 'auto', styleIdx: state.activeStyleIdx, mode: state.mode };
             const ad = isSwingGate(gt) ? autoDetectSwingDirection(newGate) : {};
             if (isSwingGate(gt)) { newGate.hingePost = ad.hingePost; newGate.swingDir = ad.swingDir; }
             if (isSlidingGate(gt)) { newGate.slideDir = autoDetectSlideDirection(newGate); }
@@ -6912,7 +6979,7 @@
                     } else { ep = { x: snapped.x, y: snapped.y, id: ++pointIdCounter }; state.points.push(ep); }
                     const gateWidth = getLineLengthFt(state.points.find(p => p.id === state.pendingPoint), ep);
                     const gType = getDefaultGateType(gateWidth);
-                    const newGate = { id: ++gateIdCounter, p1: state.pendingPoint, p2: ep.id, gateType: gType, hingePost: 'p1', swingDir: 'inward', slideDir: 'auto', styleIdx: state.activeStyleIdx };
+                    const newGate = { id: ++gateIdCounter, p1: state.pendingPoint, p2: ep.id, gateType: gType, hingePost: 'p1', swingDir: 'inward', slideDir: 'auto', styleIdx: state.activeStyleIdx, mode: state.mode };
                     if (isSwingGate(gType)) { const ad = autoDetectSwingDirection(newGate); newGate.hingePost = ad.hingePost; newGate.swingDir = ad.swingDir; }
                     if (isSlidingGate(gType)) { newGate.slideDir = autoDetectSlideDirection(newGate); }
                     pushUndo();
@@ -6935,7 +7002,7 @@
                     else { ep = { x: snapped.x, y: snapped.y, id: ++pointIdCounter }; state.points.push(ep); }
                     if (!state.lines.some(l => (l.p1 === state.pendingPoint && l.p2 === ep.id) || (l.p1 === ep.id && l.p2 === state.pendingPoint))) {
                         pushUndo();
-                        const newLine = { p1: state.pendingPoint, p2: ep.id, styleIdx: state.activeStyleIdx };
+                        const newLine = { p1: state.pendingPoint, p2: ep.id, styleIdx: state.activeStyleIdx, mode: state.mode };
                         state.lines.push(newLine);
                         state.actionHistory.push({ type: 'line', ref: newLine });
                         // Auto-split any crossing lines at their intersection
@@ -8497,6 +8564,76 @@
             }
         }
         applyBranding();
+
+        // ── Residential ↔ Commercial mode wiring ──
+        // Single toggle drives:
+        //   - state.mode (used by pricing/recipe selection)
+        //   - data-theme="dark" on <html> (uses existing dark-mode CSS)
+        //   - body.commercial-mode (hides unsupported tiles, surfaces COMMERCIAL badge)
+        //   - 10 ft post-spacing pill becomes available
+        //   - if the active fence type is hidden in commercial mode (ornamental,
+        //     welded wire, vinyl) we auto-snap to chainlink so the form stays valid
+        function setCommercialMode(on) {
+            state.mode = on ? 'commercial' : 'residential';
+            document.body.classList.toggle('commercial-mode', on);
+            const html = document.documentElement;
+            if (on) {
+                html.dataset.themeBeforeCommercial = html.getAttribute('data-theme') || 'light';
+                html.setAttribute('data-theme', 'dark');
+            } else {
+                const prior = html.dataset.themeBeforeCommercial || 'light';
+                html.setAttribute('data-theme', prior);
+                delete html.dataset.themeBeforeCommercial;
+            }
+            const stateEl = document.getElementById('modeBannerState');
+            if (stateEl) {
+                stateEl.innerHTML = on
+                    ? 'Commercial <span class="badge">Heavy-duty</span>'
+                    : 'Residential';
+            }
+            // If the active style points at a fence type that isn't in commercial,
+            // bump it to chainlink so the option pills don't reference a hidden tile.
+            if (on) {
+                state.fenceStyles.forEach(style => {
+                    if (['ornamental', 'weldedWire', 'vinyl'].includes(style.fenceType)) {
+                        style.fenceType = 'chainlink';
+                    }
+                    // 8 ft default in residential → 10 ft default in commercial
+                    if (!style.postSpacing || style.postSpacing < 10) style.postSpacing = 10;
+                });
+                // Re-tag every existing line/gate so pricing routes through the
+                // commercial recipe layer.
+                state.lines.forEach(l => l.mode = 'commercial');
+                state.gates.forEach(g => g.mode = 'commercial');
+            } else {
+                state.lines.forEach(l => { if (l.mode === 'commercial') l.mode = 'residential'; });
+                state.gates.forEach(g => { if (g.mode === 'commercial') g.mode = 'residential'; });
+            }
+            // Refresh tile/pill UI to reflect any auto-snap above
+            if (typeof syncPanelToActiveStyle === 'function') syncPanelToActiveStyle();
+            if (typeof updateConditionalSections === 'function') updateConditionalSections();
+            if (typeof renderPostSpacingPills === 'function') renderPostSpacingPills();
+            if (typeof drawCanvas === 'function') drawCanvas();
+            if (typeof updatePricing === 'function') updatePricing();
+            if (typeof renderSidebar === 'function') renderSidebar();
+        }
+        const cmTog = document.getElementById('commercialModeToggle');
+        if (cmTog) {
+            cmTog.addEventListener('change', e => setCommercialMode(!!e.target.checked));
+        }
+        // Honour saved preference + initial state — default off (residential)
+        try {
+            if (localStorage.getItem('pf_commercial_mode') === '1') {
+                cmTog.checked = true;
+                setCommercialMode(true);
+            }
+        } catch (e) { /* ignore */ }
+        // Persist toggle so the customer's preference rides through reloads
+        if (cmTog) {
+            cmTog.addEventListener('change', e => {
+                try { localStorage.setItem('pf_commercial_mode', e.target.checked ? '1' : '0'); } catch (_) {}
+            });
+        }
     })();
     </script>
 </body>
