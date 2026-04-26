@@ -6132,9 +6132,12 @@
 
         function updatePricing() {
             const price = calculatePrice();
-            // V2 override: if config has populated chainlinkV2 + labour2, use the recipe engine
-            const v2 = calculateV2Project();
-            const total = v2 ? v2.total : price.total;
+            // V3 chainlink recipes (preferred): pulls priceAfterTax live from chainlinkMaster
+            // and routes by tier (residential/commercial) × height. Falls back to V2 then
+            // legacy if V3 isn't populated for the current project.
+            const v3 = calculateV3Project();
+            const v2 = v3 ? null : calculateV2Project();
+            const total = v3 ? v3.total : v2 ? v2.total : price.total;
             document.getElementById('totalLength').textContent = price.totalLengthFt.toFixed(1) + ' ft';
             document.getElementById('totalGates').textContent = price.totalGates;
 
@@ -6156,6 +6159,254 @@
             if (elP) elP.textContent = (corners || 0) + (ends || 0) + (linePosts || 0);
 
             document.getElementById('totalPrice').textContent = '$' + total.toLocaleString();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CHAINLINK V3 — Per-tier × per-height recipes sourcing live priceAfterTax
+        // from chainlinkMaster. Each slot stores galv + black item codes; the
+        // customer's color choice picks one. Markup is applied at the project
+        // level via the existing length-based markup tiers.
+        // ═══════════════════════════════════════════════════════════════════
+        function calculateV3Project() {
+            const isCommercial = state.mode === 'commercial';
+            const tier = isCommercial ? 'commercial' : 'residential';
+            const cl3 = PCFG.chainlinkRecipesV3;
+            const masterItems = (PCFG.chainlinkMaster && PCFG.chainlinkMaster.items) || [];
+            if (!cl3 || !cl3[tier] || Object.keys(cl3[tier]).length === 0) return null;
+            if (masterItems.length === 0) return null;
+
+            const enabledLines = state.lines.filter(isLineEnabled);
+            const clLines = enabledLines.filter(l => getStyleForLine(l).fenceType === 'chainlink');
+            const nonCl = enabledLines.length - clLines.length;
+            // V3 only handles all-chainlink projects right now — fall through to legacy
+            // (which can mix wood/ornamental/etc) if there's anything else on the canvas.
+            if (nonCl > 0) return null;
+            const enabledGates = state.gates.filter(isGateEnabled);
+            if (clLines.length === 0 && enabledGates.length === 0) return null;
+
+            // Index master items by code for O(1) price lookups
+            const itemByCode = Object.create(null);
+            masterItems.forEach(it => { itemByCode[it.itemCode] = it; });
+            const priceOf = (code) => (code && itemByCode[code]) ? (itemByCode[code].priceAfterTax || 0) : 0;
+            const pickColor = (galvCode, blackCode, color) => color === 'black' ? blackCode : galvCode;
+
+            // Group lines by height so each group uses the right recipe
+            const linesByHeight = {};
+            clLines.forEach(l => {
+                const s = getStyleForLine(l);
+                const heightKey = s.height + 'ft';
+                if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color: s.chainlinkColor || 'galvanized' };
+                linesByHeight[heightKey].lines.push(l);
+            });
+
+            // Bail if any line's height has no V3 recipe defined for this tier — drop
+            // to V2/legacy so the customer doesn't see a $0 quote.
+            for (const heightKey of Object.keys(linesByHeight)) {
+                if (!cl3[tier][heightKey]) return null;
+            }
+
+            let materialCost = 0;
+            let totalFt = 0;
+            let totalEndPosts = 0;
+            let totalCornerPosts = 0;
+            let totalLinePosts = 0;
+
+            Object.entries(linesByHeight).forEach(([heightKey, group]) => {
+                const recipe = cl3[tier][heightKey];
+                const color = group.color;
+
+                // Tally posts in this group
+                const endIds = new Set(), cornerIds = new Set();
+                let linePostCount = 0, groupFt = 0;
+                group.lines.forEach(line => {
+                    const p1 = state.points.find(p => p.id === line.p1);
+                    const p2 = state.points.find(p => p.id === line.p2);
+                    if (!p1 || !p2) return;
+                    groupFt += getLineLengthFt(p1, p2);
+                    linePostCount += Math.max(0, calculatePostsForLine(p1, p2, line).length - 2);
+                    [p1, p2].forEach(p => {
+                        if (isCornerPost(p.id)) cornerIds.add(p.id);
+                        else endIds.add(p.id);
+                    });
+                });
+                const endCount = endIds.size;
+                const cornerCount = cornerIds.size;
+                const mainCount = endCount + cornerCount;
+                totalFt += groupFt;
+                totalEndPosts += endCount;
+                totalCornerPosts += cornerCount;
+                totalLinePosts += linePostCount;
+
+                // Default-pick helper
+                const def = (list) => (list || []).find(o => o.isDefault) || (list || [])[0];
+
+                // Main posts (end + corner) + caps
+                const mainOpt = def(recipe.mainAssembly && recipe.mainAssembly.postOptions);
+                if (mainOpt && mainCount > 0) {
+                    materialCost += priceOf(pickColor(mainOpt.galv, mainOpt.black, color)) * mainCount;
+                    materialCost += priceOf(pickColor(mainOpt.capGalv, mainOpt.capBlack, color)) * mainCount;
+                }
+                // Line posts + caps + ties
+                const lineOpt = def(recipe.linePostAssembly && recipe.linePostAssembly.postOptions);
+                if (lineOpt && linePostCount > 0) {
+                    materialCost += priceOf(pickColor(lineOpt.galv, lineOpt.black, color)) * linePostCount;
+                    materialCost += priceOf(pickColor(lineOpt.capGalv, lineOpt.capBlack, color)) * linePostCount;
+                    const ties = lineOpt.fenceTiesPerPost || 0;
+                    materialCost += priceOf(pickColor(lineOpt.fenceTieGalv, lineOpt.fenceTieBlack, color)) * ties * linePostCount;
+                    if (tier === 'commercial' && lineOpt.barbArmGalv) {
+                        materialCost += priceOf(pickColor(lineOpt.barbArmGalv, lineOpt.barbArmBlack, color)) * linePostCount;
+                    }
+                }
+                // Per-foot: fabric + bottom wire (if defaulted) — top rail uses stick math
+                const pf = recipe.perFoot || {};
+                const fab = def(pf.fabricOptions);
+                if (fab && groupFt > 0) {
+                    materialCost += priceOf(pickColor(fab.galv, fab.black, color)) * groupFt;
+                }
+                const bw = def(pf.bottomWireOptions);
+                if (bw && groupFt > 0) {
+                    materialCost += priceOf(pickColor(bw.galv, bw.black, color)) * groupFt;
+                }
+                const tr = def(pf.topRailOptions);
+                if (tr && groupFt > 0) {
+                    const code = pickColor(tr.galv, tr.black, color);
+                    const trItem = itemByCode[code];
+                    if (trItem) {
+                        // Stick length parsed from the SKU's variantSize (e.g. "10'" → 10)
+                        // — defaults to 21' if unparseable
+                        const v = (trItem.variantSize || '').replace(/'/g, '');
+                        const stickFt = parseFloat(v) || 21;
+                        const stickCount = Math.ceil(groupFt / stickFt);
+                        materialCost += (trItem.priceAfterTax || 0) * stickCount;
+                    }
+                }
+                // Connections paired to the chosen main post (per the recipe map)
+                if (mainOpt && mainCount > 0) {
+                    const conn = (recipe.connections && recipe.connections.perMainPost) ? recipe.connections.perMainPost[mainOpt.id] : null;
+                    if (conn) {
+                        const items = [
+                            ['tensionBar', conn.tensionBarQty],
+                            ['railEnd', conn.railEndQty],
+                            ['braceBand', conn.braceBandQty],
+                            ['tensionBand', conn.tensionBandQty]
+                        ];
+                        items.forEach(function(arr) {
+                            const prefix = arr[0], perPost = arr[1];
+                            const code = pickColor(conn[prefix + 'Galv'], conn[prefix + 'Black'], color);
+                            materialCost += priceOf(code) * (perPost || 0) * mainCount;
+                        });
+                    }
+                }
+            });
+
+            // Gates — match each customer gate to a recipe gate by widthFt
+            // (closest match), pulling from the recipe whose height matches the
+            // first chainlink line. Hardware items are added per gate.
+            if (enabledGates.length > 0) {
+                const firstStyle = clLines.length > 0 ? getStyleForLine(clLines[0]) : activeStyle();
+                const heightKey = firstStyle.height + 'ft';
+                const gateRecipe = cl3[tier][heightKey];
+                const color = firstStyle.chainlinkColor || 'galvanized';
+                if (gateRecipe && gateRecipe.gates && gateRecipe.gates.length > 0) {
+                    enabledGates.forEach(function(g) {
+                        const widthFt = g.widthFt || 3.5;
+                        // Closest-width match
+                        let best = gateRecipe.gates[0];
+                        let bestDelta = Math.abs((best.widthFt || 0) - widthFt);
+                        gateRecipe.gates.forEach(function(rec) {
+                            const d = Math.abs((rec.widthFt || 0) - widthFt);
+                            if (d < bestDelta) { best = rec; bestDelta = d; }
+                        });
+                        materialCost += priceOf(pickColor(best.gateGalv, best.gateBlack, color));
+                        (best.hardware || []).forEach(function(hw) {
+                            materialCost += priceOf(pickColor(hw.galv, hw.black, color)) * (hw.qty || 0);
+                        });
+                    });
+                }
+            }
+
+            // Apply length-based markup to material cost (existing tier table)
+            const markup = getMarkup(totalFt) || 1.0;
+            const matSell = materialCost * markup;
+
+            // Labour (mirrors V2's logic — same lab object, same formulas)
+            const lab = PCFG.labour2;
+            let labourCost = 0, labourCharge = 0;
+            const totalPosts = totalEndPosts + totalCornerPosts + totalLinePosts;
+            const totalHookups = totalEndPosts + totalCornerPosts;
+            const lineCount = clLines.length;
+            if (lab && lab.tasks) {
+                const counts = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: totalHookups, perGate: enabledGates.length };
+                let workMinutes = 0;
+                for (const t of Object.values(lab.tasks)) {
+                    const units = counts[t.unit || 'perJob'] || 0;
+                    workMinutes += (t.minutes || 0) * units * (t.employees || 1);
+                }
+                const hoursPerDay = lab.hoursPerDay || 8;
+                const breakMinPerDay = lab.breakMinPerDay || 0;
+                const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
+                    ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
+                    : 0;
+                const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+                const totalMinutes = workMinutes + breakMinutes + overhead;
+                const totalHours = totalMinutes / 60;
+                const otThreshold = lab.overtimeAfterHours || 8;
+                const maxHoursPerDay = lab.maxHoursPerDay || 12;
+                const otCostMult = lab.otCostMult || 1;
+                const otChargeMult = lab.otChargeMult || 1;
+                const perPersonHrs = totalHours / crew;
+                const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
+                const perPersonPerDay = perPersonHrs / daysNeeded;
+                const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
+                const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
+                const regHrs = regPerPersonPerDay * daysNeeded * crew;
+                const otHrs = otPerPersonPerDay * daysNeeded * crew;
+                labourCost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
+                labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+            }
+
+            let total = Math.round(matSell + labourCharge);
+            // Profit-target floor (mirrors V2)
+            if (lab && lab.enforceProfitTarget && lab.tasks) {
+                const hoursPerDay = lab.hoursPerDay || 8;
+                const targetPerDay = lab.targetProfitPerDay || 0;
+                const crewForFloor = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                const counts2 = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: totalHookups, perGate: enabledGates.length };
+                let workMin2 = 0;
+                for (const t of Object.values(lab.tasks)) {
+                    const units = counts2[t.unit || 'perJob'] || 0;
+                    workMin2 += (t.minutes || 0) * units * (t.employees || 1);
+                }
+                const breakMinPerDay2 = lab.breakMinPerDay || 0;
+                const breakMin2 = (hoursPerDay > 0 && breakMinPerDay2 > 0) ? (workMin2 / (hoursPerDay * 60)) * breakMinPerDay2 : 0;
+                const overhead2 = (lab.travelMinOneWay || 0) * 2 * crewForFloor + (lab.loadUpMin || 0) * crewForFloor;
+                const totalMin2 = workMin2 + breakMin2 + overhead2;
+                const perPersonHrs2 = (totalMin2 / 60) / crewForFloor;
+                const maxHours2 = lab.maxHoursPerDay || 12;
+                const daysNeeded2 = Math.max(1, Math.ceil(perPersonHrs2 / maxHours2));
+                const perPersonPerDay2 = perPersonHrs2 / daysNeeded2;
+                const dayFraction = hoursPerDay > 0 ? (perPersonPerDay2 / hoursPerDay) * daysNeeded2 : 0;
+                const targetProfit = dayFraction * targetPerDay;
+                const profitTargetFloor = materialCost + labourCost + targetProfit;
+                if (profitTargetFloor > total) total = Math.round(profitTargetFloor);
+            }
+
+            // Minimum job charge floor
+            const minJob = getMinJobCharge();
+            if (minJob && total < minJob) total = minJob;
+
+            return {
+                total,
+                materialCost: Math.round(materialCost),
+                materialSell: Math.round(matSell),
+                labourCost: Math.round(labourCost),
+                labourCharge: Math.round(labourCharge),
+                endCount: totalEndPosts,
+                cornerCount: totalCornerPosts,
+                linePostCount: totalLinePosts,
+                totalFt
+            };
         }
 
         // ═══════════════════════════════════════════════════════════════════

@@ -573,38 +573,13 @@ a{color:var(--accent);text-decoration:none}
     <div class="card-desc">
       The full <b>444-SKU wholesale parts catalog</b>. Every row is auto-classified into a target
       <em>Material</em> (e.g. "Brace Band", "Chain Link Fabric 2"KK 11ga", "Post Tubing 2-3/8&quot;") and a
-      <em>Variant</em> (size / height / length within that material). Click <b>Sync to Materials</b> to
-      push every shown item into the Materials Master List below — that's where the Build &amp; Price
-      recipes pick from. Re-syncs are merge-safe (matched by SKU code).
+      <em>Variant</em> (size / height / length within that material). The <b>Chain Link Recipes</b>
+      section sources its pickers directly from this list — edit a cost here and every recipe
+      that references that SKU re-prices automatically.
     </div>
-
-    <!-- Inline explainer for the model -->
-    <details style="margin:8px 0 0;background:var(--gray-50);border:1px solid var(--gray-100);border-radius:6px;padding:8px 12px">
-      <summary style="cursor:pointer;font-weight:600;font-size:12px;color:var(--gray-600)">How does this fit with the Materials Master List? &nbsp;<span style="font-weight:400;color:var(--gray-400)">— click to expand</span></summary>
-      <div style="margin-top:8px;font-size:12px;color:var(--gray-500);line-height:1.6">
-        <b>Two views, one catalog.</b> This pricelist is the upstream wholesale source of truth.
-        The <em>Materials Master List</em> (next card down) is the working catalog the recipes
-        reference. Sync flows pricelist → materials.
-        <br><br>
-        <b>Same material, different heights.</b> The four SKUs <code>2K1136WG/2K1142WG/2K1148WG/2K1160WG</code>
-        are all <em>2"&nbsp;KK 11&nbsp;ga galvanized fabric</em> — just at 36/42/48/60" heights.
-        The classifier groups them under <b>"Chain Link Fabric 2"KK 11ga"</b> as four height variants
-        (3ft, 3.5ft, 4ft, 5ft). The recipe picks the right one based on the customer's fence height.
-        <br><br>
-        <b>Different material at the same height.</b> The SKU <code>2K936WG</code> is 9&nbsp;ga fabric
-        at 36" — different gauge, different material. It becomes <b>"Chain Link Fabric 2"KK 9ga"</b>.
-        Recipes can offer it as an upgrade choice next to the standard 11&nbsp;ga.
-        <br><br>
-        <b>Override the auto-classification.</b> Edit the <em>Material</em> or <em>Variant</em>
-        cell on any row to manually re-target where it lands in the master list. Untick <em>Show</em>
-        to skip a SKU during sync entirely.
-      </div>
-    </details>
 
     <div style="margin:10px 0 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="clMasterImport2026()" title="Load the 2026 wholesale price list (one-time seed; preserves any per-item edits you've made)">⤓ Import 2026 pricelist</button>
-      <button class="btn btn-sm" onclick="syncClMasterToMaterials({preview:true})" title="Preview what will change before committing — counts only, no edits">🔎 Sync preview</button>
-      <button class="btn btn-sm" style="background:#3c8a1d;color:#fff;border-color:#3c8a1d" onclick="syncClMasterToMaterials()" title="Push every shown row into the Materials Master List below — adds new entries, updates existing matches by SKU, leaves untouched everything else">🔄 Sync to Materials</button>
       <input type="text" id="cl-master-search" placeholder="Search code or description…" oninput="renderClMasterList()" style="flex:1;min-width:160px;max-width:300px;padding:5px 10px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
       <select id="cl-master-use" onchange="renderClMasterList()" style="padding:4px 8px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
         <option value="">All uses</option>
@@ -629,297 +604,10 @@ a{color:var(--accent);text-decoration:none}
     <datalist id="cl-master-materials-list"></datalist>
   </div>
 
-  <!-- Materials Master List -->
-  <div class="card">
-    <div class="card-title">Materials — Master List</div>
-    <div class="card-desc">One card per material type (Tension Band, Post, Brace Band, etc.). Each card shows a cost matrix of size × color variants. Change the markup once at the top of a card and the sell price for all variants updates automatically. Sell Price = Cost × (1 + Markup/100).</div>
-    <div style="margin:10px 0 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="addClMaterial()">+ Add Material</button>
-      <button class="btn btn-sm" onclick="seedClStandardMaterials(true)" title="Add Pete's standard chain link material list — only adds missing rows, won't duplicate">+ Seed standards</button>
-      <button class="btn btn-sm" onclick="consolidateClPostMaterials()" title="Merge End/Corner/Line Post entries into 'Post' (they're physically the same part)">⇒ Consolidate Posts</button>
-      <button class="btn btn-sm" onclick="clMigrateFromLegacy(true)" title="Re-import costs from legacy pricing fields">↻ Re-import legacy</button>
-      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px;color:var(--gray-500)">
-        Master markup:
-        <input type="number" id="cl-master-markup" value="70" step="1" min="0" style="width:50px;padding:3px 5px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:4px;text-align:right">%
-        <button class="btn btn-sm" onclick="applyClMasterMarkup()" title="Override every material group's markup % with this value">Apply to all</button>
-      </span>
-    </div>
-    <div id="cl-materials-body"></div>
-  </div>
-
-  <!-- Build Recipes -->
-  <div class="card">
-    <div class="card-title">Build Recipes — Parts list per component</div>
-    <div class="card-desc">For each type of post (end, corner, line), per linear foot of fence, and per gate type, define which materials are used and at what quantity. Use "By Height" when the quantity changes for 4/5/6 ft fences (e.g. tension bands). Color is matched automatically to the customer's fence color.</div>
-
-    <div style="margin:16px 0 10px;padding:10px 12px;background:#fffaed;border:1px solid #f0e4bf;border-radius:6px;font-size:12px;color:#7a6520">
-      <strong>Note:</strong> This pricing engine is the new chainlink system. Your fence tool will be wired to use it in the next update. Until then, the existing fence tool continues to use the legacy pricing fields (preserved below this section for safety).
-    </div>
-
-    <!-- End Post -->
-    <div class="cl-recipe-group">
-      <div class="cl-recipe-title">End Post Assembly<span id="cl-preview-endPost"></span></div>
-      <div class="cl-recipe-desc">Parts needed per end post (where a fence run terminates). Multiplied by the number of end posts in the customer's drawing.</div>
-      <div id="cl-recipe-endPost" class="cl-recipe-list"></div>
-      <button class="btn btn-sm" onclick="addClRecipeItem('endPost')">+ Add Material to End Post</button>
-    </div>
-
-    <!-- Corner Post -->
-    <div class="cl-recipe-group">
-      <div class="cl-recipe-title">Corner Post Assembly<span id="cl-preview-cornerPost"></span></div>
-      <div class="cl-recipe-desc">Parts needed per corner post (two fence runs meeting at an angle). Multiplied by the number of corner posts.</div>
-      <div id="cl-recipe-cornerPost" class="cl-recipe-list"></div>
-      <button class="btn btn-sm" onclick="addClRecipeItem('cornerPost')">+ Add Material to Corner Post</button>
-    </div>
-
-    <!-- Line Post -->
-    <div class="cl-recipe-group">
-      <div class="cl-recipe-title">Line Post Assembly<span id="cl-preview-linePost"></span></div>
-      <div class="cl-recipe-desc">Parts needed per line post (interior posts along a straight run). Multiplied by the number of line posts.</div>
-      <div id="cl-recipe-linePost" class="cl-recipe-list"></div>
-      <button class="btn btn-sm" onclick="addClRecipeItem('linePost')">+ Add Material to Line Post</button>
-    </div>
-
-    <!-- Per Linear Foot -->
-    <div class="cl-recipe-group">
-      <div class="cl-recipe-title">Per Linear Foot of Fence<span id="cl-preview-perFoot"></span></div>
-      <div class="cl-recipe-desc">Materials applied per foot of fence length (e.g. fabric at 1/ft, top rail at 0.1/ft = one 10ft rail per 10 ft, fence ties at 1/ft).</div>
-      <div id="cl-recipe-perFoot" class="cl-recipe-list"></div>
-      <button class="btn btn-sm" onclick="addClRecipeItem('perFoot')">+ Add Material Per Foot</button>
-    </div>
-
-    <!-- Gate Recipes -->
-    <div class="cl-recipe-group">
-      <div class="cl-recipe-title">Gate Hardware — By Gate Type</div>
-      <div class="cl-recipe-desc">Different gate types need different hardware attachments. Each gate in the customer's drawing pulls the parts list for its type.</div>
-      <div id="cl-gate-recipes"></div>
-    </div>
-  </div>
-
-  <!-- Legacy (preserved for backward compat with fence-build-price.html) -->
-  <details class="card" style="margin-top:20px">
-    <summary style="cursor:pointer;font-weight:700;color:var(--gray-500)">Legacy pricing fields (kept for backward compat — will be removed once recipe engine is wired in)</summary>
-    <div style="margin-top:12px">
-      <div class="card-desc" style="margin-bottom:12px">These fields are what the fence drawing tool currently reads. They'll be replaced by the recipe engine above. Don't edit unless you're fixing legacy pricing.</div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Mesh Cost per Foot</div>
-        <div class="card-row">
-          <div class="field"><label>4 ft</label><input type="number" id="cfg-cl-base-4" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>5 ft</label><input type="number" id="cfg-cl-base-5" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>6 ft</label><input type="number" id="cfg-cl-base-6" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Galv modifier</label><input type="number" id="cfg-cl-color-galvanized" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Black modifier</label><input type="number" id="cfg-cl-color-black" min="0" step="0.01" oninput="markDirty()"></div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Privacy Inserts</div>
-        <div class="card-row">
-          <div class="field"><label>Bag Length (ft)</label><input type="number" id="cfg-cl-pi-bagLength" min="1" step="1" oninput="markDirty()"></div>
-          <div class="field"><label>Cost / Bag</label><input type="number" id="cfg-cl-pi-bagCost" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Sell / Bag</label><input type="number" id="cfg-cl-pi-bagPrice" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Install $/ft</label><input type="number" id="cfg-cl-pi-installPerFt" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Legacy Mod</label><input type="number" id="cfg-cl-privacyMod" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Legacy Post $</label><input type="number" id="cfg-cl-postCost" min="0" step="0.01" oninput="markDirty()"></div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Top Rail (10' lengths)</div>
-        <div class="card-row">
-          <div class="field"><label>Galvanized</label><input type="number" id="cfg-cl-topRail-galvanized" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Black</label><input type="number" id="cfg-cl-topRail-black" min="0" step="0.01" oninput="markDirty()"></div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Posts — 2 3/8"</div>
-        <div class="card-row">
-          <div class="field"><label>End Galv</label><input type="number" id="cfg-cl-post-238-end-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>End Black</label><input type="number" id="cfg-cl-post-238-end-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Corner Galv</label><input type="number" id="cfg-cl-post-238-corner-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Corner Black</label><input type="number" id="cfg-cl-post-238-corner-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Line Galv</label><input type="number" id="cfg-cl-post-238-line-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Line Black</label><input type="number" id="cfg-cl-post-238-line-black" min="0" step="0.01" oninput="markDirty()"></div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Posts — 1 7/8"</div>
-        <div class="card-row">
-          <div class="field"><label>End Galv</label><input type="number" id="cfg-cl-post-178-end-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>End Black</label><input type="number" id="cfg-cl-post-178-end-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Corner Galv</label><input type="number" id="cfg-cl-post-178-corner-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Corner Black</label><input type="number" id="cfg-cl-post-178-corner-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Line Galv</label><input type="number" id="cfg-cl-post-178-line-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Line Black</label><input type="number" id="cfg-cl-post-178-line-black" min="0" step="0.01" oninput="markDirty()"></div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Hookup Hardware — 2 3/8"</div>
-        <div class="table-scroll">
-          <table class="data-table">
-            <thead><tr><th>Item</th><th>Galv $</th><th>Black $</th></tr></thead>
-            <tbody>
-              <tr><td class="cell-label">Tension Band</td><td><input type="number" id="cfg-cl-hw-238-tensionBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-tensionBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Tension Bar</td><td><input type="number" id="cfg-cl-hw-238-tensionBar-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-tensionBar-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Nuts &amp; Bolts</td><td><input type="number" id="cfg-cl-hw-238-nutsBolts-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-nutsBolts-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Rail End</td><td><input type="number" id="cfg-cl-hw-238-railEnd-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-railEnd-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Center Band</td><td><input type="number" id="cfg-cl-hw-238-centerBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-238-centerBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Hookup Hardware — 1 7/8"</div>
-        <div class="table-scroll">
-          <table class="data-table">
-            <thead><tr><th>Item</th><th>Galv $</th><th>Black $</th></tr></thead>
-            <tbody>
-              <tr><td class="cell-label">Tension Band</td><td><input type="number" id="cfg-cl-hw-178-tensionBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-tensionBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Tension Bar</td><td><input type="number" id="cfg-cl-hw-178-tensionBar-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-tensionBar-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Nuts &amp; Bolts</td><td><input type="number" id="cfg-cl-hw-178-nutsBolts-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-nutsBolts-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Rail End</td><td><input type="number" id="cfg-cl-hw-178-railEnd-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-railEnd-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-              <tr><td class="cell-label">Center Band</td><td><input type="number" id="cfg-cl-hw-178-centerBand-galv" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-cl-hw-178-centerBand-black" min="0" step="0.01" oninput="markDirty()"></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Tension Bands per Hookup + Pricing by Height</div>
-        <div class="card-row">
-          <div class="field"><label>Bands 4ft</label><input type="number" id="cfg-cl-tb-4" min="1" step="1" value="3" oninput="markDirty()"></div>
-          <div class="field"><label>Bands 5ft</label><input type="number" id="cfg-cl-tb-5" min="1" step="1" value="4" oninput="markDirty()"></div>
-          <div class="field"><label>Bands 6ft</label><input type="number" id="cfg-cl-tb-6" min="1" step="1" value="4" oninput="markDirty()"></div>
-        </div>
-        <div class="card-row" style="margin-top:8px">
-          <div class="field"><label>4ft label</label><input type="text" id="cfg-cl-tbh-4-label" value="36 in" oninput="markDirty()"></div>
-          <div class="field"><label>4ft Galv $</label><input type="number" id="cfg-cl-tbh-4-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>4ft Black $</label><input type="number" id="cfg-cl-tbh-4-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>5ft label</label><input type="text" id="cfg-cl-tbh-5-label" value="48 in" oninput="markDirty()"></div>
-          <div class="field"><label>5ft Galv $</label><input type="number" id="cfg-cl-tbh-5-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>5ft Black $</label><input type="number" id="cfg-cl-tbh-5-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>6ft label</label><input type="text" id="cfg-cl-tbh-6-label" value="60 in" oninput="markDirty()"></div>
-          <div class="field"><label>6ft Galv $</label><input type="number" id="cfg-cl-tbh-6-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>6ft Black $</label><input type="number" id="cfg-cl-tbh-6-black" min="0" step="0.01" oninput="markDirty()"></div>
-        </div>
-      </div>
-
-      <div class="card" style="background:#fafafd">
-        <div class="card-title" style="font-size:13px">Fence Ties</div>
-        <div class="card-row">
-          <div class="field"><label>Galv $</label><input type="number" id="cfg-cl-tie-galv" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Black $</label><input type="number" id="cfg-cl-tie-black" min="0" step="0.01" oninput="markDirty()"></div>
-          <div class="field"><label>Per foot</label><input type="number" id="cfg-cl-tie-perFoot" min="0" step="0.1" value="1" oninput="markDirty()"></div>
-          <div class="field"><label>Per post 4ft</label><input type="number" id="cfg-cl-tie-perPost-4" min="0" step="1" value="3" oninput="markDirty()"></div>
-          <div class="field"><label>Per post 5ft</label><input type="number" id="cfg-cl-tie-perPost-5" min="0" step="1" value="4" oninput="markDirty()"></div>
-          <div class="field"><label>Per post 6ft</label><input type="number" id="cfg-cl-tie-perPost-6" min="0" step="1" value="4" oninput="markDirty()"></div>
-        </div>
-      </div>
-    </div>
-  </details>
-
-  <div class="pricing-preview">
-    <div><div class="preview-label">Sample: 50ft 6ft Chainlink (Galvanized)</div><div class="preview-detail">Material cost before markup (uses legacy pricing until recipe engine is wired in)</div></div>
-    <div class="preview-value" id="preview-chainlink-val">--</div>
-  </div>
-
-  <!-- ══ Labour (moved into Chainlink since it's all chain-link-related tasks) ══ -->
-  <div class="card" style="background:#fafafd;border-left:4px solid var(--accent)">
-    <div class="card-title" style="display:flex;align-items:center;gap:8px"><span>⚡</span>Labour</div>
-    <div class="card-desc">Hourly rates, break time, overtime rules, travel, and per-task time estimates. These feed into the Sample Fence Prices below and the customer-facing quotes.</div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Hourly Rates &amp; Break Time</div>
-    <div class="card-desc">What you pay labour vs. what you charge the customer. Break minutes per workday (coffee breaks + lunch) scale with job size based on hours worked.</div>
-    <div class="card-row">
-      <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty();updateLabourPreview();refreshSamplePrices()"></div>
-      <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty();updateLabourPreview();refreshSamplePrices()"></div>
-      <div class="field"><label>Break time per workday (min)</label><input type="number" id="lab2-break-min-per-day" step="5" min="0" value="60" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Total paid break + lunch time per employee per workday. E.g. 60 min = 2×15-min coffee breaks + 30-min lunch."></div>
-      <div class="field"><label>Hours per workday</label><input type="number" id="lab2-hours-per-day" step="0.5" min="1" value="8" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Typical workday length. Used to prorate break time: a 4-hour job gets half the per-day break time."></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Profit Target</div>
-    <div class="card-desc">Target profit per full workday — Pete's baseline income goal. Each job should contribute its share based on the hours it consumes. A job that fills 50% of a day should hit 50% of the target (assuming another job fills the other half).</div>
-    <div class="card-row">
-      <div class="field"><label>Target profit / workday ($)</label><input type="number" id="lab2-target-profit-day" step="25" min="0" value="800" oninput="markDirty();refreshSamplePrices()" title="How much net profit you want to net per full workday after material cost + labour cost. Samples below flag any job that falls short of this target prorated to its share of a workday."></div>
-      <div class="field" style="display:flex;align-items:end;color:var(--gray-400);font-size:11px;line-height:1.4">
-        Per-job target = (job hours ÷ hours per workday) × target profit / workday
-      </div>
-    </div>
-    <div class="card-row" style="margin-top:10px;padding:10px;background:var(--gray-50);border-radius:6px">
-      <div class="field" style="flex:1">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-          <input type="checkbox" id="lab2-enforce-profit-target" oninput="markDirty();refreshSamplePrices()" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
-          <span>Enforce as price floor on customer quotes</span>
-        </label>
-        <div style="font-size:11px;color:var(--gray-400);margin-top:4px;margin-left:28px;line-height:1.4">
-          When on, the Build &amp; Price tool bumps the customer's total up to <code>materials&nbsp;cost + labour&nbsp;cost + per-job&nbsp;target</code> whenever the natural quote falls below that floor. Small / short jobs that would otherwise be unprofitable get priced to meet the target.
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Overtime</div>
-    <div class="card-desc">Overtime threshold + multipliers, plus the maximum hours one worker can be scheduled per day. Jobs needing more than the max auto-split across multiple days — each day gets its own regular + overtime hours.</div>
-    <div class="card-row">
-      <div class="field"><label>Overtime after hrs/person/day</label><input type="number" id="lab2-ot-after" step="0.5" min="0" value="8" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Hours per employee per day before overtime kicks in. MB legal threshold is 8 hours/day."></div>
-      <div class="field"><label>Max hrs/person/day</label><input type="number" id="lab2-max-hours-per-day" step="0.5" min="1" value="12" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Absolute ceiling — most hours you'll schedule one worker in a single day. Jobs needing more auto-split into multiple days."></div>
-      <div class="field"><label>OT cost multiplier (you pay)</label><input type="number" id="lab2-ot-cost-mult" step="0.05" min="1" value="1.5" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="Legal requirement is usually 1.5× regular rate for overtime hours."></div>
-      <div class="field"><label>OT charge multiplier (customer pays)</label><input type="number" id="lab2-ot-charge-mult" step="0.05" min="1" value="1.5" oninput="markDirty();updateLabourPreview();refreshSamplePrices()" title="How much to mark up the customer's charge rate on overtime hours. 1.5× matches cost; higher = better margin on OT work; 1.0× = you eat the OT cost."></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Travel &amp; Setup</div>
-    <div class="card-desc">Shop location + travel/load-up time. Travel time is round-trip; cost is multiplied by how many employees on the job.</div>
-    <div class="card-row">
-      <div class="field" style="flex:2"><label>Shop address</label><input type="text" id="lab2-shop-addr" placeholder="123 Main St, Winnipeg" oninput="markDirty()"></div>
-      <div class="field" style="flex:2"><label>Sample customer address (for distance test)</label><input type="text" id="lab2-cust-addr" placeholder="456 Elm St, Winnipeg" oninput="markDirty()"></div>
-      <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty();refreshSamplePrices()"></div>
-      <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty();refreshSamplePrices()"></div>
-    </div>
-    <div style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-sm" onclick="calcDistanceFromShop()" id="lab2-distance-btn" title="Calculate driving time between shop and customer address using Google Maps. Auto-fills the travel time field.">📍 Auto-calc driving time</button>
-      <span id="lab2-distance-status" style="font-size:11px;color:var(--gray-400)"></span>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Task Times</div>
-    <div class="card-desc">For each task in a job, how many minutes it takes per unit and how many employees are involved. Unit: <strong>per job</strong> = once, <strong>per line</strong> = × distinct fence line segment, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count. Add your own tasks at the bottom.</div>
-    <div class="table-scroll">
-      <table class="data-table" id="lab2-tasks-table">
-        <thead>
-          <tr>
-            <th style="min-width:200px">Task</th>
-            <th style="min-width:80px">Minutes</th>
-            <th style="min-width:80px">Employees</th>
-            <th style="min-width:100px">Unit</th>
-            <th style="width:30px"></th>
-          </tr>
-        </thead>
-        <tbody id="lab2-tasks-body"></tbody>
-      </table>
-    </div>
-    <div style="margin-top:8px"><button class="btn btn-sm" onclick="addCustomLabourTask()">+ Add custom task</button></div>
-
-    <div class="pricing-preview" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:12px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline">
-        <span class="preview-label">Sample labour — 200ft straight fence, 6ft chain link</span>
-        <span class="preview-value" id="lab2-preview-charge">--</span>
-      </div>
-      <div class="preview-detail" id="lab2-preview-detail">Fill in task times to calculate.</div>
-    </div>
-  </div>
+  <!-- The Materials Master List, Build Recipes, and Legacy chainlink pricing
+       cards were removed in favour of the Chain Link Recipes section
+       (sidebar → Chain Link Recipes). All chainlink pricing is now
+       per-tier × per-height, sourced live from the 2026 Pricelist above. -->
 
   <!-- Commercial Edition — separate config layer -->
   <div class="card" id="cl-commercial-card" style="border-left:3px solid var(--accent)">
@@ -972,49 +660,15 @@ a{color:var(--accent);text-decoration:none}
     </div>
   </div>
 
-  <!-- Sample Fence Price — interactive, single card -->
-  <div class="card" id="cl-sample-prices-card">
-    <div class="card-title">Sample Fence Price</div>
-    <div class="card-desc">Live quote preview — every change to your Materials, Recipes, Labour or the sample dimensions re-prices instantly. Uses 6ft galvanized with 2-3/8" posts and 8ft post spacing.</div>
-
-    <!-- Dimension inputs: length / corners / gates / gate type / lines -->
-    <div id="cl-sample-controls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:12px;background:var(--gray-50);border-radius:6px;margin-bottom:10px">
-      <div class="field">
-        <label>Length (ft)</label>
-        <input type="number" id="sample-lengthFt" min="1" step="1" value="200" oninput="onSampleSpecChange()">
-      </div>
-      <div class="field">
-        <label>Corners</label>
-        <input type="number" id="sample-corners" min="0" step="1" value="0" oninput="onSampleSpecChange()">
-      </div>
-      <div class="field">
-        <label>Gates</label>
-        <input type="number" id="sample-gates" min="0" step="1" value="0" oninput="onSampleSpecChange()">
-      </div>
-      <div class="field">
-        <label>Gate type</label>
-        <select id="sample-gateType" onchange="onSampleSpecChange()">
-          <option value="single-swing">Single swing</option>
-          <option value="double-swing">Double swing</option>
-          <option value="slide">Slide / cantilever</option>
-          <option value="pedestrian">Pedestrian</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Line segments</label>
-        <input type="number" id="sample-lines" min="1" step="1" value="1" oninput="onSampleSpecChange()" title="How many straight runs the fence breaks into (e.g. a 3-sided yard = 3).">
-      </div>
-    </div>
-
-    <div id="cl-sample-prices"></div>
-    <button class="btn btn-sm" style="margin-top:10px" onclick="refreshSamplePrices()">↻ Refresh</button>
-  </div>
+  <!-- Sample Fence Price card removed — Chain Link Recipes section has its own
+       per-recipe live preview that prices from the V3 recipe data. -->
 </div>
 
 <!-- Shared searchable picker popup for the Recipes section. One global popup
      gets repositioned next to whichever picker button was clicked. -->
 <div id="cl3-picker-popup" style="display:none;position:absolute;z-index:10000;background:#fff;border:1.5px solid var(--gray-300);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.18);min-width:340px;max-width:520px;font-size:11px">
-  <input id="cl3-picker-search" type="text" placeholder="Search code, description, material, size…" oninput="cl3RenderPickerList(this.value)" onkeydown="cl3PickerKeydown(event)" style="width:100%;padding:10px 14px;border:none;border-bottom:1.5px solid var(--gray-200);font-size:12px;border-radius:6px 6px 0 0;outline:none;box-sizing:border-box">
+  <div id="cl3-picker-header" style="display:none;padding:8px 14px;background:var(--accent-light);border-bottom:1.5px solid var(--accent);border-radius:6px 6px 0 0;font-size:11px;font-weight:600;color:var(--gray-700);line-height:1.3"></div>
+  <input id="cl3-picker-search" type="text" placeholder="Search code, description, material, size…" oninput="cl3RenderPickerList(this.value)" onkeydown="cl3PickerKeydown(event)" style="width:100%;padding:10px 14px;border:none;border-bottom:1.5px solid var(--gray-200);font-size:12px;outline:none;box-sizing:border-box">
   <div id="cl3-picker-count" style="padding:6px 14px;font-size:10px;color:var(--gray-500);background:var(--gray-50);border-bottom:1px solid var(--gray-100)"></div>
   <div id="cl3-picker-list" style="max-height:340px;overflow-y:auto"></div>
 </div>
@@ -5372,10 +5026,13 @@ let _cl3PickerHighlightIdx = -1;
 // with `?` as a sentinel for the picked code (substituted as a JSON string at
 // pick time). Example: "updCl3Main('xyz','galv',?)"  →  on pick of "TC238"
 // becomes: updCl3Main('xyz','galv',"TC238")
-function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, placeholder) {
+//
+// slotLabel (optional) is shown as a header in the popup so the admin knows
+// which slot is being picked — e.g. 'Galv post for "Std 2-3/8" 6ft"'.
+function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, slotLabel) {
   const id = 'cl3p' + (_cl3PickerNextId++);
   const items = cl3PickerItems(materialPattern, color);
-  _cl3PickerRegistry[id] = { items, currentCode, callbackTemplate };
+  _cl3PickerRegistry[id] = { items, currentCode, callbackTemplate, slotLabel: slotLabel || '' };
 
   // Find the current pick to display, even if it's outside the current filter
   let cur = items.find(it => it.itemCode === currentCode);
@@ -5391,7 +5048,7 @@ function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, pl
     label = '⚠ ' + currentCode;
     titleAttr = fallback ? clEscAttr('Saved code "' + currentCode + '" — ' + fallback.description + ' — not in this filter (still pricing correctly)') : clEscAttr('Saved code "' + currentCode + '" not found in pricelist');
   } else {
-    label = placeholder || '— pick —';
+    label = '— pick —';
     titleAttr = items.length === 0 ? 'No items in this category — import the pricelist first' : 'Click to pick from ' + items.length + ' items';
   }
 
@@ -5414,6 +5071,17 @@ function cl3OpenPicker(id, btnEl, ev) {
 
   const popup = document.getElementById('cl3-picker-popup');
   if (!popup) return;
+
+  // Header — shows what slot is being picked, hidden if no slot label
+  const header = document.getElementById('cl3-picker-header');
+  if (header) {
+    if (reg.slotLabel) {
+      header.innerHTML = '<span style="color:var(--accent);font-size:9px;letter-spacing:0.05em;text-transform:uppercase">Picking →</span> ' + clEscHtml(reg.slotLabel);
+      header.style.display = 'block';
+    } else {
+      header.style.display = 'none';
+    }
+  }
 
   // Position popup directly below the trigger
   const r = btnEl.getBoundingClientRect();
@@ -5470,22 +5138,41 @@ function cl3RenderPickerList(query) {
   const displayed = filtered.slice(0, 200);
   const truncated = filtered.length > displayed.length;
 
-  let html = '<div onclick="cl3PickItem(\'\')" style="padding:6px 14px;cursor:pointer;color:var(--gray-400);font-style:italic;border-bottom:1px solid var(--gray-100);font-size:11px">— clear selection —</div>';
+  let html = '';
+  if (!reg.multi) {
+    html += '<div onclick="cl3PickItem(\'\')" style="padding:6px 14px;cursor:pointer;color:var(--gray-400);font-style:italic;border-bottom:1px solid var(--gray-100);font-size:11px">— clear selection —</div>';
+  }
   displayed.forEach((it, idx) => {
-    const sel = it.itemCode === reg.currentCode;
+    const sel = reg.multi ? (reg.selected && reg.selected.has(it.itemCode)) : (it.itemCode === reg.currentCode);
     const a = resolveClItemAssignment(it);
     const bg = sel ? 'background:var(--accent-light)' : '';
-    html += '<div data-pick-idx="' + idx + '" onclick="cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" onmouseover="cl3PickerHover(' + idx + ')" style="padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);' + bg + '">' +
+    const checkbox = reg.multi
+      ? '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onclick="event.stopPropagation();cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" style="width:14px;height:14px;flex-shrink:0;margin-right:8px;cursor:pointer">'
+      : '';
+    const checkMark = (!reg.multi && sel) ? ' ✓' : '';
+    html += '<div data-pick-idx="' + idx + '" onclick="cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" onmouseover="cl3PickerHover(' + idx + ')" style="padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);display:flex;gap:0;align-items:flex-start;' + bg + '">' +
+      checkbox +
+      '<div style="flex:1;min-width:0">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">' +
-      '<b style="font-family:monospace;font-size:11px">' + clEscHtml(it.itemCode) + (sel ? ' ✓' : '') + '</b>' +
+      '<b style="font-family:monospace;font-size:11px">' + clEscHtml(it.itemCode) + checkMark + '</b>' +
       '<span style="color:#3c8a1d;font-weight:700;font-size:11px;white-space:nowrap">$' + (it.priceAfterTax || 0).toFixed(2) + ' <span style="color:var(--gray-400);font-weight:400">' + clEscHtml(it.pricingUnit || '') + '</span></span>' +
       '</div>' +
       '<div style="color:var(--gray-600);font-size:10px;margin-top:3px;line-height:1.35">' + clEscHtml(it.description) + '</div>' +
       '<div style="color:var(--gray-400);font-size:9px;margin-top:2px">' + clEscHtml(a.materialName || '—') + ' · ' + clEscHtml(a.variantSize || '—') + ' · ' + clEscHtml(a.color) + '</div>' +
-      '</div>';
+      '</div></div>';
   });
   if (truncated) {
     html += '<div style="padding:10px 14px;text-align:center;color:var(--gray-400);font-size:10px;border-top:1px solid var(--gray-100)">+' + (filtered.length - displayed.length) + ' more — refine search to see them</div>';
+  }
+  // Multi-select commit bar at the bottom
+  if (reg.multi) {
+    const n = (reg.selected && reg.selected.size) || 0;
+    html += '<div style="position:sticky;bottom:0;background:var(--gray-50);border-top:1.5px solid var(--gray-300);padding:8px 14px;display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+      '<span style="font-size:11px;color:var(--gray-600)"><b>' + n + '</b> item' + (n === 1 ? '' : 's') + ' selected</span>' +
+      '<div style="display:flex;gap:6px">' +
+      '<button class="btn btn-sm" onclick="cl3ClosePicker()">Cancel</button>' +
+      '<button class="btn btn-sm" style="background:#3c8a1d;color:#fff;border-color:#3c8a1d' + (n === 0 ? ';opacity:0.4;pointer-events:none' : '') + '" onclick="cl3CommitMulti()">Add ' + n + ' →</button>' +
+      '</div></div>';
   }
   list.innerHTML = html;
 }
@@ -5528,13 +5215,71 @@ function cl3PickerKeydown(ev) {
 function cl3PickItem(code) {
   if (!_cl3ActivePicker) return;
   const reg = _cl3ActivePicker.reg;
-  // Substitute the ? sentinel with the JSON-stringified code so it lands as a string literal
+  // Multi-select mode: toggle checkbox state instead of firing the callback immediately.
+  if (reg.multi) {
+    if (!reg.selected) reg.selected = new Set();
+    if (reg.selected.has(code)) reg.selected.delete(code);
+    else if (code) reg.selected.add(code);
+    cl3RenderPickerList(document.getElementById('cl3-picker-search').value);
+    return;
+  }
+  // Single-pick: substitute the ? sentinel with the JSON-stringified code
   const expr = reg.callbackTemplate.replace(/\?/g, JSON.stringify(code || ''));
   try {
     (new Function(expr))();
   } catch (e) {
     console.error('[cl3 picker] callback failed:', e, '\nexpr:', expr);
   }
+  cl3ClosePicker();
+}
+
+// Multi-select for gate hardware — opens the same popup in multi mode with
+// checkboxes; "Add N" button at the bottom commits all selected items at once.
+function openCl3HwMultiPicker(gateId, btnEl) {
+  const m = ensureClMaster();
+  // Allow picking any galv master item — admin can change colors per-row after
+  const items = m.items.filter(it => it.showToCustomer !== false && resolveClItemAssignment(it).color === 'galvanized');
+  items.sort((a, b) => (a.priceAfterTax || 0) - (b.priceAfterTax || 0));
+  const id = 'cl3hwmulti_' + Date.now().toString(36);
+  _cl3PickerRegistry[id] = {
+    items,
+    currentCode: '',
+    callbackTemplate: '',
+    slotLabel: 'Gate hardware (pick multiple)',
+    multi: true,
+    selected: new Set(),
+    onCommit: function(codes) {
+      const r = _cl3CurRecipe(); if (!r) return;
+      const g = r.gates.find(x => x.id === gateId);
+      if (!g) return;
+      if (!g.hardware) g.hardware = [];
+      codes.forEach(code => {
+        const it = m.items.find(x => x.itemCode === code);
+        if (!it) return;
+        const a = resolveClItemAssignment(it);
+        const blackCode = _cl3BlackCounterpart(code);
+        const hw = blankCl3GateHardware();
+        hw.label = a.materialName || it.description.slice(0, 40);
+        hw.galv = code;
+        hw.black = blackCode;
+        hw.qty = 1;
+        g.hardware.push(hw);
+      });
+      markDirty();
+      renderClRecipesV3();
+      toast('Added ' + codes.length + ' hardware row' + (codes.length === 1 ? '' : 's') + ' to ' + (g.label || 'gate'), 'success');
+    }
+  };
+  cl3OpenPicker(id, btnEl, null);
+}
+
+// Commit-button handler for multi-select mode
+function cl3CommitMulti() {
+  if (!_cl3ActivePicker || !_cl3ActivePicker.reg.multi) return;
+  const reg = _cl3ActivePicker.reg;
+  const codes = Array.from(reg.selected || []);
+  if (codes.length === 0) { cl3ClosePicker(); return; }
+  if (typeof reg.onCommit === 'function') reg.onCommit(codes);
   cl3ClosePicker();
 }
 
@@ -5762,10 +5507,10 @@ function renderCl3MainAssembly(recipe) {
     rows += '<tr style="border-top:1px solid var(--gray-100)">' +
       '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-main-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3MainDefault(\'' + o.id + '\')"></td>' +
       '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. Std 2-3/8&quot;" oninput="updCl3Main(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Main('" + o.id + "','galv',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Main('" + o.id + "','black',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Post Cap', 'galvanized', "updCl3Main('" + o.id + "','capGalv',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Post Cap', 'black', "updCl3Main('" + o.id + "','capBlack',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Main('" + o.id + "','galv',?)", 'Galv post for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Main('" + o.id + "','black',?)", 'Black post for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Post Cap', 'galvanized', "updCl3Main('" + o.id + "','capGalv',?)", 'Galv post cap for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Post Cap', 'black', "updCl3Main('" + o.id + "','capBlack',?)", 'Black post cap for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
       '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap">' +
       '<div>G: ' + cl3FmtPrice((cl3PriceFor(o.galv) || 0) + (cl3PriceFor(o.capGalv) || 0)) + '</div>' +
       '<div>B: ' + cl3FmtPrice((cl3PriceFor(o.black) || 0) + (cl3PriceFor(o.capBlack) || 0)) + '</div>' +
@@ -5844,16 +5589,16 @@ function renderCl3LinePostAssembly(recipe, tier) {
     rows += '<tr style="border-top:1px solid var(--gray-100)">' +
       '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-line-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3LineDefault(\'' + o.id + '\')"></td>' +
       '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 1-7/8&quot;" oninput="updCl3Line(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Line('" + o.id + "','galv',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Line('" + o.id + "','black',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Line Post Cap', 'galvanized', "updCl3Line('" + o.id + "','capGalv',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Line Post Cap', 'black', "updCl3Line('" + o.id + "','capBlack',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieGalv, 'Fence Tie', 'galvanized', "updCl3Line('" + o.id + "','fenceTieGalv',?)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieBlack, 'Fence Tie', 'black', "updCl3Line('" + o.id + "','fenceTieBlack',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Line('" + o.id + "','galv',?)", 'Galv line post — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Line('" + o.id + "','black',?)", 'Black line post — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Line Post Cap', 'galvanized', "updCl3Line('" + o.id + "','capGalv',?)", 'Galv line post cap — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Line Post Cap', 'black', "updCl3Line('" + o.id + "','capBlack',?)", 'Black line post cap — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieGalv, 'Fence Tie', 'galvanized', "updCl3Line('" + o.id + "','fenceTieGalv',?)", 'Galv fence tie — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieBlack, 'Fence Tie', 'black', "updCl3Line('" + o.id + "','fenceTieBlack',?)", 'Black fence tie — ' + (o.label || '(unlabeled)')) + '</td>' +
       '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (o.fenceTiesPerPost || 0) + '" oninput="updCl3Line(\'' + o.id + '\',\'fenceTiesPerPost\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
       (isComm
-        ? '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmGalv, /Barb Wire Arm/, 'galvanized', "updCl3Line('" + o.id + "','barbArmGalv',?)") + '</td>' +
-          '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmBlack, /Barb Wire Arm/, 'black', "updCl3Line('" + o.id + "','barbArmBlack',?)") + '</td>'
+        ? '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmGalv, /Barb Wire Arm/, 'galvanized', "updCl3Line('" + o.id + "','barbArmGalv',?)", 'Galv barb arm — ' + (o.label || '(unlabeled)')) + '</td>' +
+          '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmBlack, /Barb Wire Arm/, 'black', "updCl3Line('" + o.id + "','barbArmBlack',?)", 'Black barb arm — ' + (o.label || '(unlabeled)')) + '</td>'
         : '') +
       '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Line(\'' + o.id + '\')">×</button></td>' +
       '</tr>';
@@ -5931,8 +5676,8 @@ function renderCl3PerFoot(recipe) {
       rows += '<tr style="border-top:1px solid var(--gray-100)">' +
         '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-pf-' + kind + '" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3PfDefault(\'' + kind + '\',\'' + o.id + '\')"></td>' +
         '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 11ga 2&quot;KK" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, materialPattern, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',?)") + '</td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, materialPattern, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',?)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, materialPattern, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',?)", 'Galv ' + kind + ' — ' + (o.label || '(unlabeled)')) + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, materialPattern, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',?)", 'Black ' + kind + ' — ' + (o.label || '(unlabeled)')) + '</td>' +
         '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap"><div>G: ' + cl3FmtPrice(cl3PriceFor(o.galv)) + '</div><div>B: ' + cl3FmtPrice(cl3PriceFor(o.black)) + '</div></td>' +
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Pf(\'' + kind + '\',\'' + o.id + '\')">×</button></td>' +
         '</tr>';
@@ -6067,8 +5812,8 @@ function renderCl3Connections(recipe) {
 function _cl3ConnRow(mainId, prefix, label, materialPattern, c) {
   return '<tr style="border-top:1px solid var(--gray-100)">' +
     '<td style="padding:6px 8px;font-weight:600;color:var(--gray-600)">' + label + '</td>' +
-    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Galv'], materialPattern, 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "Galv',?)") + '</td>' +
-    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Black'], materialPattern, 'black', "updCl3Conn('" + mainId + "','" + prefix + "Black',?)") + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Galv'], materialPattern, 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "Galv',?)", 'Galv ' + label.toLowerCase() + ' (paired to main post)') + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Black'], materialPattern, 'black', "updCl3Conn('" + mainId + "','" + prefix + "Black',?)", 'Black ' + label.toLowerCase() + ' (paired to main post)') + '</td>' +
     '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c[prefix + 'Qty'] || 0) + '" oninput="updCl3Conn(\'' + mainId + '\',\'' + prefix + 'Qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
     '</tr>';
 }
@@ -6083,8 +5828,8 @@ function renderCl3Gates(recipe) {
     (g.hardware || []).forEach(hw => {
       hwRows += '<tr style="border-top:1px solid var(--gray-100)">' +
         '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(hw.label) + '" placeholder="e.g. Hinge" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, () => true, 'galvanized', "updCl3GateHw('" + g.id + "','" + hw.id + "','galv',?)") + '</td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, () => true, 'black', "updCl3GateHw('" + g.id + "','" + hw.id + "','black',?)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, () => true, 'galvanized', "updCl3GateHw('" + g.id + "','" + hw.id + "','galv',?)", 'Galv gate hardware — ' + (hw.label || '(unlabeled)') + ' for ' + (g.label || 'gate')) + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, () => true, 'black', "updCl3GateHw('" + g.id + "','" + hw.id + "','black',?)", 'Black gate hardware — ' + (hw.label || '(unlabeled)') + ' for ' + (g.label || 'gate')) + '</td>' +
         '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (hw.qty || 0) + '" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\')">×</button></td>' +
         '</tr>';
@@ -6097,14 +5842,17 @@ function renderCl3Gates(recipe) {
       '<button class="btn btn-sm" onclick="removeCl3Gate(\'' + g.id + '\')">Delete gate</button>' +
       '</div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',?)") + '</div>' +
-      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',?)") + '</div>' +
+      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',?)", 'Galv gate frame/leaf — ' + (g.label || '(unlabeled)')) + '</div>' +
+      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',?)", 'Black gate frame/leaf — ' + (g.label || '(unlabeled)')) + '</div>' +
       '</div>' +
       '<div style="margin-top:10px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:4px;font-weight:600">Hardware list (hinges, latches, drop bolts, etc.)</div>' +
       '<div style="overflow:auto"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
       '<colgroup><col style="width:140px"><col><col><col style="width:60px"><col style="width:40px"></colgroup>' +
       '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Qty</th><th></th></tr></thead><tbody>' + hwRows + '</tbody></table></div>' +
-      '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3GateHw(\'' + g.id + '\')">+ Add hardware</button></div>' +
+      '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">' +
+        '<button class="btn btn-sm" onclick="addCl3GateHw(\'' + g.id + '\')">+ Add hardware row</button>' +
+        '<button class="btn btn-sm" onclick="openCl3HwMultiPicker(\'' + g.id + '\', this)" title="Pick multiple master pricelist items at once">+ Add multiple from pricelist…</button>' +
+      '</div></div>' +
       '</div>';
   });
   return '<div class="card">' +
