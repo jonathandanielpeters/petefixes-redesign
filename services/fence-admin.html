@@ -5402,11 +5402,28 @@ function renderClRecipesV3() {
     body.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--gray-400)">Pick or add a height above.</div>';
     return;
   }
-  body.innerHTML = renderCl3MainAssembly(recipe) +
+  body.innerHTML = renderCl3QuickActions() +
+    renderCl3MainAssembly(recipe) +
     renderCl3LinePostAssembly(recipe, cl3._uiTier) +
     renderCl3PerFoot(recipe) +
     renderCl3Connections(recipe) +
-    renderCl3Gates(recipe);
+    renderCl3Gates(recipe) +
+    renderCl3Summary();
+}
+
+// Quick Actions card — sits at the top of the recipe body so the seeder
+// is always one click away no matter which height the admin is on.
+function renderCl3QuickActions() {
+  const m = ensureClMaster();
+  const ready = m.items.length > 0;
+  return '<div class="card" style="border-left:3px solid #3c8a1d">' +
+    '<div class="card-title">Quick Actions</div>' +
+    '<div class="card-desc">Auto-seed this recipe from the master pricelist (cheapest sensible pick per slot, paired galv + black, sized to the fence height) — then tweak anything you want.</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+    '<button class="btn btn-sm" style="background:#3c8a1d;color:#fff;border-color:#3c8a1d' + (ready ? '' : ';opacity:0.4;pointer-events:none') + '" onclick="seedCl3Recipe()" title="' + (ready ? 'Pick sensible defaults from the pricelist for this height' : 'Import the pricelist first') + '">⚡ Seed defaults from pricelist</button>' +
+    '<button class="btn btn-sm" onclick="resetCl3Recipe()" title="Wipe this recipe back to empty">↺ Reset to empty</button>' +
+    (ready ? '' : '<span style="font-size:11px;color:#b42c2c;align-self:center">→ Import the pricelist (Chainlink Pricing section) before seeding</span>') +
+    '</div></div>';
 }
 function setCl3Tier(t) {
   const cl3 = ensureCl3();
@@ -5675,6 +5692,389 @@ function updCl3Gate(id, field, value) { const r = _cl3CurRecipe(); if (!r) retur
 function addCl3GateHw(gateId) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; if (!g.hardware) g.hardware = []; g.hardware.push(blankCl3GateHardware()); markDirty(); renderClRecipesV3(); }
 function removeCl3GateHw(gateId, hwId) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; g.hardware = (g.hardware || []).filter(h => h.id !== hwId); markDirty(); renderClRecipesV3(); }
 function updCl3GateHw(gateId, hwId, field, value) { const r = _cl3CurRecipe(); if (!r) return; const g = r.gates.find(x => x.id === gateId); if (!g) return; const hw = (g.hardware || []).find(h => h.id === hwId); if (!hw) return; hw[field] = value; markDirty(); if (field === 'galv' || field === 'black') renderClRecipesV3(); }
+
+// ═══════ SEEDER ═══════
+// Auto-pick sensible defaults from the master pricelist so the admin doesn't
+// have to manually pick from 444 items × every slot. Strategy per slot:
+// pick the cheapest galv item AND the cheapest black item that match the
+// material classification + size constraints derived from the fence height.
+function seedCl3Recipe() {
+  const cl3 = ensureCl3();
+  const tier = cl3._uiTier;
+  const heightLabel = cl3._uiHeight;
+  const heightFt = parseFloat(heightLabel) || 6;
+  const heightInches = Math.round(heightFt * 12);
+  const recipe = cl3[tier][heightLabel];
+  if (!recipe) { toast('No recipe selected', 'error'); return; }
+
+  if (recipe.mainAssembly.postOptions.length > 0 || recipe.linePostAssembly.postOptions.length > 0 || recipe.gates.length > 0) {
+    if (!confirm('This recipe already has options. Seed will ADD new options without removing existing ones. Continue?')) return;
+  }
+
+  const m = ensureClMaster();
+  if (m.items.length === 0) { toast('Import the pricelist first', 'error'); return; }
+  const items = m.items.filter(it => it.showToCustomer !== false);
+
+  // Resolve assignment once per item — saves 444 reparses per pick lookup
+  const resolved = items.map(it => ({ it, asn: resolveClItemAssignment(it) }));
+  const cheapest = (predicate) => {
+    const matches = resolved.filter(({ it, asn }) => predicate(it, asn));
+    matches.sort((a, b) => (a.it.priceAfterTax || 0) - (b.it.priceAfterTax || 0));
+    return matches[0]?.it || null;
+  };
+  const cheapestPair = (predicate) => {
+    const galv = cheapest((it, asn) => asn.color === 'galvanized' && predicate(it, asn));
+    const black = cheapest((it, asn) => asn.color === 'black' && predicate(it, asn));
+    return { galv: galv?.itemCode || '', black: black?.itemCode || '' };
+  };
+
+  // Helper: prefer an exact size-match, fall back to cheapest in the material category.
+  // Picks galv + black variants independently so each side can fall back independently.
+  const matchOrFallback = (materialName, sizeMatch) => {
+    const exact = cheapestPair((it, asn) => asn.materialName === materialName && sizeMatch(asn.variantSize || ''));
+    const galv = exact.galv || (cheapestPair((it, asn) => asn.materialName === materialName).galv);
+    const black = exact.black || (cheapestPair((it, asn) => asn.materialName === materialName).black);
+    return { galv, black };
+  };
+
+  // ── Main post (2-3/8") — length must be ≥ heightFt + 2 (burial + slack) ──
+  const minPostLen = heightFt + 2;
+  const mainPost = cheapestPair((it, asn) => {
+    if (asn.materialName !== 'Post Tubing 2-3/8"') return false;
+    const len = parseFloat((asn.variantSize || '').replace(/'/g, ''));
+    return len >= minPostLen;
+  });
+  if (mainPost.galv || mainPost.black) {
+    // Cap matched to 2-3/8" post diameter — see TC238 etc.
+    const cap = matchOrFallback('Post Cap', s => s === '2-3/8"');
+    const opt = blankCl3PostOpt();
+    opt.label = 'Std 2-3/8" ≥' + minPostLen + "'";
+    opt.galv = mainPost.galv;
+    opt.black = mainPost.black;
+    opt.capGalv = cap.galv;
+    opt.capBlack = cap.black;
+    opt.isDefault = recipe.mainAssembly.postOptions.length === 0;
+    recipe.mainAssembly.postOptions.push(opt);
+  }
+
+  // ── Line post (1-7/8") ──
+  const linePost = cheapestPair((it, asn) => {
+    if (asn.materialName !== 'Post Tubing 1-7/8"') return false;
+    const len = parseFloat((asn.variantSize || '').replace(/'/g, ''));
+    return len >= minPostLen;
+  });
+  if (linePost.galv || linePost.black) {
+    // Line post cap variant first dimension is the post diameter (e.g. ET178 = 1-7/8")
+    const lcap = matchOrFallback('Line Post Cap', s => s === '1-7/8"' || s.startsWith('1-7/8"'));
+    // Fence tie: cheapest, no /ft requirement (most are sold each)
+    const tie = cheapestPair((it, asn) => asn.materialName === 'Fence Tie');
+    const opt = blankCl3LinePostOpt();
+    opt.label = 'Std 1-7/8" ≥' + minPostLen + "'";
+    opt.galv = linePost.galv;
+    opt.black = linePost.black;
+    opt.capGalv = lcap.galv;
+    opt.capBlack = lcap.black;
+    opt.fenceTieGalv = tie.galv;
+    opt.fenceTieBlack = tie.black;
+    opt.fenceTiesPerPost = 4;
+    if (tier === 'commercial') {
+      const arm = cheapestPair((it, asn) => /^Barb Wire Arm$/.test(asn.materialName));
+      opt.barbArmGalv = arm.galv;
+      opt.barbArmBlack = arm.black;
+    }
+    opt.isDefault = recipe.linePostAssembly.postOptions.length === 0;
+    recipe.linePostAssembly.postOptions.push(opt);
+  }
+
+  // ── Fabric (11ga at the matching height) ──
+  const fabric = cheapestPair((it, asn) => /^Chain Link Fabric/.test(asn.materialName) && asn.materialName.includes('11ga') && asn.variantSize === heightFt + 'ft');
+  if (fabric.galv || fabric.black) {
+    const opt = blankCl3PerFootOpt('fabric');
+    opt.label = '11ga ' + heightFt + 'ft';
+    opt.galv = fabric.galv;
+    opt.black = fabric.black;
+    opt.isDefault = recipe.perFoot.fabricOptions.length === 0;
+    recipe.perFoot.fabricOptions.push(opt);
+  }
+  // 9ga upgrade if available
+  const fabric9 = cheapestPair((it, asn) => /^Chain Link Fabric/.test(asn.materialName) && asn.materialName.includes('9ga') && asn.variantSize === heightFt + 'ft');
+  if (fabric9.galv || fabric9.black) {
+    const opt = blankCl3PerFootOpt('fabric');
+    opt.label = '9ga ' + heightFt + 'ft (upgrade)';
+    opt.galv = fabric9.galv;
+    opt.black = fabric9.black;
+    opt.isDefault = false;
+    recipe.perFoot.fabricOptions.push(opt);
+  }
+
+  // ── Top rail (must have a real stick length, not "PER FT" specials) ──
+  const rail = cheapestPair((it, asn) => {
+    if (!/^Top Rail/.test(asn.materialName)) return false;
+    if (!asn.variantSize) return false;  // skips 5608FTX-style PER FT pipe
+    return /\d/.test(asn.variantSize);
+  });
+  if (rail.galv || rail.black) {
+    const opt = blankCl3PerFootOpt('topRail');
+    opt.label = 'Top rail (std stick)';
+    opt.galv = rail.galv;
+    opt.black = rail.black;
+    opt.isDefault = recipe.perFoot.topRailOptions.length === 0;
+    recipe.perFoot.topRailOptions.push(opt);
+  }
+
+  // ── Bottom wire (per-ft variant only — skip the 50-lb spool) ──
+  const bw = cheapestPair((it, asn) => asn.materialName === 'Bottom Wire' && /\/ft/.test(asn.variantSize || ''));
+  if (bw.galv || bw.black) {
+    const opt = blankCl3PerFootOpt('bottomWire');
+    opt.label = 'Bottom wire 9ga';
+    opt.galv = bw.galv;
+    opt.black = bw.black;
+    opt.isDefault = recipe.perFoot.bottomWireOptions.length === 0;
+    recipe.perFoot.bottomWireOptions.push(opt);
+  }
+
+  if (!recipe.perFoot.tiesPerFoot) recipe.perFoot.tiesPerFoot = 1;
+
+  // ── Connections paired to the (newly-added) main post ──
+  const mainOpt = recipe.mainAssembly.postOptions[recipe.mainAssembly.postOptions.length - 1];
+  if (mainOpt) {
+    const conn = blankCl3Connection();
+    // Tension bar — match the fence height (within 6")
+    const tbar = cheapestPair((it, asn) => {
+      if (asn.materialName !== 'Tension Bar') return false;
+      const lenIn = parseFloat(asn.variantSize || '');
+      return Math.abs(lenIn - heightInches) <= 6;
+    });
+    conn.tensionBarGalv = tbar.galv;
+    conn.tensionBarBlack = tbar.black;
+    conn.tensionBarQty = 1;
+    // Rail end — 1-5/16" pairs with the standard 1-3/8" top rail
+    const rend = cheapestPair((it, asn) => asn.materialName === 'Rail End' && asn.variantSize === '1-5/16"');
+    conn.railEndGalv = rend.galv;
+    conn.railEndBlack = rend.black;
+    conn.railEndQty = 1;
+    // Brace + tension bands — these wrap around the main post, so the band's
+    // internal diameter must fit the post's outer diameter. For 2-3/8" main
+    // posts, the right band is "2"" (stamped 2"). The data uses "2"" or
+    // sometimes "2 3/8"" for the same sizing. Try those, fall back to cheapest.
+    const bb = matchOrFallback('Brace Band', s => s === '2"' || s === '2-3/8"');
+    conn.braceBandGalv = bb.galv;
+    conn.braceBandBlack = bb.black;
+    conn.braceBandQty = 1;
+    const tband = matchOrFallback('Tension Band', s => s === '2"' || s === '2-3/8"');
+    conn.tensionBandGalv = tband.galv;
+    conn.tensionBandBlack = tband.black;
+    // Tension bands per main post: roughly 1 per foot of fence height, minimum 4
+    conn.tensionBandQty = Math.max(4, Math.ceil(heightFt));
+    recipe.connections.perMainPost[mainOpt.id] = conn;
+  }
+
+  // ── Gates: pick the cheapest matching the height ──
+  const gateMatName = tier === 'commercial' ? 'Industrial Single Swing Gate' : 'Residential Single Gate';
+  const gateGalv = cheapest((it, asn) => asn.materialName === gateMatName && (asn.variantSize || '').includes(heightInches + '"H'));
+  const gateBlack = cheapest((it, asn) => asn.color === 'black' && asn.materialName === gateMatName && (asn.variantSize || '').includes(heightInches + '"H'));
+  if (gateGalv || gateBlack) {
+    const g = blankCl3Gate();
+    g.label = (tier === 'commercial' ? '4\'W × ' : '3.5\'W × ') + heightInches + '"H';
+    g.widthFt = tier === 'commercial' ? 4 : 3.5;
+    g.heightInches = heightInches;
+    g.gateGalv = gateGalv?.itemCode || '';
+    g.gateBlack = gateBlack?.itemCode || '';
+    const addHw = (label, materialName, qty) => {
+      const pair = cheapestPair((it, asn) => asn.materialName === materialName);
+      if (pair.galv || pair.black) {
+        const hw = blankCl3GateHardware();
+        hw.label = label; hw.qty = qty;
+        hw.galv = pair.galv; hw.black = pair.black;
+        g.hardware.push(hw);
+      }
+    };
+    addHw('Hinge bolt', 'Hinge Bolt', 2);
+    addHw('Drop latch', 'Drop Latch', 1);
+    addHw('Latch catch', 'Latch Catch', 1);
+    addHw('Fork latch', 'Fork Latch', 1);
+    recipe.gates.push(g);
+  }
+
+  markDirty();
+  renderClRecipesV3();
+  toast('Seeded ' + tier + ' ' + heightLabel + ' from pricelist — review and tweak as needed', 'success');
+}
+
+function resetCl3Recipe() {
+  const cl3 = ensureCl3();
+  const tier = cl3._uiTier;
+  const h = cl3._uiHeight;
+  if (!confirm('Reset the entire ' + tier + ' ' + h + ' recipe to empty? All post options, fabric, connections, and gates will be cleared.')) return;
+  cl3[tier][h] = blankCl3Recipe();
+  markDirty();
+  renderClRecipesV3();
+  toast('Reset ' + tier + ' ' + h + ' to empty', 'info');
+}
+
+// ═══════ LIVE RECIPE SUMMARY ═══════
+// Computes a sample-fence breakdown using the current recipe at quote time —
+// helps the admin sanity-check that picks make sense before customers see it.
+function renderCl3Summary() {
+  const cl3 = ensureCl3();
+  const recipe = cl3[cl3._uiTier]?.[cl3._uiHeight];
+  if (!recipe) return '';
+
+  const heightFt = parseFloat(cl3._uiHeight) || 6;
+  const sample = config._cl3Sample || (config._cl3Sample = { lengthFt: 100, corners: 0, ends: 2, gates: 0, color: 'galvanized' });
+  const colorKey = sample.color;
+
+  const priceOf = (code) => cl3PriceFor(code) || 0;
+  const pickColor = (galvCode, blackCode) => colorKey === 'black' ? blackCode : galvCode;
+
+  // Default picks
+  const mainOpt = recipe.mainAssembly.postOptions.find(o => o.isDefault) || recipe.mainAssembly.postOptions[0];
+  const lineOpt = recipe.linePostAssembly.postOptions.find(o => o.isDefault) || recipe.linePostAssembly.postOptions[0];
+  const fabOpt = recipe.perFoot.fabricOptions.find(o => o.isDefault) || recipe.perFoot.fabricOptions[0];
+  const railOpt = recipe.perFoot.topRailOptions.find(o => o.isDefault) || recipe.perFoot.topRailOptions[0];
+  const bwOpt = recipe.perFoot.bottomWireOptions.find(o => o.isDefault) || recipe.perFoot.bottomWireOptions[0];
+  const conn = mainOpt ? recipe.connections.perMainPost[mainOpt.id] : null;
+  const gate = recipe.gates[0];
+
+  const linePostSpacing = cl3._uiTier === 'commercial' ? 10 : 8;
+  const linePostCount = Math.max(0, Math.ceil(sample.lengthFt / linePostSpacing) - 1);
+  const mainPostCount = sample.corners + sample.ends + (sample.gates * 2);
+
+  const lines = [];
+  let total = 0;
+  const addLine = (label, count, unit, code, sub, isMissing) => {
+    const display = isMissing
+      ? '<tr><td style="padding:4px 8px;color:#b42c2c">' + clEscHtml(label) + '</td><td style="padding:4px 8px;color:var(--gray-400)">— missing pick —</td><td style="padding:4px 8px;text-align:right;color:var(--gray-400)">—</td><td style="padding:4px 8px;text-align:right;color:var(--gray-400)">—</td></tr>'
+      : '<tr><td style="padding:4px 8px">' + clEscHtml(label) + '</td><td style="padding:4px 8px;color:var(--gray-500);font-size:10px;font-family:monospace">' + clEscHtml(code) + '</td><td style="padding:4px 8px;text-align:right;color:var(--gray-500)">' + count + ' × $' + unit.toFixed(2) + '</td><td style="padding:4px 8px;text-align:right;font-weight:600">$' + sub.toFixed(2) + '</td></tr>';
+    lines.push(display);
+  };
+
+  // Main post
+  if (mainOpt) {
+    const code = pickColor(mainOpt.galv, mainOpt.black);
+    const u = priceOf(code);
+    const sub = u * mainPostCount;
+    addLine('Main post (×' + mainPostCount + ')', mainPostCount, u, code, sub, !code);
+    total += sub;
+    const capCode = pickColor(mainOpt.capGalv, mainOpt.capBlack);
+    const capU = priceOf(capCode);
+    const capSub = capU * mainPostCount;
+    addLine('Main post cap', mainPostCount, capU, capCode, capSub, !capCode);
+    total += capSub;
+  }
+  // Line post
+  if (lineOpt) {
+    const code = pickColor(lineOpt.galv, lineOpt.black);
+    const u = priceOf(code);
+    const sub = u * linePostCount;
+    addLine('Line post (×' + linePostCount + ' @ ' + linePostSpacing + 'ft spacing)', linePostCount, u, code, sub, !code);
+    total += sub;
+    const capCode = pickColor(lineOpt.capGalv, lineOpt.capBlack);
+    const capU = priceOf(capCode);
+    const capSub = capU * linePostCount;
+    addLine('Line post cap', linePostCount, capU, capCode, capSub, !capCode);
+    total += capSub;
+    const tieCode = pickColor(lineOpt.fenceTieGalv, lineOpt.fenceTieBlack);
+    const tieU = priceOf(tieCode);
+    const tieQty = (lineOpt.fenceTiesPerPost || 0) * linePostCount;
+    const tieSub = tieU * tieQty;
+    addLine('Line post fence ties (' + lineOpt.fenceTiesPerPost + '/post)', tieQty, tieU, tieCode, tieSub, !tieCode);
+    total += tieSub;
+  }
+  // Per-foot
+  if (fabOpt) {
+    const code = pickColor(fabOpt.galv, fabOpt.black);
+    const u = priceOf(code);
+    const sub = u * sample.lengthFt;
+    addLine('Fabric (' + sample.lengthFt + 'ft)', sample.lengthFt, u, code, sub, !code);
+    total += sub;
+  }
+  if (railOpt) {
+    // Top rail — sold per stick (10' or 21' typically). Approximate as per-foot pricing.
+    const code = pickColor(railOpt.galv, railOpt.black);
+    const u = priceOf(code);
+    // Stick length: read from variant if possible
+    const m = ensureClMaster();
+    const it = m.items.find(i => i.itemCode === code);
+    const stickFt = it ? parseFloat((resolveClItemAssignment(it).variantSize || '').replace(/'/g, '')) || 21 : 21;
+    const stickCount = Math.ceil(sample.lengthFt / stickFt);
+    const sub = u * stickCount;
+    addLine('Top rail (' + stickCount + ' × ' + stickFt + 'ft sticks)', stickCount, u, code, sub, !code);
+    total += sub;
+  }
+  if (bwOpt) {
+    const code = pickColor(bwOpt.galv, bwOpt.black);
+    const u = priceOf(code);
+    const sub = u * sample.lengthFt;
+    addLine('Bottom wire (' + sample.lengthFt + 'ft)', sample.lengthFt, u, code, sub, !code);
+    total += sub;
+  }
+  // Connections (per main post)
+  if (conn && mainPostCount > 0) {
+    const connItems = [
+      ['Tension bar', 'tensionBar', conn.tensionBarQty],
+      ['Rail end', 'railEnd', conn.railEndQty],
+      ['Brace band', 'braceBand', conn.braceBandQty],
+      ['Tension band', 'tensionBand', conn.tensionBandQty]
+    ];
+    connItems.forEach(([label, prefix, perPost]) => {
+      const code = pickColor(conn[prefix + 'Galv'], conn[prefix + 'Black']);
+      const u = priceOf(code);
+      const qty = (perPost || 0) * mainPostCount;
+      const sub = u * qty;
+      addLine(label + ' (' + perPost + '/main × ' + mainPostCount + ')', qty, u, code, sub, !code && qty > 0);
+      total += sub;
+    });
+  }
+  // Gate
+  if (gate && sample.gates > 0) {
+    const code = pickColor(gate.gateGalv, gate.gateBlack);
+    const u = priceOf(code);
+    const sub = u * sample.gates;
+    addLine('Gate: ' + (gate.label || gate.widthFt + 'W × ' + gate.heightInches + '"H'), sample.gates, u, code, sub, !code);
+    total += sub;
+    (gate.hardware || []).forEach(hw => {
+      const hwCode = pickColor(hw.galv, hw.black);
+      const hwU = priceOf(hwCode);
+      const hwQty = (hw.qty || 0) * sample.gates;
+      const hwSub = hwU * hwQty;
+      addLine('  ↳ ' + (hw.label || 'hardware') + ' (' + hw.qty + '/gate)', hwQty, hwU, hwCode, hwSub, !hwCode && hwQty > 0);
+      total += hwSub;
+    });
+  }
+
+  return '<div class="card">' +
+    '<div class="card-title">Sample Fence Preview <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— live materials cost (after-tax)</span></div>' +
+    '<div class="card-desc">Plug in dimensions to see exactly what this recipe quotes. Uses default selections for each option group; flips to black or galv based on the picker. Does not include labour or markup.</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;padding:10px;background:var(--gray-50);border-radius:6px;margin:8px 0">' +
+    '<label style="font-size:11px;color:var(--gray-500)">Length (ft)<input type="number" min="0" step="5" value="' + sample.lengthFt + '" oninput="updCl3Sample(\'lengthFt\',+this.value)" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:4px;margin-top:2px"></label>' +
+    '<label style="font-size:11px;color:var(--gray-500)">End posts<input type="number" min="0" step="1" value="' + sample.ends + '" oninput="updCl3Sample(\'ends\',+this.value)" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:4px;margin-top:2px"></label>' +
+    '<label style="font-size:11px;color:var(--gray-500)">Corners<input type="number" min="0" step="1" value="' + sample.corners + '" oninput="updCl3Sample(\'corners\',+this.value)" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:4px;margin-top:2px"></label>' +
+    '<label style="font-size:11px;color:var(--gray-500)">Gates<input type="number" min="0" step="1" value="' + sample.gates + '" oninput="updCl3Sample(\'gates\',+this.value)" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:4px;margin-top:2px"></label>' +
+    '<label style="font-size:11px;color:var(--gray-500)">Color<select onchange="updCl3Sample(\'color\',this.value)" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:4px;margin-top:2px"><option value="galvanized"' + (colorKey === 'galvanized' ? ' selected' : '') + '>Galvanized</option><option value="black"' + (colorKey === 'black' ? ' selected' : '') + '>Black</option></select></label>' +
+    '</div>' +
+    '<div style="overflow:auto;max-height:400px"><table style="width:100%;min-width:600px;border-collapse:collapse;font-size:11px">' +
+    '<thead style="position:sticky;top:0;background:var(--gray-50);z-index:1"><tr style="text-align:left">' +
+    '<th style="padding:6px 8px">Line item</th>' +
+    '<th style="padding:6px 8px">Code</th>' +
+    '<th style="padding:6px 8px;text-align:right">Qty × unit</th>' +
+    '<th style="padding:6px 8px;text-align:right">Subtotal</th>' +
+    '</tr></thead><tbody>' + lines.join('') +
+    '<tr style="border-top:2px solid var(--gray-300);background:var(--gray-50);font-weight:700">' +
+    '<td colspan="3" style="padding:8px 10px;text-align:right">Materials total (after-tax)</td>' +
+    '<td style="padding:8px 10px;text-align:right;font-size:14px;color:var(--accent)">$' + total.toFixed(2) + '</td>' +
+    '</tr><tr style="background:var(--gray-50);font-size:10px;color:var(--gray-500)">' +
+    '<td colspan="4" style="padding:6px 10px;text-align:right">Per linear foot of fence: $' + (sample.lengthFt > 0 ? (total / sample.lengthFt).toFixed(2) : '—') + '/ft (excl. labour/markup)</td>' +
+    '</tr></tbody></table></div>' +
+    '</div>';
+}
+function updCl3Sample(field, value) {
+  if (!config._cl3Sample) config._cl3Sample = { lengthFt: 100, corners: 0, ends: 2, gates: 0, color: 'galvanized' };
+  config._cl3Sample[field] = value;
+  // Re-render the summary card only — this debounce-renders on next tick
+  clearTimeout(window._cl3SampleTimer);
+  window._cl3SampleTimer = setTimeout(renderClRecipesV3, 200);
+}
 
 function ensureCl2() {
   if (!config.chainlinkV2) {
