@@ -110,7 +110,20 @@
            This page wants every pixel of vertical real estate for the canvas.
            We shrink the site nav, shrink the beta banner, and lock the body
            to 100vh so the canvas never causes the page to scroll. */
-        html, body { overflow: hidden; height: 100vh; }
+        html, body { overflow: hidden; height: 100vh; color-scheme: light; }
+        /* Force the nav header opaque on this page.  The default site nav uses
+           a 72%-opacity frosted glass that can look dim/dark if the browser
+           is doing auto-dark or the user clicked through from the homepage's
+           nav-transparent state — which leaves a brief paint of dark visible
+           through the new page's translucent header. */
+        .nav-header { background: var(--white) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+        .nav-header.nav-transparent { background: var(--white) !important; }
+        .nav-header.nav-transparent .logo-pete,
+        .nav-header.nav-transparent .logo-fixes,
+        .nav-header.nav-transparent .nav-links > li > a,
+        .nav-header.nav-transparent .nav-links > li > .nav-dropdown-trigger,
+        .nav-header.nav-transparent .nav-phone { color: var(--black) !important; }
+        .nav-header.nav-transparent .nav-toggle span { background: var(--black) !important; }
         .nav-container { height: 44px; }
         .logo-pete { font-size: 22px; }
         .logo-fixes { font-size: 9px; letter-spacing: 0.3em; }
