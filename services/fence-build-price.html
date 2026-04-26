@@ -745,14 +745,16 @@
            active tab) to collapse out of the way for full canvas focus. */
         .m-tabs, .m-drawer { display: none; }   /* desktop: hidden */
 
-        /* Tab bar pinned above the pricing bar (which is fixed at viewport bottom) */
+        /* Tab bar pinned above the pricing bar (which is fixed at viewport bottom).
+           NOTE: NO `display:` here — the default rule above holds it at
+           display:none until the mobile @media block flips it to display:flex. */
         .m-tabs {
             position: fixed; left: 0; right: 0;
             bottom: 80px;        /* sits flush above the mobile pricing bar */
             height: 52px;
             background: var(--white);
             border-top: 1px solid var(--gray-100);
-            display: flex; justify-content: space-around;
+            justify-content: space-around;
             padding: 4px 0; z-index: 102;
         }
         .m-tab {
@@ -768,7 +770,8 @@
         .m-tab.active { color: var(--accent); background: var(--accent-light); }
         .m-tab:active { transform: scale(0.96); }
 
-        /* Drawer slides up from above the tab strip */
+        /* Drawer slides up from above the tab strip.
+           Same note: no `display:` here — only the @media block enables it. */
         .m-drawer {
             position: fixed; left: 0; right: 0;
             bottom: 132px;        /* tab bar bottom (80) + tab bar height (52) */
@@ -776,7 +779,7 @@
             border-top: 1px solid var(--gray-100);
             box-shadow: 0 -6px 24px rgba(0,0,0,0.08);
             border-radius: 18px 18px 0 0;
-            display: flex; flex-direction: column;
+            flex-direction: column;
             max-height: 50vh;
             overflow: hidden;
             transition: max-height .25s cubic-bezier(.32,.72,0,1),
