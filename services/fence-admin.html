@@ -572,9 +572,32 @@ a{color:var(--accent);text-decoration:none}
     <div class="card-desc">
       Wholesale price list with <b>444 SKUs</b> across Fabric, Posts, Rails, Fittings, Gate hardware, Wire, etc. Each item is tagged
       <span style="color:#3c8a1d">Residential</span>, <span style="color:#b42c2c">Commercial</span> or
-      <span style="color:#2a63a5">Both</span>. Use the per-row controls to mark items as <em>shown to customer</em>, group similar
-      items into an <em>upgrade group</em> (siblings appear as upgrade options on the customer side), and edit costs/markups inline.
+      <span style="color:#2a63a5">Both</span>. Edit costs inline, untick <em>Show</em> to hide an SKU from customers, and use
+      <em>Upgrade group</em> to bundle alternative versions of the same part (see below).
     </div>
+
+    <!-- Inline explainer: what is an upgrade group? -->
+    <details style="margin:8px 0 0;background:var(--gray-50);border:1px solid var(--gray-100);border-radius:6px;padding:8px 12px">
+      <summary style="cursor:pointer;font-weight:600;font-size:12px;color:var(--gray-600)">What's an "upgrade group"? &nbsp;<span style="font-weight:400;color:var(--gray-400)">— click to expand</span></summary>
+      <div style="margin-top:8px;font-size:12px;color:var(--gray-500);line-height:1.6">
+        An <b>upgrade group</b> is a label you give to <em>siblings</em> — items that do the same
+        job but at different price/quality points. On the Build &amp; Price tool, the customer
+        picks the cheapest option by default and the rest surface as <em>"Upgrade →"</em> choices.
+        <br><br>
+        <b>Example.</b> Say you carry 9-gauge, 11-gauge, and 11½-gauge chain link fabric
+        in 6&nbsp;ft. Tag all three with the group <code style="background:#fff;padding:1px 5px;border-radius:3px;border:1px solid var(--gray-200)">fabric-6ft</code>.
+        On the build tool the customer sees:
+        <div style="margin:8px 0 4px 12px;padding:8px 12px;background:#fff;border-radius:6px;border:1px solid var(--gray-100);font-size:11px">
+          🟢 11½ ga. fabric — included &nbsp; <small style="color:var(--gray-400)">(cheapest in group)</small><br>
+          ⬆ Upgrade to 11 ga. — <span style="color:#3c8a1d">+$0.33/ft</span><br>
+          ⬆ Upgrade to 9 ga. — <span style="color:#3c8a1d">+$1.10/ft</span>
+        </div>
+        <b>Tips.</b> Use short, lowercase keys (<code>fabric-6ft</code>, <code>post-2-3/8-end</code>).
+        Items <em>not</em> in any group ship as-is with no choices shown. The "Upgrade group" cell
+        autocompletes from groups you've already created.
+      </div>
+    </details>
+
     <div style="margin:10px 0 8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-sm" onclick="clMasterImport2026()" title="Load the 2026 wholesale price list (one-time seed; preserves any per-item edits you've made)">⤓ Import 2026 pricelist</button>
       <input type="text" id="cl-master-search" placeholder="Search code or description…" oninput="renderClMasterList()" style="flex:1;min-width:160px;max-width:320px;padding:5px 10px;font-size:11px;border:1.5px solid var(--gray-200);border-radius:6px">
@@ -592,7 +615,12 @@ a{color:var(--accent);text-decoration:none}
       </label>
       <span id="cl-master-count" style="margin-left:auto;font-size:11px;color:var(--gray-400)"></span>
     </div>
-    <div id="cl-master-list" style="max-height:600px;overflow-y:auto;border:1px solid var(--gray-100);border-radius:6px"></div>
+    <!-- Active group-filter pill (only visible when filtering by group via the chip click) -->
+    <div id="cl-master-group-pill" style="display:none;margin:0 0 8px;padding:6px 10px;background:#e7f5e0;border:1px solid #c8e0b8;border-radius:6px;font-size:11px;color:#3c8a1d;align-items:center;gap:8px"></div>
+    <!-- horizontal scroll on narrow viewports so the rightmost columns can't be cropped off -->
+    <div id="cl-master-list" style="max-height:600px;overflow:auto;border:1px solid var(--gray-100);border-radius:6px"></div>
+    <!-- shared datalist of upgrade groups (autocomplete) — populated by renderClMasterList -->
+    <datalist id="cl-master-groups-list"></datalist>
   </div>
 
   <!-- Materials Master List -->
@@ -4792,7 +4820,9 @@ function renderClMasterList() {
   const fUse = document.getElementById('cl-master-use')?.value || '';
   const fCat = document.getElementById('cl-master-cat')?.value || '';
   const onlyShown = document.getElementById('cl-master-only-shown')?.checked;
+  const groupFilter = window._clMasterGroupFilter;
   const filtered = m.items.filter(it => {
+    if (groupFilter && (it.upgradeGroupKey || '').trim() !== groupFilter) return false;
     if (fUse && it.use !== fUse) return false;
     if (fCat && it.category !== fCat) return false;
     if (onlyShown && !it.showToCustomer) return false;
@@ -4800,14 +4830,56 @@ function renderClMasterList() {
     return true;
   });
   if (cnt) cnt.textContent = filtered.length + ' / ' + m.items.length + ' items';
+
+  // Group-filter pill: show / hide based on active group filter
+  const pill = document.getElementById('cl-master-group-pill');
+  if (pill) {
+    if (groupFilter) {
+      pill.style.display = 'inline-flex';
+      pill.innerHTML = 'Showing only items in upgrade group: <b>' + clEscHtml(groupFilter) + '</b>' +
+        ' &nbsp;<button class="btn btn-sm" style="margin-left:6px;padding:2px 8px;font-size:11px" onclick="clearClMasterGroupFilter()">Clear</button>';
+    } else {
+      pill.style.display = 'none';
+    }
+  }
+
+  // Build sibling-count map across the whole master list (not just filtered) so the
+  // datalist suggestions and the per-row chip both reflect the full picture.
+  const groupCounts = {};
+  m.items.forEach(it => {
+    const g = (it.upgradeGroupKey || '').trim();
+    if (g) groupCounts[g] = (groupCounts[g] || 0) + 1;
+  });
+  // Populate the shared datalist so all "Upgrade group" inputs autocomplete
+  const dl = document.getElementById('cl-master-groups-list');
+  if (dl) {
+    const opts = Object.keys(groupCounts).sort()
+      .map(g => '<option value="' + clEscAttr(g) + '">' + clEscHtml(g) + ' (' + groupCounts[g] + ' siblings)</option>')
+      .join('');
+    dl.innerHTML = opts;
+  }
+
   // Group by category > subcategory
   const groups = {};
   filtered.forEach(it => {
     const k = it.category + '||' + (it.subcategory || '');
     (groups[k] = groups[k] || []).push(it);
   });
-  // Render
-  let html = '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  // Render — table-layout:fixed + explicit colgroup widths so the rightmost column
+  // (Upgrade group) can never be squeezed off-screen by a long Description, and an
+  // outer min-width forces horizontal scroll on narrow viewports rather than clipping.
+  let html = '<table style="width:100%;min-width:1100px;border-collapse:collapse;font-size:11px;table-layout:fixed">';
+  html += '<colgroup>' +
+    '<col style="width:90px">' +    // Code
+    '<col>' +                        // Description (flex)
+    '<col style="width:80px">' +     // Cost
+    '<col style="width:80px">' +     // After tax
+    '<col style="width:50px">' +     // Unit
+    '<col style="width:90px">' +     // Use
+    '<col style="width:60px">' +     // Color
+    '<col style="width:48px">' +     // Show
+    '<col style="width:220px">' +    // Upgrade group
+    '</colgroup>';
   html += '<thead style="position:sticky;top:0;background:var(--gray-50);z-index:1"><tr style="text-align:left">' +
     '<th style="padding:6px 8px">Code</th>' +
     '<th style="padding:6px 8px">Description</th>' +
@@ -4816,8 +4888,8 @@ function renderClMasterList() {
     '<th style="padding:6px 8px">Unit</th>' +
     '<th style="padding:6px 8px">Use</th>' +
     '<th style="padding:6px 8px">Color</th>' +
-    '<th style="padding:6px 8px;text-align:center" title="Show this item as an upgrade option to customers">Show</th>' +
-    '<th style="padding:6px 8px" title="Items sharing this group key surface together as upgrade choices on the customer side">Upgrade group</th>' +
+    '<th style="padding:6px 8px;text-align:center" title="Untick to hide this SKU from customers entirely">Show</th>' +
+    '<th style="padding:6px 8px" title="Items with the same key appear as alternatives — see the explainer above">Upgrade group <span style="color:var(--gray-400);font-weight:400">(?)</span></th>' +
     '</tr></thead><tbody>';
   Object.keys(groups).sort().forEach(k => {
     const [cat, sub] = k.split('||');
@@ -4825,21 +4897,51 @@ function renderClMasterList() {
       clEscHtml(cat) + (sub ? ' › ' + clEscHtml(sub) : '') + ' <span style="color:var(--gray-400);font-weight:500">(' + groups[k].length + ')</span></td></tr>';
     groups[k].forEach(it => {
       const useColor = it.use === 'Residential' ? '#3c8a1d' : it.use === 'Commercial' ? '#b42c2c' : '#2a63a5';
+      const ug = (it.upgradeGroupKey || '').trim();
+      const sibs = ug ? (groupCounts[ug] || 0) : 0;
+      // Sibling count chip — only shows when item is in a group; click to filter
+      const chip = ug
+        ? '<span title="' + sibs + ' item(s) share this group" style="display:inline-block;margin-left:4px;font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:#e7f5e0;color:#3c8a1d;cursor:pointer" onclick="filterClMasterByGroup(\'' + clEscAttr(ug) + '\')">' + sibs + '×</span>'
+        : '';
       html += '<tr style="border-top:1px solid var(--gray-100)">' +
-        '<td style="padding:4px 8px;font-family:monospace;font-size:10px;color:var(--gray-500);white-space:nowrap">' + clEscHtml(it.itemCode) + '</td>' +
-        '<td style="padding:4px 8px">' + clEscHtml(it.description) + '</td>' +
-        '<td style="padding:4px 8px;text-align:right"><input type="number" value="' + (it.cost || 0) + '" step="0.01" min="0" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'cost\',this.value)" style="width:64px;text-align:right;padding:2px 4px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:4px 8px;font-family:monospace;font-size:10px;color:var(--gray-500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + clEscHtml(it.itemCode) + '</td>' +
+        '<td style="padding:4px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + clEscAttr(it.description) + '">' + clEscHtml(it.description) + '</td>' +
+        '<td style="padding:4px 8px;text-align:right"><input type="number" value="' + (it.cost || 0) + '" step="0.01" min="0" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'cost\',this.value)" style="width:100%;text-align:right;padding:2px 4px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
         '<td style="padding:4px 8px;text-align:right;color:var(--gray-500)">$' + (it.priceAfterTax || 0).toFixed(2) + '</td>' +
-        '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px">' + clEscHtml(it.pricingUnit) + '</td>' +
-        '<td style="padding:4px 8px"><span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + useColor + '15;color:' + useColor + '">' + clEscHtml(it.use) + '</span></td>' +
-        '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px">' + clEscHtml(it.color) + '</td>' +
+        '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + clEscHtml(it.pricingUnit) + '</td>' +
+        '<td style="padding:4px 8px"><span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + useColor + '15;color:' + useColor + ';white-space:nowrap">' + clEscHtml(it.use) + '</span></td>' +
+        '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + clEscHtml(it.color) + '</td>' +
         '<td style="padding:4px 8px;text-align:center"><input type="checkbox" ' + (it.showToCustomer ? 'checked' : '') + ' onchange="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'showToCustomer\',this.checked)"></td>' +
-        '<td style="padding:4px 8px"><input type="text" value="' + clEscAttr(it.upgradeGroupKey || '') + '" placeholder="(none)" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'upgradeGroupKey\',this.value)" style="width:100%;padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:4px 8px;white-space:nowrap"><input type="text" list="cl-master-groups-list" value="' + clEscAttr(ug) + '" placeholder="(none — type or pick)" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'upgradeGroupKey\',this.value)" style="width:calc(100% - 36px);padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;vertical-align:middle">' + chip + '</td>' +
         '</tr>';
     });
   });
   html += '</tbody></table>';
   list.innerHTML = html;
+}
+
+// Quick-filter helper called by the sibling-count chip — shows only items
+// in the clicked group so the admin can audit/adjust the whole set at once.
+function filterClMasterByGroup(group) {
+  const search = document.getElementById('cl-master-search');
+  if (search) search.value = '';
+  const useSel = document.getElementById('cl-master-use');
+  if (useSel) useSel.value = '';
+  // Use the search box as a free-text filter that we already match against description+code.
+  // Simpler: temporarily render only matching items by stuffing the group key into search
+  // and rely on the existing search filter (matches code OR description). Group keys won't
+  // typically appear in code/desc, so we add a true group filter:
+  window._clMasterGroupFilter = group;
+  renderClMasterList();
+  toast('Filtered to upgrade group "' + group + '"', 'info');
+}
+
+// Clear group filter when user changes any other filter
+function clearClMasterGroupFilter() {
+  if (window._clMasterGroupFilter) {
+    window._clMasterGroupFilter = null;
+    renderClMasterList();
+  }
 }
 
 function updateClMasterField(id, field, value) {
