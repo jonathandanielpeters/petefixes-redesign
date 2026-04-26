@@ -188,6 +188,17 @@
         .fence-line-input:focus { outline: none; border-color: var(--accent); }
         .fence-line-unit { font-size: 11px; color: var(--gray-400); font-weight: 500; flex-shrink: 0; }
         .fence-line-delete { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--gray-300); cursor: pointer; border-radius: 4px; transition: all var(--transition); flex-shrink: 0; }
+        /* Compact iOS-style switch — used per fence line + gate to enable/
+           disable inclusion in pricing without deleting the line. */
+        .fl-switch { position: relative; display: inline-block; width: 28px; height: 16px; flex-shrink: 0; cursor: pointer; }
+        .fl-switch input { opacity: 0; width: 0; height: 0; }
+        .fl-switch-track { position: absolute; inset: 0; background: var(--gray-200); border-radius: 999px; transition: background .18s; }
+        .fl-switch-thumb { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.18); transition: transform .18s; }
+        .fl-switch input:checked ~ .fl-switch-track { background: var(--accent); }
+        .fl-switch input:checked ~ .fl-switch-thumb { transform: translateX(12px); }
+        .fence-line-item.disabled { opacity: 0.55; }
+        .fence-line-item.disabled .fence-line-name,
+        .fence-line-item.disabled .fence-line-meta { text-decoration: line-through; text-decoration-color: var(--gray-300); }
         .fence-line-delete:hover { color: #d44; background: #fee; }
         .fence-lines-empty { font-size: 12px; color: var(--gray-400); text-align: center; padding: 12px 8px; background: var(--gray-50); border-radius: var(--radius-sm); line-height: 1.4; }
 
@@ -3042,10 +3053,11 @@
             return cost;
         }
 
-        // Total material cost across entire job (all lines + gates)
+        // Total material cost across entire job (only enabled lines + gates)
         function calculateTotalMaterial() {
             let total = 0;
             state.lines.forEach(line => {
+                if (!isLineEnabled(line)) return;
                 const p1 = state.points.find(p => p.id === line.p1);
                 const p2 = state.points.find(p => p.id === line.p2);
                 if (!p1 || !p2) return;
@@ -3053,6 +3065,7 @@
                 total += calculateLineMaterial(line, len, calculatePostsForLine(p1, p2, line).length);
             });
             state.gates.forEach(g => {
+                if (!isGateEnabled(g)) return;
                 const p1 = state.points.find(p => p.id === g.p1);
                 const p2 = state.points.find(p => p.id === g.p2);
                 if (p1 && p2) total += calculateGateMaterial(g.gateType, getLineLengthFt(p1, p2), getStyleForLine(g));
@@ -4951,10 +4964,18 @@
                 if (!p1 || !p2) return;
                 const s1 = worldToScreen(p1.x, p1.y), s2 = worldToScreen(p2.x, p2.y);
                 const sel = idx === state.selectedLineIdx;
+                const enabled = isLineEnabled(line);
                 const ls = getStyleForLine(line);
                 const lineFt = ls.fenceType;
                 const ac = FENCE_TYPE_COLORS[lineFt] ? FENCE_TYPE_COLORS[lineFt].line : '#888888';
                 const selColor = lineFt === 'wood' ? '#e8b84a' : lineFt === 'ornamental' ? '#555555' : '#aaaaaa';
+                // Disabled lines render dimmed + dashed so the customer can
+                // see where the segment IS without it counting in the price.
+                ctx.save();
+                if (!enabled) {
+                    ctx.globalAlpha = 0.35;
+                    ctx.setLineDash([6, 4]);
+                }
                 ctx.strokeStyle = sel ? selColor : ac; ctx.lineWidth = sel ? 4 : 3;
                 ctx.beginPath(); ctx.moveTo(s1.x, s1.y); ctx.lineTo(s2.x, s2.y); ctx.stroke();
                 if (sel) { ctx.strokeStyle = ac + '40'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(s1.x, s1.y); ctx.lineTo(s2.x, s2.y); ctx.stroke(); }
@@ -4978,6 +4999,7 @@
                 window.__lineLabels.push({ idx, x: labelX, y: labelY, w: labelW, h: labelH });
                 const posts = calculatePostsForLine(p1, p2, line);
                 posts.forEach((pt, i) => { if (i === 0 || i === posts.length - 1) return; const sp = worldToScreen(pt.x, pt.y); ctx.fillStyle = pc; ctx.beginPath(); ctx.arc(sp.x, sp.y, 4, 0, Math.PI * 2); ctx.fill(); });
+                ctx.restore();   // pair with ctx.save() above (alpha + dash for disabled lines)
             });
             // If no lines, clear stale label bounds
             if (state.lines.length === 0 && window.__lineLabels) window.__lineLabels.length = 0;
@@ -4989,8 +5011,11 @@
                 if (!p1 || !p2) return;
                 const s1 = worldToScreen(p1.x, p1.y), s2 = worldToScreen(p2.x, p2.y);
                 const sel = idx === state.selectedGateIdx;
+                const enabledG = isGateEnabled(gate);
                 const gc = '#4a90d9';
 
+                ctx.save();
+                if (!enabledG) ctx.globalAlpha = 0.35;
                 // Gate opening (dashed)
                 ctx.strokeStyle = sel ? '#5da0e9' : gc;
                 ctx.lineWidth = sel ? 5 : 3;
@@ -5059,6 +5084,7 @@
                 ctx.fillStyle = gc;
                 ctx.beginPath(); ctx.arc(s2.x, s2.y, 6, 0, Math.PI * 2); ctx.fill();
                 ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s2.x, s2.y, 3, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();   // pair with ctx.save() above (alpha for disabled gates)
             });
 
             // Draw fence endpoint posts with letter labels
@@ -5853,6 +5879,12 @@
             return map;
         }
 
+        // Helpers — disabled lines/gates still appear on the canvas (dimmed)
+        // but get filtered out of every pricing path so customers can A/B
+        // their layout without losing the drawing.
+        function isLineEnabled(line) { return line && line.enabled !== false; }
+        function isGateEnabled(gate) { return gate && gate.enabled !== false; }
+
         function getTotalStats() {
             let totalLengthFt = 0;
             const endIds = new Set();
@@ -5863,6 +5895,7 @@
             // cornerIds via isCornerPost (≥2 connections = corner); the
             // middle posts on each line are line posts.
             state.lines.forEach(line => {
+                if (!isLineEnabled(line)) return;
                 const p1 = state.points.find(p => p.id === line.p1);
                 const p2 = state.points.find(p => p.id === line.p2);
                 if (!p1 || !p2) return;
@@ -5879,6 +5912,7 @@
             // Skip gate endpoints already classified as corners (fence + gate
             // sharing a post) so we don't double-count.
             state.gates.forEach(g => {
+                if (!isGateEnabled(g)) return;
                 [g.p1, g.p2].forEach(pid => {
                     if (cornerIds.has(pid) || endIds.has(pid)) return;
                     endIds.add(pid);
@@ -5888,8 +5922,9 @@
             const endCount = endIds.size;
             const cornerCount = cornerIds.size;
             const totalPosts = endCount + cornerCount + linePostCount;
+            const totalGates = state.gates.filter(isGateEnabled).length;
             return {
-                totalLengthFt, totalPosts, totalGates: state.gates.length,
+                totalLengthFt, totalPosts, totalGates,
                 endCount, cornerCount, linePostCount
             };
         }
@@ -6012,8 +6047,9 @@
             let labourTotal = 0;
             let addonTotal = 0;
 
-            // Sum line prices
+            // Sum line prices (skip disabled — they exist visually only)
             state.lines.forEach(line => {
+                if (!isLineEnabled(line)) return;
                 const p1 = state.points.find(p => p.id === line.p1);
                 const p2 = state.points.find(p => p.id === line.p2);
                 if (!p1 || !p2) return;
@@ -6023,8 +6059,9 @@
                 addonTotal += calculateAddOnsForLine(line, len);
             });
 
-            // Sum gate labour
+            // Sum gate labour (skip disabled)
             state.gates.forEach(g => {
+                if (!isGateEnabled(g)) return;
                 labourTotal += calculateLabourForGate(g.gateType);
             });
 
@@ -6117,15 +6154,19 @@
             if (!cl2 || !cl2.materials || cl2.materials.length === 0) return null;
             if (!cl2.materials.some(m => (m.cost || 0) > 0)) return null; // no real prices yet
 
-            // Only handle chainlink lines via V2; other fence types stay on legacy.
-            const clLines = state.lines.filter(l => {
+            // Only handle chainlink lines via V2; other fence types stay on
+            // legacy.  Disabled lines are excluded entirely so the price
+            // matches what's actually highlighted on the canvas.
+            const enabledLines = state.lines.filter(isLineEnabled);
+            const clLines = enabledLines.filter(l => {
                 const s = getStyleForLine(l);
                 return s.fenceType === 'chainlink';
             });
-            const nonCl = state.lines.length - clLines.length;
+            const nonCl = enabledLines.length - clLines.length;
             // If the project has non-chainlink lines, V2 can't price them yet — fall through
             if (nonCl > 0) return null;
-            if (clLines.length === 0 && state.gates.length === 0) return null;
+            const enabledGates = state.gates.filter(isGateEnabled);
+            if (clLines.length === 0 && enabledGates.length === 0) return null;
 
             // Build context from the first chainlink line's style
             const firstStyle = clLines.length > 0 ? getStyleForLine(clLines[0]) : activeStyle();
@@ -6174,9 +6215,9 @@
             apply(cl2.recipes.linePost,   linePostCount);
             apply(cl2.recipes.perFoot,    totalFt);
 
-            // Gates
+            // Gates (only enabled — matches what the customer sees priced)
             const gatesByType = {};
-            state.gates.forEach(g => { gatesByType[g.gateType] = (gatesByType[g.gateType] || 0) + 1; });
+            enabledGates.forEach(g => { gatesByType[g.gateType] = (gatesByType[g.gateType] || 0) + 1; });
             Object.entries(gatesByType).forEach(([gt, count]) => {
                 const gateRecipe = (cl2.recipes.gates || {})[gt];
                 if (gateRecipe) apply(gateRecipe, count);
@@ -6188,7 +6229,7 @@
             const lineCount = clLines.length;
             let labourCost = 0, labourCharge = 0;
             if (lab && lab.tasks) {
-                const counts = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: hookups, perGate: state.gates.length };
+                const counts = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: hookups, perGate: enabledGates.length };
                 let workMinutes = 0;
                 for (const t of Object.values(lab.tasks)) {
                     const units = counts[t.unit || 'perJob'] || 0;
@@ -6240,7 +6281,7 @@
                 // Re-derive perPersonHrs and daysNeeded from the numbers
                 // we already computed above (we closed the block, so pull
                 // them through the closure by re-computing):
-                const counts2 = { perJob: 1, perLine: clLines.length, perPost: endCount + cornerCount + linePostCount, perFoot: totalFt, perHookup: endCount + cornerCount, perGate: state.gates.length };
+                const counts2 = { perJob: 1, perLine: clLines.length, perPost: endCount + cornerCount + linePostCount, perFoot: totalFt, perHookup: endCount + cornerCount, perGate: enabledGates.length };
                 let workMin2 = 0;
                 for (const t of Object.values(lab.tasks)) {
                     const units = counts2[t.unit || 'perJob'] || 0;
@@ -6285,6 +6326,7 @@
                 const dist = getLineLengthFt(p1, p2);
                 const posts = calculatePostsForLine(p1, p2, line);
                 const sel = idx === state.selectedLineIdx;
+                const enabled = line.enabled !== false;   // default ON for legacy lines
                 const ls = getStyleForLine(line);
                 const lineFt = ls.fenceType;
                 const lineColor = FENCE_TYPE_COLORS[lineFt] ? FENCE_TYPE_COLORS[lineFt].line : '#888888';
@@ -6292,7 +6334,11 @@
                 const heightLabel = ls.height + "'";
                 const styleNum = state.fenceStyles.length > 1 ? ' S' + ((line.styleIdx || 0) + 1) : '';
                 const pn1 = pnMap[line.p1] || '?', pn2 = pnMap[line.p2] || '?';
-                html += '<div class="fence-line-item' + (sel ? ' selected' : '') + '" data-line-idx="' + idx + '">' +
+                const switchHtml = '<label class="fl-switch" title="Include in price" data-no-select="1">' +
+                    '<input type="checkbox" data-toggle-line="' + idx + '"' + (enabled ? ' checked' : '') + '>' +
+                    '<span class="fl-switch-track"></span><span class="fl-switch-thumb"></span></label>';
+                html += '<div class="fence-line-item' + (sel ? ' selected' : '') + (enabled ? '' : ' disabled') + '" data-line-idx="' + idx + '">' +
+                    switchHtml +
                     '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + styleNum + '</span></div><div class="fence-line-meta">' + pn1 + ' \u2192 ' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
                     '<input class="fence-line-input" type="number" min="1" max="2000" step="0.1" value="' + dist.toFixed(1) + '" data-line-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-line="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
@@ -6322,7 +6368,12 @@
                 }
 
                 const gpn1 = pnMap[gate.p1] || '?', gpn2 = pnMap[gate.p2] || '?';
-                html += '<div class="fence-line-item' + (sel ? ' selected' : '') + '" data-gate-idx="' + idx + '">' +
+                const gEnabled = gate.enabled !== false;
+                const gSwitchHtml = '<label class="fl-switch" title="Include in price" data-no-select="1">' +
+                    '<input type="checkbox" data-toggle-gate="' + idx + '"' + (gEnabled ? ' checked' : '') + '>' +
+                    '<span class="fl-switch-track"></span><span class="fl-switch-thumb"></span></label>';
+                html += '<div class="fence-line-item' + (sel ? ' selected' : '') + (gEnabled ? '' : ' disabled') + '" data-gate-idx="' + idx + '">' +
+                    gSwitchHtml +
                     '<div class="fence-line-color gate-color"></div><div class="fence-line-info"><div class="fence-line-name">Gate ' + (idx + 1) + ' <span class="gate-post-badge">' + gpn1 + '\u2013' + gpn2 + ' \u00b7 ' + postCtx.desc + '</span>' + dirBadge + '</div>' +
                     '<select class="gate-type-select" data-gate-type-idx="' + idx + '">' + typeOptions + '</select></div>' +
                     '<input class="fence-line-input" type="number" min="2" max="30" step="0.5" value="' + width.toFixed(1) + '" data-gate-width-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
@@ -6336,9 +6387,26 @@
                 input.addEventListener('change', (e) => { const i = parseInt(e.target.dataset.lineIdx); const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) resizeLine(i, v); });
                 input.addEventListener('focus', (e) => { state.selectedLineIdx = parseInt(e.target.dataset.lineIdx); state.selectedGateIdx = -1; renderSidebar(); drawCanvas(); const ni = container.querySelector('.fence-line-input[data-line-idx="' + e.target.dataset.lineIdx + '"]'); if (ni) ni.focus(); });
             });
+            // Toggle switches — flip line.enabled, recompute price, redraw
+            container.querySelectorAll('input[data-toggle-line]').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(e.target.dataset.toggleLine);
+                    if (state.lines[i]) state.lines[i].enabled = e.target.checked;
+                    renderSidebar(); drawCanvas(); updatePricing();
+                });
+            });
+            container.querySelectorAll('input[data-toggle-gate]').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(e.target.dataset.toggleGate);
+                    if (state.gates[i]) state.gates[i].enabled = e.target.checked;
+                    renderSidebar(); drawCanvas(); updatePricing();
+                });
+            });
             container.querySelectorAll('.fence-line-item[data-line-idx]').forEach(item => {
                 item.addEventListener('click', (e) => {
-                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select')) return;
+                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.fl-switch')) return;
                     const i = parseInt(item.dataset.lineIdx);
                     state.selectedLineIdx = state.selectedLineIdx === i ? -1 : i; state.selectedGateIdx = -1;
                     renderSidebar(); drawCanvas();
@@ -6348,7 +6416,7 @@
             // Event listeners - gates
             container.querySelectorAll('[data-gate-idx]').forEach(item => {
                 item.addEventListener('click', (e) => {
-                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.gate-dir-badge')) return;
+                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.gate-dir-badge') || e.target.closest('.fl-switch')) return;
                     const i = parseInt(item.dataset.gateIdx);
                     state.selectedGateIdx = state.selectedGateIdx === i ? -1 : i; state.selectedLineIdx = -1;
                     renderSidebar(); drawCanvas();
