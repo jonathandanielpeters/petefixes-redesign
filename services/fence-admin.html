@@ -1011,6 +1011,14 @@ a{color:var(--accent);text-decoration:none}
   </div>
 </div>
 
+<!-- Shared searchable picker popup for the Recipes section. One global popup
+     gets repositioned next to whichever picker button was clicked. -->
+<div id="cl3-picker-popup" style="display:none;position:absolute;z-index:10000;background:#fff;border:1.5px solid var(--gray-300);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.18);min-width:340px;max-width:520px;font-size:11px">
+  <input id="cl3-picker-search" type="text" placeholder="Search code, description, material, size…" oninput="cl3RenderPickerList(this.value)" onkeydown="cl3PickerKeydown(event)" style="width:100%;padding:10px 14px;border:none;border-bottom:1.5px solid var(--gray-200);font-size:12px;border-radius:6px 6px 0 0;outline:none;box-sizing:border-box">
+  <div id="cl3-picker-count" style="padding:6px 14px;font-size:10px;color:var(--gray-500);background:var(--gray-50);border-bottom:1px solid var(--gray-100)"></div>
+  <div id="cl3-picker-list" style="max-height:340px;overflow-y:auto"></div>
+</div>
+
 <!-- ────── 5b. Chain Link Recipes V3 ────── -->
 <div class="section" id="sec-clRecipesV3">
   <h2 class="section-title">Chain Link Build Recipes</h2>
@@ -5351,26 +5359,212 @@ function cl3PickerItems(materialPattern, color) {
   return out;
 }
 
-// Render a <select> picker. handler: onchange="..." string. value: current itemCode.
-function cl3PickerHtml(currentCode, materialPattern, color, handler, placeholder) {
+// ── Searchable picker popup ──
+// One global popup gets reused for every picker button. The picker registry
+// holds per-button state (filtered items + current code + callback template);
+// each render of the recipe section clears the registry and rebuilds it.
+const _cl3PickerRegistry = {};
+let _cl3PickerNextId = 0;
+let _cl3ActivePicker = null;
+let _cl3PickerHighlightIdx = -1;
+
+// Render a button + register the picker. callbackTemplate is a JS expression
+// with `?` as a sentinel for the picked code (substituted as a JSON string at
+// pick time). Example: "updCl3Main('xyz','galv',?)"  →  on pick of "TC238"
+// becomes: updCl3Main('xyz','galv',"TC238")
+function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, placeholder) {
+  const id = 'cl3p' + (_cl3PickerNextId++);
   const items = cl3PickerItems(materialPattern, color);
-  let html = '<select onchange="' + handler + '" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;background:#fff">';
-  html += '<option value="">' + clEscHtml(placeholder || '— pick —') + '</option>';
-  items.forEach(it => {
-    const sel = currentCode === it.itemCode ? ' selected' : '';
-    const label = it.itemCode + ' — $' + (it.priceAfterTax || 0).toFixed(2) + ' ' + (it.pricingUnit || '') + ' — ' + it.description.slice(0, 50);
-    html += '<option value="' + clEscAttr(it.itemCode) + '"' + sel + '>' + clEscHtml(label) + '</option>';
-  });
-  html += '</select>';
-  // Hint when current code isn't in the filtered set — we still preserve it but flag it
-  if (currentCode && !items.find(i => i.itemCode === currentCode)) {
-    html += '<div style="font-size:9px;color:#b42c2c;margin-top:2px">⚠ ' + clEscHtml(currentCode) + ' not in filtered list (still saved)</div>';
+  _cl3PickerRegistry[id] = { items, currentCode, callbackTemplate };
+
+  // Find the current pick to display, even if it's outside the current filter
+  let cur = items.find(it => it.itemCode === currentCode);
+  let label;
+  let titleAttr = '';
+  if (cur) {
+    label = cur.itemCode + ' · $' + (cur.priceAfterTax || 0).toFixed(2);
+    titleAttr = clEscAttr(cur.description);
+  } else if (currentCode) {
+    // Saved but not in the filter — could be a renamed/removed item
+    const m = ensureClMaster();
+    const fallback = m.items.find(it => it.itemCode === currentCode);
+    label = '⚠ ' + currentCode;
+    titleAttr = fallback ? clEscAttr('Saved code "' + currentCode + '" — ' + fallback.description + ' — not in this filter (still pricing correctly)') : clEscAttr('Saved code "' + currentCode + '" not found in pricelist');
+  } else {
+    label = placeholder || '— pick —';
+    titleAttr = items.length === 0 ? 'No items in this category — import the pricelist first' : 'Click to pick from ' + items.length + ' items';
   }
-  return html;
+
+  // Disabled-look button when nothing's available
+  const isEmpty = items.length === 0;
+  const baseStyle = 'width:100%;padding:4px 8px;font-size:10px;text-align:left;background:#fff;border:1px solid var(--gray-200);border-radius:3px;cursor:' + (isEmpty ? 'help' : 'pointer') + ';font-family:inherit;line-height:1.3;display:flex;align-items:center;gap:4px';
+  const labelStyle = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (isEmpty || !cur ? 'color:var(--gray-400)' : '') + (currentCode && !cur ? ';color:#b42c2c;font-weight:600' : '');
+  return '<button type="button" data-cl3-picker-id="' + id + '" onclick="cl3OpenPicker(\'' + id + '\', this, event)" title="' + titleAttr + '" style="' + baseStyle + '">' +
+    '<span style="' + labelStyle + '">' + clEscHtml(label) + '</span>' +
+    '<span style="color:var(--gray-400);font-size:9px;flex-shrink:0">▾</span>' +
+    '</button>';
 }
+
+function cl3OpenPicker(id, btnEl, ev) {
+  if (ev) ev.stopPropagation();
+  const reg = _cl3PickerRegistry[id];
+  if (!reg) return;
+  _cl3ActivePicker = { id, reg, btnEl };
+  _cl3PickerHighlightIdx = -1;
+
+  const popup = document.getElementById('cl3-picker-popup');
+  if (!popup) return;
+
+  // Position popup directly below the trigger
+  const r = btnEl.getBoundingClientRect();
+  popup.style.top = (r.bottom + window.scrollY + 4) + 'px';
+  popup.style.left = (r.left + window.scrollX) + 'px';
+  popup.style.minWidth = Math.max(r.width, 340) + 'px';
+  popup.style.display = 'block';
+
+  // If the popup runs off the right edge, anchor to the trigger's right side instead
+  const popRect = popup.getBoundingClientRect();
+  if (popRect.right > window.innerWidth - 12) {
+    popup.style.left = (r.right + window.scrollX - popRect.width) + 'px';
+  }
+
+  document.getElementById('cl3-picker-search').value = '';
+  cl3RenderPickerList('');
+  setTimeout(() => document.getElementById('cl3-picker-search').focus(), 30);
+}
+
+function cl3RenderPickerList(query) {
+  if (!_cl3ActivePicker) return;
+  const reg = _cl3ActivePicker.reg;
+  const list = document.getElementById('cl3-picker-list');
+  const cnt = document.getElementById('cl3-picker-count');
+  const q = (query || '').toLowerCase().trim();
+  // Empty registry — pricelist not imported (or no items match the filter)
+  if (reg.items.length === 0) {
+    cnt.textContent = '0 items in this category';
+    list.innerHTML = '<div style="padding:24px 16px;text-align:center;color:var(--gray-500);font-size:11px;line-height:1.5">' +
+      '<div style="font-size:24px;margin-bottom:6px">📭</div>' +
+      'No items match this material category yet.<br>' +
+      '<a href="#" onclick="event.preventDefault();cl3ClosePicker();showSection(\'chainlinkPricing\');setTimeout(()=>document.querySelector(\'[onclick=&quot;clMasterImport2026()&quot;]\')?.scrollIntoView({block:\'center\'}), 200)" style="color:var(--accent);text-decoration:underline">→ Go to Chainlink Pricing to import the 2026 pricelist</a>' +
+      '</div>';
+    return;
+  }
+  const filtered = reg.items.filter(it => {
+    if (!q) return true;
+    if (it.itemCode.toLowerCase().includes(q)) return true;
+    if (it.description.toLowerCase().includes(q)) return true;
+    const a = resolveClItemAssignment(it);
+    if ((a.materialName || '').toLowerCase().includes(q)) return true;
+    if ((a.variantSize || '').toLowerCase().includes(q)) return true;
+    return false;
+  });
+  cnt.textContent = filtered.length + ' / ' + reg.items.length + ' items' + (q ? ' matching "' + q + '"' : '');
+  if (filtered.length === 0) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--gray-400);font-size:11px">No matches for "<b>' + clEscHtml(q) + '</b>".</div>';
+    _cl3ActivePicker.filtered = [];
+    return;
+  }
+  // Save filtered list for keyboard-nav
+  _cl3ActivePicker.filtered = filtered;
+  // Cap rendered rows for very large filters; admin can refine search to find more
+  const displayed = filtered.slice(0, 200);
+  const truncated = filtered.length > displayed.length;
+
+  let html = '<div onclick="cl3PickItem(\'\')" style="padding:6px 14px;cursor:pointer;color:var(--gray-400);font-style:italic;border-bottom:1px solid var(--gray-100);font-size:11px">— clear selection —</div>';
+  displayed.forEach((it, idx) => {
+    const sel = it.itemCode === reg.currentCode;
+    const a = resolveClItemAssignment(it);
+    const bg = sel ? 'background:var(--accent-light)' : '';
+    html += '<div data-pick-idx="' + idx + '" onclick="cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" onmouseover="cl3PickerHover(' + idx + ')" style="padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);' + bg + '">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">' +
+      '<b style="font-family:monospace;font-size:11px">' + clEscHtml(it.itemCode) + (sel ? ' ✓' : '') + '</b>' +
+      '<span style="color:#3c8a1d;font-weight:700;font-size:11px;white-space:nowrap">$' + (it.priceAfterTax || 0).toFixed(2) + ' <span style="color:var(--gray-400);font-weight:400">' + clEscHtml(it.pricingUnit || '') + '</span></span>' +
+      '</div>' +
+      '<div style="color:var(--gray-600);font-size:10px;margin-top:3px;line-height:1.35">' + clEscHtml(it.description) + '</div>' +
+      '<div style="color:var(--gray-400);font-size:9px;margin-top:2px">' + clEscHtml(a.materialName || '—') + ' · ' + clEscHtml(a.variantSize || '—') + ' · ' + clEscHtml(a.color) + '</div>' +
+      '</div>';
+  });
+  if (truncated) {
+    html += '<div style="padding:10px 14px;text-align:center;color:var(--gray-400);font-size:10px;border-top:1px solid var(--gray-100)">+' + (filtered.length - displayed.length) + ' more — refine search to see them</div>';
+  }
+  list.innerHTML = html;
+}
+
+function cl3PickerHover(idx) { _cl3PickerHighlightIdx = idx; }
+
+function cl3PickerKeydown(ev) {
+  if (!_cl3ActivePicker) return;
+  if (ev.key === 'Escape') { cl3ClosePicker(); return; }
+  const filtered = _cl3ActivePicker.filtered || [];
+  const list = document.getElementById('cl3-picker-list');
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    const max = Math.min(filtered.length, 200) - 1;
+    _cl3PickerHighlightIdx = ev.key === 'ArrowDown'
+      ? Math.min(max, _cl3PickerHighlightIdx + 1)
+      : Math.max(0, _cl3PickerHighlightIdx - 1);
+    // Visually highlight + scroll into view
+    list.querySelectorAll('[data-pick-idx]').forEach(el => {
+      const i = +el.getAttribute('data-pick-idx');
+      if (i === _cl3PickerHighlightIdx) {
+        el.style.background = 'var(--gray-100)';
+        el.scrollIntoView({ block: 'nearest' });
+      } else {
+        const it = filtered[i];
+        el.style.background = (it && it.itemCode === _cl3ActivePicker.reg.currentCode) ? 'var(--accent-light)' : '';
+      }
+    });
+  } else if (ev.key === 'Enter') {
+    ev.preventDefault();
+    if (_cl3PickerHighlightIdx >= 0 && filtered[_cl3PickerHighlightIdx]) {
+      cl3PickItem(filtered[_cl3PickerHighlightIdx].itemCode);
+    } else if (filtered.length > 0) {
+      // No keyboard highlight — pick the first match
+      cl3PickItem(filtered[0].itemCode);
+    }
+  }
+}
+
+function cl3PickItem(code) {
+  if (!_cl3ActivePicker) return;
+  const reg = _cl3ActivePicker.reg;
+  // Substitute the ? sentinel with the JSON-stringified code so it lands as a string literal
+  const expr = reg.callbackTemplate.replace(/\?/g, JSON.stringify(code || ''));
+  try {
+    (new Function(expr))();
+  } catch (e) {
+    console.error('[cl3 picker] callback failed:', e, '\nexpr:', expr);
+  }
+  cl3ClosePicker();
+}
+
+function cl3ClosePicker() {
+  const popup = document.getElementById('cl3-picker-popup');
+  if (popup) popup.style.display = 'none';
+  _cl3ActivePicker = null;
+  _cl3PickerHighlightIdx = -1;
+}
+
+// Click-outside handler — runs in capture phase so it fires before any
+// inner click handlers; checks if the click is outside both the popup
+// AND the active trigger button.
+document.addEventListener('click', function(ev) {
+  if (!_cl3ActivePicker) return;
+  const popup = document.getElementById('cl3-picker-popup');
+  if (!popup) return;
+  if (popup.contains(ev.target)) return;
+  if (_cl3ActivePicker.btnEl && _cl3ActivePicker.btnEl.contains(ev.target)) return;
+  cl3ClosePicker();
+}, true);
 
 // ── Top-level render ──
 function renderClRecipesV3() {
+  // Clear picker registry — every render rebuilds it from scratch so we
+  // don't accumulate stale entries from previous renders.
+  Object.keys(_cl3PickerRegistry).forEach(k => delete _cl3PickerRegistry[k]);
+  _cl3PickerNextId = 0;
+  cl3ClosePicker();
+
   const cl3 = ensureCl3();
   // Tier tabs
   const tierEl = document.getElementById('cl3-tier-tabs');
@@ -5568,10 +5762,10 @@ function renderCl3MainAssembly(recipe) {
     rows += '<tr style="border-top:1px solid var(--gray-100)">' +
       '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-main-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3MainDefault(\'' + o.id + '\')"></td>' +
       '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. Std 2-3/8&quot;" oninput="updCl3Main(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Main('" + o.id + "','galv',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Main('" + o.id + "','black',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Post Cap', 'galvanized', "updCl3Main('" + o.id + "','capGalv',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Post Cap', 'black', "updCl3Main('" + o.id + "','capBlack',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Main('" + o.id + "','galv',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Main('" + o.id + "','black',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Post Cap', 'galvanized', "updCl3Main('" + o.id + "','capGalv',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Post Cap', 'black', "updCl3Main('" + o.id + "','capBlack',?)") + '</td>' +
       '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap">' +
       '<div>G: ' + cl3FmtPrice((cl3PriceFor(o.galv) || 0) + (cl3PriceFor(o.capGalv) || 0)) + '</div>' +
       '<div>B: ' + cl3FmtPrice((cl3PriceFor(o.black) || 0) + (cl3PriceFor(o.capBlack) || 0)) + '</div>' +
@@ -5650,16 +5844,16 @@ function renderCl3LinePostAssembly(recipe, tier) {
     rows += '<tr style="border-top:1px solid var(--gray-100)">' +
       '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-line-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3LineDefault(\'' + o.id + '\')"></td>' +
       '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 1-7/8&quot;" oninput="updCl3Line(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Line('" + o.id + "','galv',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Line('" + o.id + "','black',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Line Post Cap', 'galvanized', "updCl3Line('" + o.id + "','capGalv',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Line Post Cap', 'black', "updCl3Line('" + o.id + "','capBlack',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieGalv, 'Fence Tie', 'galvanized', "updCl3Line('" + o.id + "','fenceTieGalv',this.value)") + '</td>' +
-      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieBlack, 'Fence Tie', 'black', "updCl3Line('" + o.id + "','fenceTieBlack',this.value)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Post Tubing/, 'galvanized', "updCl3Line('" + o.id + "','galv',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Line('" + o.id + "','black',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Line Post Cap', 'galvanized', "updCl3Line('" + o.id + "','capGalv',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Line Post Cap', 'black', "updCl3Line('" + o.id + "','capBlack',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieGalv, 'Fence Tie', 'galvanized', "updCl3Line('" + o.id + "','fenceTieGalv',?)") + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.fenceTieBlack, 'Fence Tie', 'black', "updCl3Line('" + o.id + "','fenceTieBlack',?)") + '</td>' +
       '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (o.fenceTiesPerPost || 0) + '" oninput="updCl3Line(\'' + o.id + '\',\'fenceTiesPerPost\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
       (isComm
-        ? '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmGalv, /Barb Wire Arm/, 'galvanized', "updCl3Line('" + o.id + "','barbArmGalv',this.value)") + '</td>' +
-          '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmBlack, /Barb Wire Arm/, 'black', "updCl3Line('" + o.id + "','barbArmBlack',this.value)") + '</td>'
+        ? '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmGalv, /Barb Wire Arm/, 'galvanized', "updCl3Line('" + o.id + "','barbArmGalv',?)") + '</td>' +
+          '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmBlack, /Barb Wire Arm/, 'black', "updCl3Line('" + o.id + "','barbArmBlack',?)") + '</td>'
         : '') +
       '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Line(\'' + o.id + '\')">×</button></td>' +
       '</tr>';
@@ -5737,8 +5931,8 @@ function renderCl3PerFoot(recipe) {
       rows += '<tr style="border-top:1px solid var(--gray-100)">' +
         '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-pf-' + kind + '" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3PfDefault(\'' + kind + '\',\'' + o.id + '\')"></td>' +
         '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 11ga 2&quot;KK" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, materialPattern, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',this.value)") + '</td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, materialPattern, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',this.value)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, materialPattern, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',?)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, materialPattern, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',?)") + '</td>' +
         '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap"><div>G: ' + cl3FmtPrice(cl3PriceFor(o.galv)) + '</div><div>B: ' + cl3FmtPrice(cl3PriceFor(o.black)) + '</div></td>' +
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Pf(\'' + kind + '\',\'' + o.id + '\')">×</button></td>' +
         '</tr>';
@@ -5873,8 +6067,8 @@ function renderCl3Connections(recipe) {
 function _cl3ConnRow(mainId, prefix, label, materialPattern, c) {
   return '<tr style="border-top:1px solid var(--gray-100)">' +
     '<td style="padding:6px 8px;font-weight:600;color:var(--gray-600)">' + label + '</td>' +
-    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Galv'], materialPattern, 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "Galv',this.value)") + '</td>' +
-    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Black'], materialPattern, 'black', "updCl3Conn('" + mainId + "','" + prefix + "Black',this.value)") + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Galv'], materialPattern, 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "Galv',?)") + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Black'], materialPattern, 'black', "updCl3Conn('" + mainId + "','" + prefix + "Black',?)") + '</td>' +
     '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c[prefix + 'Qty'] || 0) + '" oninput="updCl3Conn(\'' + mainId + '\',\'' + prefix + 'Qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
     '</tr>';
 }
@@ -5889,8 +6083,8 @@ function renderCl3Gates(recipe) {
     (g.hardware || []).forEach(hw => {
       hwRows += '<tr style="border-top:1px solid var(--gray-100)">' +
         '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(hw.label) + '" placeholder="e.g. Hinge" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, () => true, 'galvanized', "updCl3GateHw('" + g.id + "','" + hw.id + "','galv',this.value)") + '</td>' +
-        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, () => true, 'black', "updCl3GateHw('" + g.id + "','" + hw.id + "','black',this.value)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, () => true, 'galvanized', "updCl3GateHw('" + g.id + "','" + hw.id + "','galv',?)") + '</td>' +
+        '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, () => true, 'black', "updCl3GateHw('" + g.id + "','" + hw.id + "','black',?)") + '</td>' +
         '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (hw.qty || 0) + '" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\')">×</button></td>' +
         '</tr>';
@@ -5903,8 +6097,8 @@ function renderCl3Gates(recipe) {
       '<button class="btn btn-sm" onclick="removeCl3Gate(\'' + g.id + '\')">Delete gate</button>' +
       '</div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',this.value)") + '</div>' +
-      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',this.value)") + '</div>' +
+      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',?)") + '</div>' +
+      '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',?)") + '</div>' +
       '</div>' +
       '<div style="margin-top:10px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:4px;font-weight:600">Hardware list (hinges, latches, drop bolts, etc.)</div>' +
       '<div style="overflow:auto"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
