@@ -738,75 +738,119 @@
         .book-status.error { color: #e74c3c; }
         .book-status.success { color: #27ae60; }
 
-        /* Mobile floating sidebar */
-        .mobile-sidebar { display: none; }
-        .msb-backdrop { display: none; }
+        /* ═════ MOBILE — bottom tab bar + collapsible drawer ═════
+           Concept C with concept-A drag-down collapse: a persistent tab strip
+           sits just above the price bar.  The drawer above the tabs shows the
+           active tab's settings, and can be dragged down (or tapped on the
+           active tab) to collapse out of the way for full canvas focus. */
+        .m-tabs, .m-drawer { display: none; }   /* desktop: hidden */
 
-        .mobile-sidebar {
-            position: absolute; left: 0; top: 0; bottom: 0; z-index: 15;
-            flex-direction: row; pointer-events: none;
+        /* Tab bar pinned above the pricing bar (which is fixed at viewport bottom) */
+        .m-tabs {
+            position: fixed; left: 0; right: 0;
+            bottom: 80px;        /* sits flush above the mobile pricing bar */
+            height: 52px;
+            background: var(--white);
+            border-top: 1px solid var(--gray-100);
+            display: flex; justify-content: space-around;
+            padding: 4px 0; z-index: 102;
         }
-        .msb-toggle {
-            position: absolute; top: 52px; left: 8px; z-index: 16;
-            width: 40px; height: 40px; border-radius: 10px; border: none;
-            background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
-            box-shadow: 0 2px 12px rgba(0,0,0,0.12); cursor: pointer;
-            color: var(--gray-500); display: flex; align-items: center;
-            justify-content: center; pointer-events: auto; transition: all 0.15s ease;
+        .m-tab {
+            flex: 1; min-width: 0;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; gap: 2px;
+            background: transparent; border: none; padding: 4px 2px;
+            color: var(--gray-400); font-size: 9px; font-weight: 500;
+            border-radius: 8px; cursor: pointer;
+            transition: color .15s, background .15s;
         }
-        .msb-toggle:hover { background: var(--white); color: var(--black); }
-        .msb-toggle.msb-active { background: var(--accent); color: var(--white); }
-        .msb-panel {
-            width: 280px; background: rgba(255,255,255,0.97); backdrop-filter: blur(12px);
-            border-right: 1px solid var(--gray-100); box-shadow: 4px 0 24px rgba(0,0,0,0.08);
-            display: none; flex-direction: column; pointer-events: auto;
-            position: absolute; top: 0; bottom: 0; left: 0;
+        .m-tab svg { width: 18px; height: 18px; }
+        .m-tab.active { color: var(--accent); background: var(--accent-light); }
+        .m-tab:active { transform: scale(0.96); }
+
+        /* Drawer slides up from above the tab strip */
+        .m-drawer {
+            position: fixed; left: 0; right: 0;
+            bottom: 132px;        /* tab bar bottom (80) + tab bar height (52) */
+            background: var(--white);
+            border-top: 1px solid var(--gray-100);
+            box-shadow: 0 -6px 24px rgba(0,0,0,0.08);
+            border-radius: 18px 18px 0 0;
+            display: flex; flex-direction: column;
+            max-height: 50vh;
+            overflow: hidden;
+            transition: max-height .25s cubic-bezier(.32,.72,0,1),
+                        padding .25s cubic-bezier(.32,.72,0,1),
+                        border-color .25s,
+                        box-shadow .25s;
+            z-index: 101;
         }
-        .msb-panel.msb-panel-open { display: flex; }
-        .msb-panel-header {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 10px 14px 6px; border-bottom: 1px solid var(--gray-100); flex-shrink: 0;
+        .m-drawer.collapsed {
+            max-height: 0;
+            padding: 0;
+            border-top-color: transparent;
+            box-shadow: none;
+            pointer-events: none;
         }
-        .msb-panel-title { font-size: 13px; font-weight: 700; color: var(--black); }
-        .msb-panel-close {
-            width: 26px; height: 26px; border: none; background: var(--gray-50);
-            border-radius: 6px; font-size: 16px; color: var(--gray-400); cursor: pointer;
-            display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+        .m-drawer-handle {
+            display: flex; flex-direction: column; align-items: center;
+            padding: 6px 0 4px; cursor: grab; flex-shrink: 0;
+            touch-action: none;
         }
-        .msb-panel-close:hover { background: var(--gray-100); color: var(--black); }
-        .msb-panel-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 12px 80px; overscroll-behavior: contain; }
-        .msb-panel-body .config-section { margin-bottom: 10px; }
-        .msb-panel-body .config-label { font-size: 10px; margin-bottom: 4px; }
-        .msb-panel-body .config-tiles { gap: 4px; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
-        .msb-panel-body .config-tile { padding: 5px 4px 4px; font-size: 10px; border-width: 1.5px; }
-        .msb-panel-body .config-tile-icon { font-size: 13px; margin-bottom: 1px; }
-        .msb-panel-body .config-pill { padding: 4px 10px; font-size: 10px; }
-        .msb-panel-body .config-pills { gap: 3px; }
-        .msb-panel-body .config-toggle-btn { padding: 4px; font-size: 10px; }
-        .msb-panel-body .config-divider { margin: 6px 0; }
-        .msb-panel-body .style-switcher { margin-bottom: 8px; gap: 3px; }
-        .msb-panel-body .style-tab { padding: 4px 6px; }
-        .msb-panel-body .style-tab .style-tab-label { font-size: 10px; }
-        .msb-panel-body .style-tab .style-tab-type { font-size: 8px; }
-        .msb-panel-body .style-add-btn { width: 24px; height: 28px; font-size: 14px; }
-        .msb-panel-body .fence-lines-list { gap: 3px; }
-        .msb-panel-body .fence-line-item { padding: 4px 6px; gap: 5px; }
-        .msb-panel-body .fence-line-color { height: 16px; width: 2px; }
-        .msb-panel-body .fence-line-name { font-size: 10px; }
-        .msb-panel-body .fence-line-meta { font-size: 9px; }
-        .msb-panel-body .fence-line-input { width: 50px; padding: 3px 5px; font-size: 11px; }
-        .msb-panel-body .fence-line-unit { font-size: 10px; }
-        .msb-panel-body .fence-line-delete { width: 20px; height: 20px; }
-        .msb-panel-body .fence-lines-empty { font-size: 10px; padding: 6px 6px; }
-        .msb-panel-body .add-line-btn, .msb-panel-body .add-gate-btn { padding: 5px; font-size: 10px; gap: 3px; }
-        .msb-panel-body .add-line-btn svg, .msb-panel-body .add-gate-btn svg { width: 12px; height: 12px; }
-        .msb-panel-body .sidebar-btn-row { margin-top: 4px; gap: 3px; }
-        .msb-panel-body .gate-type-select { font-size: 10px; padding: 4px 6px; }
-        .msb-panel-body .gate-post-badge { font-size: 8px; padding: 1px 4px; }
-        .msb-backdrop {
-            position: absolute; inset: 0; z-index: 14;
-            background: rgba(0,0,0,0.1); pointer-events: auto;
+        .m-drawer-handle::before {
+            content: ''; width: 36px; height: 4px;
+            background: var(--gray-200); border-radius: 2px;
         }
+        .m-drawer-handle.dragging { cursor: grabbing; }
+        .m-drawer-title {
+            display: flex; justify-content: space-between; align-items: baseline;
+            padding: 0 16px 4px; flex-shrink: 0;
+        }
+        .m-drawer-title-text { font-size: 11px; font-weight: 700; color: var(--gray-400); text-transform: uppercase; letter-spacing: .06em; }
+        .m-drawer-close {
+            background: transparent; border: none; color: var(--gray-400);
+            font-size: 11px; cursor: pointer; padding: 4px 8px; font-weight: 500;
+        }
+        .m-drawer-body {
+            flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+            padding: 6px 14px 14px; overscroll-behavior: contain;
+        }
+        /* Hide every section that doesn't belong to the active tab */
+        .m-drawer-body[data-tab="type"]    [data-mtab]:not([data-mtab~="type"])    { display: none !important; }
+        .m-drawer-body[data-tab="build"]   [data-mtab]:not([data-mtab~="build"])   { display: none !important; }
+        .m-drawer-body[data-tab="install"] [data-mtab]:not([data-mtab~="install"]) { display: none !important; }
+        .m-drawer-body[data-tab="finish"]  [data-mtab]:not([data-mtab~="finish"])  { display: none !important; }
+        .m-drawer-body[data-tab="lines"]   [data-mtab]:not([data-mtab~="lines"])   { display: none !important; }
+
+        /* Mobile-tightened versions of the desktop config controls */
+        .m-drawer-body .config-section { margin-bottom: 10px; }
+        .m-drawer-body .config-label { font-size: 10px; margin-bottom: 4px; }
+        .m-drawer-body .config-tiles { gap: 4px; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+        .m-drawer-body .config-tile { padding: 5px 4px 4px; font-size: 10px; border-width: 1.5px; }
+        .m-drawer-body .config-tile-icon { font-size: 13px; margin-bottom: 1px; }
+        .m-drawer-body .config-pill { padding: 4px 10px; font-size: 10px; }
+        .m-drawer-body .config-pills { gap: 3px; }
+        .m-drawer-body .config-toggle-btn { padding: 4px; font-size: 10px; }
+        .m-drawer-body .config-divider { margin: 6px 0; }
+        .m-drawer-body .style-switcher { margin-bottom: 8px; gap: 3px; }
+        .m-drawer-body .style-tab { padding: 4px 6px; }
+        .m-drawer-body .style-tab .style-tab-label { font-size: 10px; }
+        .m-drawer-body .style-tab .style-tab-type { font-size: 8px; }
+        .m-drawer-body .style-add-btn { width: 24px; height: 28px; font-size: 14px; }
+        .m-drawer-body .fence-lines-list { gap: 3px; }
+        .m-drawer-body .fence-line-item { padding: 4px 6px; gap: 5px; }
+        .m-drawer-body .fence-line-color { height: 16px; width: 2px; }
+        .m-drawer-body .fence-line-name { font-size: 10px; }
+        .m-drawer-body .fence-line-meta { font-size: 9px; }
+        .m-drawer-body .fence-line-input { width: 50px; padding: 3px 5px; font-size: 11px; }
+        .m-drawer-body .fence-line-unit { font-size: 10px; }
+        .m-drawer-body .fence-line-delete { width: 20px; height: 20px; }
+        .m-drawer-body .fence-lines-empty { font-size: 10px; padding: 6px 6px; }
+        .m-drawer-body .add-line-btn, .m-drawer-body .add-gate-btn { padding: 5px; font-size: 10px; gap: 3px; }
+        .m-drawer-body .add-line-btn svg, .m-drawer-body .add-gate-btn svg { width: 12px; height: 12px; }
+        .m-drawer-body .sidebar-btn-row { margin-top: 4px; gap: 3px; }
+        .m-drawer-body .gate-type-select { font-size: 10px; padding: 4px 6px; }
+        .m-drawer-body .gate-post-badge { font-size: 8px; padding: 1px 4px; }
 
         /* Narrow desktop: collapse tool buttons to icon-only */
         @media (max-width: 1400px) {
@@ -826,8 +870,14 @@
             .beta-text { font-size: 9px; }
             .configurator { grid-template-columns: 1fr; grid-template-rows: 1fr; margin-top: 66px; height: calc(100vh - 66px); min-height: calc(100vh - 66px); }
             .config-panel { display: none !important; }
-            .mobile-sidebar { display: flex; }
-            .config-canvas-area { min-height: calc(100vh - 66px); height: calc(100vh - 66px); padding-bottom: 86px; }
+            /* Old side menu retired — show new tab bar + drawer instead */
+            .mobile-sidebar { display: none !important; }
+            .msb-backdrop { display: none !important; }
+            .m-tabs { display: flex; }
+            .m-drawer { display: flex; }
+            /* padding-bottom = pricing-bar(80) + tab-strip(52) so the canvas
+               doesn't slide under either of the bottom-pinned bars */
+            .config-canvas-area { min-height: calc(100vh - 66px); height: calc(100vh - 66px); padding-bottom: 132px; }
             .canvas-toolbar { flex-wrap: nowrap; gap: 4px; padding: 8px 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; min-height: 44px; }
             .canvas-toolbar::-webkit-scrollbar { display: none; }
             .canvas-toolbar-left { flex-shrink: 0; gap: 4px; }
@@ -1288,20 +1338,37 @@
         </aside>
 
         <div class="config-canvas-area">
-            <!-- Mobile floating sidebar -->
-            <div class="mobile-sidebar" id="mobileSidebar">
-                <button class="msb-toggle" id="msbToggle" title="Build & Price options">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-                </button>
-                <div class="msb-panel" id="msbPanel">
-                    <div class="msb-panel-header">
-                        <span class="msb-panel-title">Build &amp; Price</span>
-                        <button class="msb-panel-close" id="msbPanelClose">&times;</button>
-                    </div>
-                    <div class="msb-panel-body" id="msbPanelBody"></div>
+            <!-- Mobile tab bar + collapsible drawer (replaces old side menu) -->
+            <div class="m-drawer" id="mDrawer">
+                <div class="m-drawer-handle" id="mDrawerHandle" aria-label="Drag to collapse"></div>
+                <div class="m-drawer-title">
+                    <span class="m-drawer-title-text" id="mDrawerTitle">Type</span>
+                    <button class="m-drawer-close" id="mDrawerClose" type="button">Hide ▾</button>
                 </div>
+                <div class="m-drawer-body" id="mDrawerBody" data-tab="type"></div>
             </div>
-            <div class="msb-backdrop" id="msbBackdrop"></div>
+            <nav class="m-tabs" id="mTabs" role="tablist" aria-label="Build & Price categories">
+                <button type="button" class="m-tab active" data-tab="type" role="tab" aria-selected="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                    Type
+                </button>
+                <button type="button" class="m-tab" data-tab="build" role="tab" aria-selected="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-7h6v7"/></svg>
+                    Build
+                </button>
+                <button type="button" class="m-tab" data-tab="install" role="tab" aria-selected="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="16" y2="21"/><line x1="4" y1="14" x2="20" y2="14"/></svg>
+                    Posts
+                </button>
+                <button type="button" class="m-tab" data-tab="finish" role="tab" aria-selected="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12.5" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c1 0 2-1 2-2 0-.5-.2-1-.5-1.4-.3-.4-.5-.9-.5-1.4 0-1.1.9-2 2-2h2.4c2.5 0 4.6-2.1 4.6-4.6C22 6.4 17.5 2 12 2z"/></svg>
+                    Color
+                </button>
+                <button type="button" class="m-tab" data-tab="lines" role="tab" aria-selected="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.2" fill="currentColor"/><circle cx="4" cy="12" r="1.2" fill="currentColor"/><circle cx="4" cy="18" r="1.2" fill="currentColor"/></svg>
+                    Lines
+                </button>
+            </nav>
 
             <div class="canvas-toolbar">
                 <div class="canvas-toolbar-left">
@@ -7213,40 +7280,84 @@
         }, { passive: false });
 
         // ============================================
-        // MOBILE SIDEBAR
+        // MOBILE BOTTOM TABS + DRAWER
         // ============================================
         const mobileQuery = window.matchMedia('(max-width: 768px)');
         let mobileInited = false;
-        let msbActivePanel = 'style';
 
-        const MSB_ALL_SECTIONS = [
-            'styleSwitcher', 'fenceTypeSection', 'heightSection',
-            'chainlinkOptions', 'buildTypeSection', 'woodTypeSection', 'postTypeSection', 'postSpacingSection',
-            'boardSizeSection', 'boardSpanSection', 'railSection', 'railTopSizeSection', 'railBottomSizeSection',
-            'trimBoardSection', 'topCapSection', 'frameAttachSection', 'frameSpanSection',
-            'infillStyleSection', 'picketGapSection',
-            'hzBoardDimSection', 'hzDesignOptionSection', 'hzGapSpacingSection', 'hzMixedConfigSection', 'hzStaggerSection',
-            'designerCutSection', 'bundleSection',
-            'postInstallSection', 'mudRemovalSection',
-            'ornamentalColorSection', 'privacyInsertSection', 'privacyInstallSection', 'privacyColorSection',
-            'fenceLinesSection'
+        // Each section is tagged with the tab(s) it belongs to.  Sections
+        // with multiple tags appear under whichever of those tabs is active.
+        // Order in this array = render order inside the drawer body.
+        const MSB_TAB_MAP = [
+            // type
+            { id: 'styleSwitcher',         tabs: ['type'] },
+            { id: 'fenceTypeSection',      tabs: ['type'] },
+            // build (height + every fence-type-specific configuration option)
+            { id: 'heightSection',         tabs: ['build'] },
+            { id: 'chainlinkOptions',      tabs: ['build'] },
+            { id: 'buildTypeSection',      tabs: ['build'] },
+            { id: 'woodTypeSection',       tabs: ['build'] },
+            { id: 'postTypeSection',       tabs: ['build'] },
+            { id: 'postSpacingSection',    tabs: ['build'] },
+            { id: 'boardSizeSection',      tabs: ['build'] },
+            { id: 'boardSpanSection',      tabs: ['build'] },
+            { id: 'railSection',           tabs: ['build'] },
+            { id: 'railTopSizeSection',    tabs: ['build'] },
+            { id: 'railBottomSizeSection', tabs: ['build'] },
+            { id: 'trimBoardSection',      tabs: ['build'] },
+            { id: 'topCapSection',         tabs: ['build'] },
+            { id: 'frameAttachSection',    tabs: ['build'] },
+            { id: 'frameSpanSection',      tabs: ['build'] },
+            { id: 'infillStyleSection',    tabs: ['build'] },
+            { id: 'picketGapSection',      tabs: ['build'] },
+            { id: 'hzBoardDimSection',     tabs: ['build'] },
+            { id: 'hzDesignOptionSection', tabs: ['build'] },
+            { id: 'hzGapSpacingSection',   tabs: ['build'] },
+            { id: 'hzMixedConfigSection',  tabs: ['build'] },
+            { id: 'hzStaggerSection',      tabs: ['build'] },
+            { id: 'designerCutSection',    tabs: ['build'] },
+            { id: 'bundleSection',         tabs: ['build'] },
+            // install
+            { id: 'postInstallSection',    tabs: ['install'] },
+            { id: 'mudRemovalSection',     tabs: ['install'] },
+            // finish (color + privacy insert/install/color all read as "look")
+            { id: 'ornamentalColorSection',tabs: ['finish'] },
+            { id: 'privacyInsertSection',  tabs: ['finish'] },
+            { id: 'privacyInstallSection', tabs: ['finish'] },
+            { id: 'privacyColorSection',   tabs: ['finish'] },
+            // lines
+            { id: 'fenceLinesSection',     tabs: ['lines'] }
         ];
+        const TAB_TITLES = {
+            type:    'Type & Style',
+            build:   'Build & Sizing',
+            install: 'Posts & Install',
+            finish:  'Colour & Finish',
+            lines:   'Fence Lines'
+        };
+        let mActiveTab = 'type';
+        let mDrawerCollapsed = false;
 
+        // Move desktop sidebar sections into the drawer body, tag each with
+        // their tab(s), and remember where they came from so we can restore
+        // on viewport widening.
         function setupMobileLayout() {
             if (mobileInited) return;
             mobileInited = true;
-            const body = document.getElementById('msbPanelBody');
-            for (const id of MSB_ALL_SECTIONS) {
-                const el = document.getElementById(id);
+            const body = document.getElementById('mDrawerBody');
+            if (!body) return;
+            for (const entry of MSB_TAB_MAP) {
+                const el = document.getElementById(entry.id);
                 if (!el) continue;
                 const marker = document.createElement('span');
                 marker.className = 'msb-marker';
-                marker.dataset.for = id;
+                marker.dataset.for = entry.id;
                 marker.style.display = 'none';
                 el.parentNode.insertBefore(marker, el);
+                el.dataset.mtab = entry.tabs.join(' ');
                 body.appendChild(el);
             }
-            msbClosePanel();
+            mSetActiveTab(mActiveTab, false);
         }
 
         function restoreDesktopLayout() {
@@ -7254,39 +7365,85 @@
             mobileInited = false;
             document.querySelectorAll('.msb-marker').forEach(marker => {
                 const el = document.getElementById(marker.dataset.for);
-                if (el) marker.parentNode.insertBefore(el, marker);
+                if (el) {
+                    delete el.dataset.mtab;
+                    marker.parentNode.insertBefore(el, marker);
+                }
                 marker.remove();
             });
-            msbClosePanel();
         }
 
-        function msbTogglePanel() {
-            const panel = document.getElementById('msbPanel');
-            const toggle = document.getElementById('msbToggle');
-            const backdrop = document.getElementById('msbBackdrop');
-            if (panel.classList.contains('msb-panel-open')) {
-                msbClosePanel();
-            } else {
-                panel.classList.add('msb-panel-open');
-                toggle.classList.add('msb-active');
-                backdrop.style.display = 'block';
-            }
+        function mSetActiveTab(tab, expand = true) {
+            mActiveTab = tab;
+            const body = document.getElementById('mDrawerBody');
+            if (body) body.dataset.tab = tab;
+            const titleEl = document.getElementById('mDrawerTitle');
+            if (titleEl) titleEl.textContent = TAB_TITLES[tab] || '';
+            document.querySelectorAll('.m-tab').forEach(btn => {
+                const on = btn.dataset.tab === tab;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            if (expand) mSetCollapsed(false);
         }
 
-        function msbClosePanel() {
-            document.getElementById('msbPanel').classList.remove('msb-panel-open');
-            document.getElementById('msbToggle').classList.remove('msb-active');
-            document.getElementById('msbBackdrop').style.display = 'none';
+        function mSetCollapsed(c) {
+            mDrawerCollapsed = c;
+            const drawer = document.getElementById('mDrawer');
+            if (drawer) drawer.classList.toggle('collapsed', c);
+            const closeBtn = document.getElementById('mDrawerClose');
+            if (closeBtn) closeBtn.textContent = c ? 'Show ▴' : 'Hide ▾';
         }
 
-        // Toggle button
-        document.getElementById('msbToggle').addEventListener('click', msbTogglePanel);
+        function mToggleCollapsed() { mSetCollapsed(!mDrawerCollapsed); }
 
-        // Close button
-        document.getElementById('msbPanelClose').addEventListener('click', msbClosePanel);
+        // Tab click → switch active tab.  If the user re-taps the active tab,
+        // toggle the drawer's collapsed state (concept-A-style).
+        document.querySelectorAll('.m-tab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                if (tab === mActiveTab) {
+                    mToggleCollapsed();
+                } else {
+                    mSetActiveTab(tab, true);
+                }
+            });
+        });
 
-        // Backdrop click closes panel
-        document.getElementById('msbBackdrop').addEventListener('click', msbClosePanel);
+        // Close button: collapse the drawer (tabs stay visible).
+        const mCloseBtn = document.getElementById('mDrawerClose');
+        if (mCloseBtn) mCloseBtn.addEventListener('click', mToggleCollapsed);
+
+        // Drag the handle down to collapse, up to expand.
+        (function setupDrawerDrag() {
+            const handle = document.getElementById('mDrawerHandle');
+            const drawer = document.getElementById('mDrawer');
+            if (!handle || !drawer) return;
+            let startY = 0, lastY = 0, dragging = false;
+            const onStart = (clientY) => {
+                startY = lastY = clientY;
+                dragging = true;
+                handle.classList.add('dragging');
+            };
+            const onMove = (clientY) => {
+                if (!dragging) return;
+                lastY = clientY;
+            };
+            const onEnd = () => {
+                if (!dragging) return;
+                dragging = false;
+                handle.classList.remove('dragging');
+                const delta = lastY - startY;
+                if (delta > 30) mSetCollapsed(true);          // dragged down
+                else if (delta < -30) mSetCollapsed(false);   // dragged up
+            };
+            handle.addEventListener('touchstart', e => onStart(e.touches[0].clientY), { passive: true });
+            handle.addEventListener('touchmove',  e => onMove(e.touches[0].clientY), { passive: true });
+            handle.addEventListener('touchend',   onEnd);
+            handle.addEventListener('mousedown',  e => { onStart(e.clientY); const mm = ev => onMove(ev.clientY); const mu = () => { onEnd(); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); });
+            // Single-click handle (no drag) toggles too — easier than dragging.
+            handle.addEventListener('click', () => { if (Math.abs(lastY - startY) < 5) mToggleCollapsed(); });
+        })();
 
         // React to viewport changes
         function handleMobileChange(e) {
