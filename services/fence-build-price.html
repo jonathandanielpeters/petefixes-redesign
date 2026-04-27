@@ -6130,9 +6130,157 @@
             return mat * markup + labour;
         }
 
+        // ──────────────────────────────────────────────────────────────
+        // TASK-BASED LABOUR (per-fence-type)
+        // ──────────────────────────────────────────────────────────────
+        // Mirrors the V3 chain-link engine's labour math but accepts ANY
+        // fence type. Pulls tasks from config.labour2.byType[fenceType]
+        // and global rates (cost/charge/OT/travel) from config.labour2.
+        // Returns { cost, charge, hours, daysNeeded, perPersonPerDay, otHrs }.
+        function calculateTaskLabour(fenceType, ctx) {
+            const lab = PCFG.labour2;
+            if (!lab || !lab.byType) return null;
+            const slot = lab.byType[fenceType] || lab.byType.chainlink;
+            if (!slot || !slot.tasks) return null;
+            const counts = {
+                perJob:    1,
+                perLine:   ctx.lines || 0,
+                perPost:   ctx.totalPosts || 0,
+                perFoot:   ctx.lengthFt || 0,
+                perHookup: ctx.hookups || 0,
+                perGate:   ctx.gates || 0
+            };
+            let workMinutes = 0;
+            for (const t of Object.values(slot.tasks)) {
+                const units = counts[t.unit || 'perJob'] || 0;
+                workMinutes += (t.minutes || 0) * units * (t.employees || 1);
+            }
+            const hoursPerDay = lab.hoursPerDay || 8;
+            const breakMinPerDay = lab.breakMinPerDay || 0;
+            const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
+                ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
+                : 0;
+            const crew = (slot.tasks.setupDiscussion && slot.tasks.setupDiscussion.employees) || 2;
+            const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+            const totalMinutes = workMinutes + breakMinutes + overhead;
+            const totalHours = totalMinutes / 60;
+            const otThreshold = lab.overtimeAfterHours || 8;
+            const maxHoursPerDay = lab.maxHoursPerDay || 12;
+            const otCostMult = lab.otCostMult || 1;
+            const otChargeMult = lab.otChargeMult || 1;
+            const perPersonHrs = totalHours / crew;
+            const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
+            const perPersonPerDay = perPersonHrs / daysNeeded;
+            const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
+            const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
+            const regHrs = regPerPersonPerDay * daysNeeded * crew;
+            const otHrs = otPerPersonPerDay * daysNeeded * crew;
+            const cost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
+            const charge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+            return { cost, charge, workMinutes, totalMinutes, hours: totalHours, regHrs, otHrs, daysNeeded, perPersonPerDay, perPersonHrs, crew };
+        }
+
+        // Compute project-level task-based labour grouped by fence type.
+        // For mixed-type projects, tallies each type's footage/posts/hookups
+        // separately and runs calculateTaskLabour for each. Returns:
+        //   { byType: { chainlink: { cost, charge, ... }, wood: ... },
+        //     totalCost, totalCharge, hasMixedTypes, types: [...used] }
+        function calculateProjectLabour() {
+            const lab = PCFG.labour2;
+            if (!lab || !lab.byType) return null;
+            // Group counts by fence type
+            const counts = {};  // { fenceType: { lengthFt, totalPosts, hookups, gates, lines, postCount: number-with-corners } }
+            const ensureType = (t) => {
+                if (!counts[t]) counts[t] = { lengthFt: 0, totalPosts: 0, hookups: 0, gates: 0, lines: 0, _endIds: new Set(), _cornerIds: new Set(), _linePostCount: 0 };
+                return counts[t];
+            };
+            state.lines.forEach(line => {
+                if (!isLineEnabled(line)) return;
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                const style = getStyleForLine(line);
+                const fenceType = (style && style.fenceType) || 'chainlink';
+                const len = getLineLengthFt(p1, p2);
+                const posts = calculatePostsForLine(p1, p2, line);
+                const c = ensureType(fenceType);
+                c.lengthFt += len;
+                c.lines += 1;
+                c._linePostCount += Math.max(0, posts.length - 2);
+                [p1, p2].forEach(p => {
+                    if (typeof isCornerPost === 'function' && isCornerPost(p.id)) c._cornerIds.add(p.id);
+                    else c._endIds.add(p.id);
+                });
+            });
+            state.gates.forEach(g => {
+                if (!isGateEnabled(g)) return;
+                const style = getStyleForLine(g);
+                const fenceType = (style && style.fenceType) || 'chainlink';
+                const c = ensureType(fenceType);
+                c.gates += 1;
+            });
+            // Finalize per-type tallies
+            Object.keys(counts).forEach(t => {
+                const c = counts[t];
+                c.totalPosts = c._endIds.size + c._cornerIds.size + c._linePostCount;
+                c.hookups = c._endIds.size + c._cornerIds.size;
+                delete c._endIds; delete c._cornerIds; delete c._linePostCount;
+            });
+            // Run task-based labour for each type used
+            const byType = {};
+            let totalCost = 0, totalCharge = 0;
+            const types = Object.keys(counts);
+            types.forEach(t => {
+                const r = calculateTaskLabour(t, counts[t]);
+                if (r) {
+                    byType[t] = { ...r, ...counts[t] };
+                    totalCost += r.cost;
+                    totalCharge += r.charge;
+                }
+            });
+            return { byType, totalCost, totalCharge, hasMixedTypes: types.length > 1, types };
+        }
+
+        // Compute the highest profit-target floor among all fence types in the
+        // project that have enforce=true. Each type's floor is computed from
+        // its own task-based labour day-share. Returns the max floor, or 0.
+        function calculateProfitFloor(projectLabour, materialCost) {
+            const lab = PCFG.labour2;
+            if (!lab || !lab.byType || !projectLabour) return 0;
+            let floor = 0;
+            Object.keys(projectLabour.byType).forEach(t => {
+                const slot = lab.byType[t];
+                if (!slot || !slot.enforceProfitTarget) return;
+                const typeLab = projectLabour.byType[t];
+                const hpd = lab.hoursPerDay || 8;
+                const dayFraction = hpd > 0 ? ((typeLab.perPersonPerDay || 0) / hpd) * (typeLab.daysNeeded || 1) : 0;
+                const targetProfit = dayFraction * (slot.targetProfitPerDay || 0);
+                // Each type contributes its own (material allocation + labour cost + target).
+                // Without per-type material allocation we use the FULL material cost as the
+                // floor — this matches the V3 engine's behavior. Take MAX across all types.
+                const typeFloor = materialCost + typeLab.cost + targetProfit;
+                if (typeFloor > floor) floor = typeFloor;
+            });
+            return floor;
+        }
+
+        // Compute the highest minimum-job charge among all fence types used.
+        // Returns max(global min job, max of per-type slot.minimumJobCharge).
+        function calculateProjectMinJob(projectLabour) {
+            const globalMin = getMinJobCharge() || 0;
+            const lab = PCFG.labour2;
+            if (!lab || !lab.byType || !projectLabour) return globalMin;
+            let perTypeMax = 0;
+            Object.keys(projectLabour.byType).forEach(t => {
+                const slot = lab.byType[t];
+                const m = (slot && slot.minimumJobCharge) || 0;
+                if (m > perTypeMax) perTypeMax = m;
+            });
+            return Math.max(globalMin, perTypeMax);
+        }
+
         function calculatePrice() {
             const stats = getTotalStats();
-            const minCharge = getMinJobCharge();
             const totalMaterial = calculateTotalMaterial();
             const basis = PCFG.markupBasis === 'footage' ? stats.totalLengthFt : totalMaterial;
             const markup = getMarkup(basis);
@@ -6140,28 +6288,66 @@
             let labourTotal = 0;
             let addonTotal = 0;
 
-            // Sum line prices (skip disabled — they exist visually only)
+            // Try task-based per-fence-type labour FIRST. If it's set up for at
+            // least one type used in this project, we use that — every fence
+            // type now gets the same level of labour detail (Chain Link / Wood
+            // / Ornamental / Welded Wire / Vinyl). Falls back to legacy flat
+            // per-line labour only when labour2.byType isn't populated yet.
+            const projectLabour = calculateProjectLabour();
+            const useTaskLabour = !!(projectLabour && projectLabour.types.length > 0);
+
+            if (useTaskLabour) {
+                labourTotal = projectLabour.totalCharge;
+            } else {
+                // Legacy fallback — flat per-line labour
+                state.lines.forEach(line => {
+                    if (!isLineEnabled(line)) return;
+                    const p1 = state.points.find(p => p.id === line.p1);
+                    const p2 = state.points.find(p => p.id === line.p2);
+                    if (!p1 || !p2) return;
+                    const len = getLineLengthFt(p1, p2);
+                    const pc = calculatePostsForLine(p1, p2, line).length;
+                    labourTotal += calculateLabourForLine(line, len, pc);
+                });
+                state.gates.forEach(g => {
+                    if (!isGateEnabled(g)) return;
+                    labourTotal += calculateLabourForGate(g.gateType);
+                });
+            }
+
+            // Add-ons stay per-line (privacy install, post upgrade, etc.)
             state.lines.forEach(line => {
                 if (!isLineEnabled(line)) return;
                 const p1 = state.points.find(p => p.id === line.p1);
                 const p2 = state.points.find(p => p.id === line.p2);
                 if (!p1 || !p2) return;
                 const len = getLineLengthFt(p1, p2);
-                const pc = calculatePostsForLine(p1, p2, line).length;
-                labourTotal += calculateLabourForLine(line, len, pc);
                 addonTotal += calculateAddOnsForLine(line, len);
             });
 
-            // Sum gate labour (skip disabled)
-            state.gates.forEach(g => {
-                if (!isGateEnabled(g)) return;
-                labourTotal += calculateLabourForGate(g.gateType);
-            });
-
             let total = Math.round(totalMaterial * markup + labourTotal + addonTotal);
+
+            // Per-fence-type profit-target floor (max across enforced types)
+            if (useTaskLabour) {
+                const floor = calculateProfitFloor(projectLabour, totalMaterial);
+                if (floor > total) total = Math.round(floor);
+            }
+
+            // Per-fence-type min job charge (max of slot mins, max with global)
+            const minCharge = useTaskLabour
+                ? calculateProjectMinJob(projectLabour)
+                : (getMinJobCharge() || 0);
             if (totalMaterial > 0 || labourTotal > 0 || addonTotal > 0) total = Math.max(total, minCharge);
 
-            return { ...stats, total, materialCost: Math.round(totalMaterial), markup, labourTotal: Math.round(labourTotal), addonTotal: Math.round(addonTotal) };
+            return {
+                ...stats,
+                total,
+                materialCost: Math.round(totalMaterial),
+                markup,
+                labourTotal: Math.round(labourTotal),
+                addonTotal: Math.round(addonTotal),
+                projectLabour: useTaskLabour ? projectLabour : null  // exposed for email per-type breakdown
+            };
         }
 
         function updatePricing() {
@@ -8569,6 +8755,11 @@
             const basis = PCFG.markupBasis === 'footage' ? getTotalStats().totalLengthFt : totalMat;
             const mk = getMarkup(basis);
 
+            // First pass \u2014 gather per-line data with LEGACY labour numbers.
+            // We'll use these as ratios to allocate the project-level
+            // task-based labour total back to individual lines so per-line
+            // costs sum to the project total the customer sees.
+            const lineDrafts = [];
             state.lines.forEach((line, idx) => {
                 const p1 = state.points.find(p => p.id === line.p1);
                 const p2 = state.points.find(p => p.id === line.p2);
@@ -8576,9 +8767,8 @@
                 const len = getLineLengthFt(p1, p2);
                 const posts = calculatePostsForLine(p1, p2, line);
                 const mat = calculateLineMaterial(line, len, posts.length);
-                const labour = calculateLabourForLine(line, len, posts.length);
+                const legacyLabour = calculateLabourForLine(line, len, posts.length);
                 const addons = calculateAddOnsForLine(line, len);
-                const cost = Math.round(mat * mk + labour + addons);
                 const s = getStyleForLine(line);
                 const pn1 = pnMap[line.p1] || '?', pn2 = pnMap[line.p2] || '?';
 
@@ -8599,9 +8789,10 @@
                 } else if (s.fenceType === 'vinyl') {
                     desc += ' ' + (s.vinylColor || 'white');
                 }
-                rows.push({ type: 'line', label: 'Line ' + (idx + 1) + ' (' + pn1 + '\u2192' + pn2 + ')', desc: desc, length: len.toFixed(1) + ' ft', posts: posts.length, cost: cost, material: Math.round(mat), labour: Math.round(labour), addons: Math.round(addons) });
+                lineDrafts.push({ idx, p1, p2, len, posts, mat, legacyLabour, addons, s, pn1, pn2, desc, type: 'line', label: 'Line ' + (idx + 1) + ' (' + pn1 + '\u2192' + pn2 + ')' });
             });
 
+            const gateDrafts = [];
             state.gates.forEach((gate, idx) => {
                 const p1 = state.points.find(p => p.id === gate.p1);
                 const p2 = state.points.find(p => p.id === gate.p2);
@@ -8609,14 +8800,56 @@
                 const w = getLineLengthFt(p1, p2);
                 const gs = getStyleForLine(gate);
                 const mat = calculateGateMaterial(gate.gateType, w, gs);
-                const labour = calculateLabourForGate(gate.gateType);
-                const cost = Math.round(mat * mk + labour);
+                const legacyLabour = calculateLabourForGate(gate.gateType);
                 const gpn1 = pnMap[gate.p1] || '?', gpn2 = pnMap[gate.p2] || '?';
-                rows.push({ type: 'gate', label: 'Gate ' + (idx + 1) + ' (' + gpn1 + '\u2013' + gpn2 + ')', desc: (GATE_TYPE_LABELS[gate.gateType] || 'Gate') + ' ' + w.toFixed(1) + "'", cost: cost, material: Math.round(mat), labour: Math.round(labour), addons: 0 });
+                gateDrafts.push({ idx, gate, w, gs, mat, legacyLabour, gpn1, gpn2, type: 'gate', label: 'Gate ' + (idx + 1) + ' (' + gpn1 + '\u2013' + gpn2 + ')' });
             });
 
+            // Pull project-level totals from calculatePrice (uses task-based
+            // labour when configured). Then back-allocate the labour to lines
+            // and gates proportional to their legacy share so per-line numbers
+            // still tell a story AND sum to the project total.
             const price = calculatePrice();
-            return { rows, total: price.total, totalLength: price.totalLengthFt.toFixed(1), totalGates: price.totalGates, totalPosts: price.totalPosts, markup: price.markup, labourTotal: price.labourTotal || 0, addonTotal: price.addonTotal || 0 };
+            const taskTotal = price.labourTotal || 0;
+            const legacyByLine = lineDrafts.map(d => d.legacyLabour);
+            const legacyByGate = gateDrafts.map(d => d.legacyLabour);
+            const sumLegacy = legacyByLine.reduce((a, b) => a + b, 0) + legacyByGate.reduce((a, b) => a + b, 0);
+            // If legacy labour is zero (config has no per-line rates), fall
+            // back to length-weighted distribution. Either way every line gets
+            // a labour share that sums to the project total.
+            const totalFt = lineDrafts.reduce((a, d) => a + (d.len || 0), 0);
+            function allocLine(d) {
+                if (sumLegacy > 0) return (d.legacyLabour / sumLegacy) * taskTotal;
+                if (totalFt > 0) return ((d.len || 0) / totalFt) * taskTotal;
+                return taskTotal / Math.max(1, lineDrafts.length + gateDrafts.length);
+            }
+            function allocGate(d) {
+                if (sumLegacy > 0) return (d.legacyLabour / sumLegacy) * taskTotal;
+                return 0;  // no length to weight by
+            }
+
+            lineDrafts.forEach(d => {
+                const labour = allocLine(d);
+                const cost = Math.round(d.mat * mk + labour + d.addons);
+                rows.push({ type: 'line', label: d.label, desc: d.desc, length: d.len.toFixed(1) + ' ft', posts: d.posts.length, cost: cost, material: Math.round(d.mat), labour: Math.round(labour), addons: Math.round(d.addons) });
+            });
+            gateDrafts.forEach(d => {
+                const labour = allocGate(d);
+                const cost = Math.round(d.mat * mk + labour);
+                rows.push({ type: 'gate', label: d.label, desc: (GATE_TYPE_LABELS[d.gate.gateType] || 'Gate') + ' ' + d.w.toFixed(1) + "'", cost: cost, material: Math.round(d.mat), labour: Math.round(labour), addons: 0 });
+            });
+
+            return {
+                rows,
+                total: price.total,
+                totalLength: price.totalLengthFt.toFixed(1),
+                totalGates: price.totalGates,
+                totalPosts: price.totalPosts,
+                markup: price.markup,
+                labourTotal: price.labourTotal || 0,
+                addonTotal: price.addonTotal || 0,
+                projectLabour: price.projectLabour || null
+            };
         }
 
         function buildCustomerEmailHtml(name, breakdown, editUrl, address, notes) {
@@ -8764,50 +8997,81 @@
                 html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">+ Labour Charges</td><td style="padding:6px 8px;text-align:right;font-weight:600">$' + labTotal.toLocaleString() + '</td></tr>';
             }
 
-            // Per-fence-type labour settings — admin can see WHICH config slot
-            // drove the labour math for each fence type in this project. The
-            // engine pulls tasks + target profit + min job from the type's
-            // byType slot, so this is the authoritative snapshot.
+            // Per-fence-type labour breakdown — actual cost + charge per type,
+            // pulled from the project's task-based labour calc. Admin sees both
+            // the SETTINGS that drove each type's math AND the REAL labour
+            // numbers (hours, days, OT, cost vs charge) per fence type.
             try {
                 var labPCFG = (typeof PCFG !== 'undefined' && PCFG.labour2) ? PCFG.labour2 : null;
-                if (labPCFG && labPCFG.byType) {
-                    // Gather distinct fence types used in this project
-                    var typesUsed = {};
-                    (state.lines || []).forEach(function(l) {
-                        if (typeof isLineEnabled === 'function' && !isLineEnabled(l)) return;
-                        var s = (typeof getStyleForLine === 'function') ? getStyleForLine(l) : null;
-                        if (s && s.fenceType) typesUsed[s.fenceType] = true;
-                    });
-                    var typeKeys = Object.keys(typesUsed);
-                    if (typeKeys.length > 0) {
-                        html += '</table>';  // close pricing math table early so we can insert sub-table
-                        html += '<h4 style="margin:10px 0 6px;font-size:12px;color:#555">⚙️ Per-Fence-Type Labour Settings (applied)</h4>';
-                        html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
-                        html += '<tr style="background:#444;color:#fff">';
-                        html += '<th style="text-align:left;padding:5px 8px">Fence Type</th>';
-                        html += '<th style="text-align:right;padding:5px 8px">Target $/day</th>';
-                        html += '<th style="text-align:right;padding:5px 8px">Min Job</th>';
-                        html += '<th style="text-align:center;padding:5px 8px">Enforce?</th>';
-                        html += '<th style="text-align:right;padding:5px 8px">Tasks</th>';
+                var pl = breakdown.projectLabour || (typeof calculateProjectLabour === 'function' ? calculateProjectLabour() : null);
+                if (labPCFG && labPCFG.byType && pl && pl.types && pl.types.length > 0) {
+                    html += '</table>';  // close pricing math table to insert per-type
+                    html += '<h4 style="margin:10px 0 6px;font-size:12px;color:#555">⚙️ Per-Fence-Type Labour (task-based, applied)</h4>';
+                    html += '<p style="font-size:10px;color:#888;margin:0 0 6px">Each fence type runs through its own task-time table from admin settings. Hours include breaks (' + (labPCFG.breakMinPerDay || 0) + ' min/' + (labPCFG.hoursPerDay || 8) + 'hr day, prorated) + travel/load-up overhead.</p>';
+                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:11px">';
+                    html += '<tr style="background:#444;color:#fff">';
+                    html += '<th style="text-align:left;padding:5px 8px">Fence Type</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Hrs</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">OT Hrs</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Days</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Cost</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Charge</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Margin</th>';
+                    html += '</tr>';
+                    var typeLabels = { chainlink: 'Chain Link', wood: 'Wood', ornamental: 'Ornamental', weldedWire: 'Welded Wire', vinyl: 'Vinyl' };
+                    var grandCost = 0, grandCharge = 0;
+                    pl.types.forEach(function(tk) {
+                        var typeLab = pl.byType[tk] || {};
+                        var typeMargin = (typeLab.charge || 0) - (typeLab.cost || 0);
+                        grandCost += (typeLab.cost || 0);
+                        grandCharge += (typeLab.charge || 0);
+                        html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                        html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(typeLabels[tk] || tk) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">' + (typeLab.hours || 0).toFixed(1) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:' + ((typeLab.otHrs || 0) > 0 ? '#d2691e' : '#999') + '">' + (typeLab.otHrs || 0).toFixed(1) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">' + (typeLab.daysNeeded || 1) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + Math.round(typeLab.cost || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + Math.round(typeLab.charge || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#27ae60;font-weight:600">+$' + Math.round(typeMargin).toLocaleString() + '</td>';
                         html += '</tr>';
-                        var typeLabels = { chainlink: 'Chain Link', wood: 'Wood', ornamental: 'Ornamental', weldedWire: 'Welded Wire', vinyl: 'Vinyl' };
-                        typeKeys.forEach(function(tk) {
-                            var slot = labPCFG.byType[tk] || {};
-                            var taskCount = slot.tasks ? Object.values(slot.tasks).filter(function(t) { return (t.minutes || 0) > 0; }).length : 0;
-                            html += '<tr style="border-bottom:1px solid #e5e5e5">';
-                            html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(typeLabels[tk] || tk) + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:right">$' + (slot.targetProfitPerDay || 0).toLocaleString() + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:right">$' + (slot.minimumJobCharge || 0).toLocaleString() + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:center">' + (slot.enforceProfitTarget ? '✓' : '—') + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:right;color:#888">' + taskCount + ' active</td>';
-                            html += '</tr>';
-                        });
-                        html += '</table>';
-                        // Re-open the pricing math table so subsequent rows still flow
-                        html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">';
+                    });
+                    if (pl.types.length > 1) {
+                        html += '<tr style="background:#f5f5f5;font-weight:700">';
+                        html += '<td colspan="4" style="padding:5px 8px;text-align:right">Project labour total</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">$' + Math.round(grandCost).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">$' + Math.round(grandCharge).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#27ae60">+$' + Math.round(grandCharge - grandCost).toLocaleString() + '</td>';
+                        html += '</tr>';
                     }
+                    html += '</table>';
+
+                    // Per-type SETTINGS snapshot below — what drove the math
+                    html += '<h4 style="margin:10px 0 6px;font-size:12px;color:#555">⚙ Per-Fence-Type Settings (snapshot)</h4>';
+                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+                    html += '<tr style="background:#666;color:#fff">';
+                    html += '<th style="text-align:left;padding:5px 8px">Fence Type</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Target $/day</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Min Job</th>';
+                    html += '<th style="text-align:center;padding:5px 8px">Enforce?</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Active Tasks</th>';
+                    html += '</tr>';
+                    pl.types.forEach(function(tk) {
+                        var slot = labPCFG.byType[tk] || {};
+                        var taskCount = slot.tasks ? Object.values(slot.tasks).filter(function(t) { return (t.minutes || 0) > 0; }).length : 0;
+                        html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                        html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(typeLabels[tk] || tk) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">$' + (slot.targetProfitPerDay || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">$' + (slot.minimumJobCharge || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:center">' + (slot.enforceProfitTarget ? '✓' : '—') + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#888">' + taskCount + ' / 12</td>';
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+
+                    // Re-open the pricing math table so subsequent rows still flow
+                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">';
                 }
-            } catch (e) { /* swallow — fallback to legacy single-block view */ }
+            } catch (e) { console.warn('[per-type email]', e); }
             // Add-on breakdown
             var aoTotal = breakdown.addonTotal || 0;
             if (aoTotal > 0) {
