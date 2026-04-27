@@ -6238,23 +6238,27 @@
         // Render the Material Options pills for the active style. Only categories with
         // 2+ options appear — single-option lists silently apply the only entry. Color
         // currently selected (galv vs black) is used for the price preview on each pill.
-        // Repopulate the height pills from the V3 recipe set for the active tier,
-        // unioned with the static defaults (4/5/6/8). So admin-added heights like
-        // 7ft / 12ft show up on the customer side automatically.
+        // Repopulate the height pills from the V3 recipe set for the active tier.
+        // Shows ONLY heights the admin has configured for the current tier — so
+        // a 7ft fence saved in commercial only appears when commercial mode is
+        // active, and an 8ft height won't appear in residential unless the admin
+        // explicitly added an 8ft residential recipe. Static defaults (4/5/6/8)
+        // are only used when V3 is missing entirely (fresh installs / legacy
+        // configs) so the customer never gets a blank height picker.
         function renderCl3HeightPills(style) {
             const container = document.getElementById('heightPills');
             if (!container) return;
             const cl3 = PCFG.chainlinkRecipesV3;
             const tier = state.mode === 'commercial' ? 'commercial' : 'residential';
             const recipeHeights = (cl3 && cl3[tier]) ? Object.keys(cl3[tier]) : [];
-            // Parse the ft suffix and dedupe
             const parsed = recipeHeights
                 .map(k => parseFloat(k))
-                .filter(n => !isNaN(n) && n > 0);
-            const merged = Array.from(new Set([4, 5, 6, 8].concat(parsed))).sort((a, b) => a - b);
-            const current = parseFloat(style.height) || 6;
-            container.innerHTML = merged.map(h => {
-                // Use integer when possible (matches existing behaviour); otherwise show .5/.25 etc.
+                .filter(n => !isNaN(n) && n > 0)
+                .sort((a, b) => a - b);
+            // Strict mode: configured V3 wins. Fallback only if no recipes at all.
+            const heights = parsed.length > 0 ? parsed : [4, 5, 6, 8];
+            const current = parseFloat(style.height) || heights[0] || 6;
+            container.innerHTML = heights.map(h => {
                 const label = (h % 1 === 0 ? h.toString() : h.toString()) + ' ft';
                 const active = (h === current) ? ' active' : '';
                 return '<div class="config-pill' + active + '" data-height="' + h + '">' + label + '</div>';
