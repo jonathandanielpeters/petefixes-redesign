@@ -5141,12 +5141,19 @@ function blankCl3Connection() {
   // All quantities are PER HOOKUP. End post = 1 hookup, corner post = 2,
   // T-junction = 3, 4-way = 4. The customer engine multiplies these by
   // the total hookup count (= lines × 2 endpoints) for the project.
+  //
+  // Each hookup item has its own paired Nuts & Bolts pick + qty so the
+  // admin can use different fasteners per item (e.g. carriage bolts on
+  // tension bands, machine bolts on brace bands).
   return {
-    tensionBarGalv: '', tensionBarBlack: '', tensionBarQty: 1,
-    railEndGalv: '', railEndBlack: '', railEndQty: 1,
-    braceBandGalv: '', braceBandBlack: '', braceBandQty: 1,
+    tensionBarGalv: '',  tensionBarBlack: '',  tensionBarQty: 1,
+      tensionBarNbGalv: '', tensionBarNbBlack: '', tensionBarNbQty: 0,
+    railEndGalv: '',     railEndBlack: '',     railEndQty: 1,
+      railEndNbGalv: '',    railEndNbBlack: '',    railEndNbQty: 1,
+    braceBandGalv: '',   braceBandBlack: '',   braceBandQty: 1,
+      braceBandNbGalv: '',  braceBandNbBlack: '',  braceBandNbQty: 1,
     tensionBandGalv: '', tensionBandBlack: '', tensionBandQty: 4,
-    nutsBoltsGalv: '', nutsBoltsBlack: '', nutsBoltsQty: 4
+      tensionBandNbGalv: '', tensionBandNbBlack: '', tensionBandNbQty: 4
   };
 }
 function blankCl3Gate() {
@@ -5811,9 +5818,18 @@ function addCl3Main() {
     const tband = _cl3PairForMaterial('Tension Band', (it, a) => bandSizeMatch(a.variantSize));
     conn.tensionBandGalv = tband.galv; conn.tensionBandBlack = tband.black;
     conn.tensionBandQty = Math.max(4, Math.ceil(heightFt));
+    // Per-item N&B — populate every hookup item's paired fastener with the
+    // cheapest "Nuts & Bolts" SKU. Quantities default to a realistic install:
+    // 0 on tension bar, 1 on rail end, 1 on brace band, 1 per tension band.
     const nb = _cl3PairForMaterial('Nuts & Bolts');
-    conn.nutsBoltsGalv = nb.galv; conn.nutsBoltsBlack = nb.black;
-    conn.nutsBoltsQty = 4;
+    ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'].forEach(p => {
+      conn[p + 'NbGalv'] = nb.galv;
+      conn[p + 'NbBlack'] = nb.black;
+    });
+    conn.tensionBarNbQty = 0;
+    conn.railEndNbQty = 1;
+    conn.braceBandNbQty = 1;
+    conn.tensionBandNbQty = conn.tensionBandQty;
     r.connections.perMainPost[o.id] = conn;
   }
   markDirty();
@@ -6192,45 +6208,66 @@ function renderCl3Connections(recipe) {
   mains.forEach(mp => {
     const c = recipe.connections.perMainPost[mp.id] || (recipe.connections.perMainPost[mp.id] = blankCl3Connection());
     const lbl = mp.label || '(unlabeled main post)';
-    // Per-hookup total — sum of (each hookup unit price × qty per hookup).
+    // Per-hookup total — sum of (each hookup item × qty + its NB pair × NB qty).
     // End post = 1 hookup, corner post = 2 hookups, T-post = 3, 4-way = 4.
-    const totG = (cl3PriceFor(c.tensionBarGalv) || 0) * (c.tensionBarQty || 0)
-               + (cl3PriceFor(c.railEndGalv)    || 0) * (c.railEndQty    || 0)
-               + (cl3PriceFor(c.braceBandGalv)  || 0) * (c.braceBandQty  || 0)
-               + (cl3PriceFor(c.tensionBandGalv)|| 0) * (c.tensionBandQty|| 0)
-               + (cl3PriceFor(c.nutsBoltsGalv)  || 0) * (c.nutsBoltsQty  || 0);
-    const totB = (cl3PriceFor(c.tensionBarBlack)  || 0) * (c.tensionBarQty || 0)
-               + (cl3PriceFor(c.railEndBlack)     || 0) * (c.railEndQty    || 0)
-               + (cl3PriceFor(c.braceBandBlack)   || 0) * (c.braceBandQty  || 0)
-               + (cl3PriceFor(c.tensionBandBlack) || 0) * (c.tensionBandQty|| 0)
-               + (cl3PriceFor(c.nutsBoltsBlack)   || 0) * (c.nutsBoltsQty  || 0);
+    function rowCost(prefix, isBlack) {
+      const itemCol = isBlack ? 'Black' : 'Galv';
+      const itemUnit = cl3PriceFor(c[prefix + itemCol]) || 0;
+      const itemQty  = c[prefix + 'Qty'] || 0;
+      const nbUnit   = cl3PriceFor(c[prefix + 'Nb' + itemCol]) || 0;
+      const nbQty    = c[prefix + 'NbQty'] || 0;
+      return itemUnit * itemQty + nbUnit * nbQty;
+    }
+    const items = ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'];
+    const totG = items.reduce((s, p) => s + rowCost(p, false), 0);
+    const totB = items.reduce((s, p) => s + rowCost(p, true), 0);
     blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:10px 12px;margin-top:10px">' +
       '<div style="font-weight:700;font-size:12px;color:var(--gray-600);margin-bottom:8px">When customer picks main post: <span style="color:var(--accent)">' + clEscHtml(lbl) + '</span></div>' +
-      '<div style="overflow:auto"><table style="width:100%;min-width:900px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
-      '<colgroup><col style="width:140px"><col><col><col style="width:90px"></colgroup>' +
-      '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Hookup item</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right" title="Quantity per hookup. End post = 1 hookup, corner post = 2, T-post = 3, etc.">Qty / hookup</th></tr></thead><tbody>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:1300px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+      '<colgroup>' +
+        '<col style="width:120px">' +     // hookup item label
+        '<col>' +                          // galv item
+        '<col>' +                          // black item
+        '<col style="width:54px">' +       // item qty
+        '<col>' +                          // galv NB
+        '<col>' +                          // black NB
+        '<col style="width:54px">' +       // NB qty
+      '</colgroup>' +
+      '<thead><tr style="background:var(--gray-50);text-align:left">' +
+        '<th style="padding:6px 8px">Hookup item</th>' +
+        '<th style="padding:6px 8px">Galv</th>' +
+        '<th style="padding:6px 8px">Black</th>' +
+        '<th style="padding:6px 8px;text-align:right" title="Quantity per hookup. Corner posts get 2× this, T-posts 3×, 4-way 4×.">Qty / hookup</th>' +
+        '<th style="padding:6px 8px">Galv N&amp;B</th>' +
+        '<th style="padding:6px 8px">Black N&amp;B</th>' +
+        '<th style="padding:6px 8px;text-align:right" title="Nuts &amp; bolts qty per hookup, paired to this hookup item">N&amp;B qty</th>' +
+      '</tr></thead><tbody>' +
       _cl3ConnRow(mp.id, 'tensionBar', 'Tension Bar', /^Tension Bar/, c) +
       _cl3ConnRow(mp.id, 'railEnd', 'Rail End', 'Rail End', c) +
       _cl3ConnRow(mp.id, 'braceBand', 'Brace Band', 'Brace Band', c) +
       _cl3ConnRow(mp.id, 'tensionBand', 'Tension Band', 'Tension Band', c) +
-      _cl3ConnRow(mp.id, 'nutsBolts', 'Nuts &amp; Bolts', 'Nuts & Bolts', c) +
       '</tbody></table></div>' +
       '<div style="margin-top:8px;padding:6px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px">' +
-      '<span style="color:var(--gray-600);font-weight:600">Total hookup cost per hookup:</span>' +
+      '<span style="color:var(--gray-600);font-weight:600">Total hookup cost per hookup (incl. paired N&amp;B):</span>' +
       '<span style="font-weight:700;color:#3c8a1d">G: ' + cl3FmtPrice(totG || null) + '  ·  <span style="color:#444">B: ' + cl3FmtPrice(totB || null) + '</span></span>' +
       '</div></div>';
   });
   return '<div class="card">' +
     '<div class="card-title">Connections <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— hookup hardware per main post option</span></div>' +
-    '<div class="card-desc">Define what hookup items go with each main post style and how many <b>per hookup</b>. End posts have <b>1 hookup</b>, corner posts have <b>2</b> (one set of hardware per fence run attaching), T-junctions have <b>3</b>, 4-way intersections have <b>4</b>. The Build &amp; Price engine multiplies by the total hookup count of the project.</div>' +
+    '<div class="card-desc">Define what hookup items go with each main post style and how many <b>per hookup</b>. End posts have <b>1 hookup</b>, corner posts have <b>2</b> (one set of hardware per fence run attaching), T-junctions have <b>3</b>, 4-way intersections have <b>4</b>. Each hookup item has its own paired <b>nuts &amp; bolts</b> pick — set the qty to 0 if that item doesn\'t need fasteners.</div>' +
     blocks + '</div>';
 }
 function _cl3ConnRow(mainId, prefix, label, materialPattern, c) {
+  // Each row now has 7 cells: label / galv item / black item / qty
+  //                          / galv N&B / black N&B / N&B qty
   return '<tr style="border-top:1px solid var(--gray-100)">' +
     '<td style="padding:6px 8px;font-weight:600;color:var(--gray-600)">' + label + '</td>' +
     '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Galv'], materialPattern, 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "Galv',?)", 'Galv ' + label.toLowerCase() + ' (paired to main post)') + '</td>' +
     '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'Black'], materialPattern, 'black', "updCl3Conn('" + mainId + "','" + prefix + "Black',?)", 'Black ' + label.toLowerCase() + ' (paired to main post)') + '</td>' +
     '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c[prefix + 'Qty'] || 0) + '" oninput="updCl3Conn(\'' + mainId + '\',\'' + prefix + 'Qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'NbGalv'], 'Nuts & Bolts', 'galvanized', "updCl3Conn('" + mainId + "','" + prefix + "NbGalv',?)", 'Galv nuts & bolts for ' + label.toLowerCase()) + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(c[prefix + 'NbBlack'], 'Nuts & Bolts', 'black', "updCl3Conn('" + mainId + "','" + prefix + "NbBlack',?)", 'Black nuts & bolts for ' + label.toLowerCase()) + '</td>' +
+    '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c[prefix + 'NbQty'] || 0) + '" oninput="updCl3Conn(\'' + mainId + '\',\'' + prefix + 'NbQty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
     '</tr>';
 }
 function updCl3Conn(mainId, field, value) { const r = _cl3CurRecipe(); if (!r) return; if (!r.connections.perMainPost[mainId]) r.connections.perMainPost[mainId] = blankCl3Connection(); r.connections.perMainPost[mainId][field] = value; markDirty(); if (field.endsWith('Galv') || field.endsWith('Black')) renderClRecipesV3(); }
@@ -6549,13 +6586,18 @@ function seedCl3Recipe(tierArg, heightArg, opts) {
     // Tension bands per hookup: roughly 1 per foot of fence height, minimum 4.
     // (For a 6ft corner post = 6 bands × 2 hookups = 12 total bands at that post.)
     conn.tensionBandQty = Math.max(4, Math.ceil(heightFt));
-    // Nuts & bolts — cheapest "Nuts & Bolts" entry, 4 per hookup is the
-    // standard count (2 for tension band + 2 for brace band). Falls back to
-    // any fastener if the master pricelist doesn't have an exact match.
+    // Per-item nuts & bolts — each hookup item gets its own NB pair.
+    // Default: 0 NB on tension bar, 1 NB on rail end, 1 NB on brace band,
+    // and 1 NB per tension band (qty matches band qty). Cheapest fastener.
     const nb = matchOrFallback('Nuts & Bolts', () => true);
-    conn.nutsBoltsGalv = nb.galv;
-    conn.nutsBoltsBlack = nb.black;
-    conn.nutsBoltsQty = 4;
+    ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'].forEach(p => {
+      conn[p + 'NbGalv'] = nb.galv;
+      conn[p + 'NbBlack'] = nb.black;
+    });
+    conn.tensionBarNbQty = 0;
+    conn.railEndNbQty = 1;
+    conn.braceBandNbQty = 1;
+    conn.tensionBandNbQty = conn.tensionBandQty;  // 1 NB per band
     recipe.connections.perMainPost[mainOpt.id] = conn;
   }
 
@@ -6781,19 +6823,28 @@ function renderCl3Summary() {
   const hookupCount = (sample.ends || 0) + 2 * (sample.corners || 0) + 2 * (sample.gates || 0);
   if (conn && hookupCount > 0) {
     const connItems = [
-      ['Tension bar', 'tensionBar', conn.tensionBarQty],
-      ['Rail end', 'railEnd', conn.railEndQty],
-      ['Brace band', 'braceBand', conn.braceBandQty],
-      ['Tension band', 'tensionBand', conn.tensionBandQty],
-      ['Nuts & bolts', 'nutsBolts', conn.nutsBoltsQty]
+      ['Tension bar', 'tensionBar', conn.tensionBarQty, conn.tensionBarNbQty],
+      ['Rail end', 'railEnd', conn.railEndQty, conn.railEndNbQty],
+      ['Brace band', 'braceBand', conn.braceBandQty, conn.braceBandNbQty],
+      ['Tension band', 'tensionBand', conn.tensionBandQty, conn.tensionBandNbQty]
     ];
-    connItems.forEach(([label, prefix, perHookup]) => {
+    connItems.forEach(([label, prefix, perHookup, nbPerHookup]) => {
+      // Item itself
       const code = pickColor(conn[prefix + 'Galv'], conn[prefix + 'Black']);
       const u = priceOf(code);
       const qty = (perHookup || 0) * hookupCount;
       const sub = u * qty;
-      addLine(label + ' (' + perHookup + '/hookup × ' + hookupCount + ' hookups)', qty, u, code, sub, !code && qty > 0);
+      addLine(label + ' (' + perHookup + '/hookup × ' + hookupCount + ')', qty, u, code, sub, !code && qty > 0);
       total += sub;
+      // Paired nuts & bolts for this row
+      const nbCode = pickColor(conn[prefix + 'NbGalv'], conn[prefix + 'NbBlack']);
+      const nbU = priceOf(nbCode);
+      const nbQty = (nbPerHookup || 0) * hookupCount;
+      if (nbQty > 0) {
+        const nbSub = nbU * nbQty;
+        addLine('  ↳ N&B for ' + label.toLowerCase() + ' (' + nbPerHookup + '/hookup)', nbQty, nbU, nbCode, nbSub, !nbCode && nbQty > 0);
+        total += nbSub;
+      }
     });
   }
   // Gate

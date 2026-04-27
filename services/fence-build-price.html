@@ -6559,23 +6559,22 @@
                 // Connections paired to the chosen main post (per the recipe map).
                 // Multiplied by HOOKUP count, not main post count: a corner post
                 // attaches 2 fence runs, so it gets 2 sets of tension bands /
-                // brace bands / nuts & bolts / etc. Total hookups for this group
+                // brace bands / etc. Total hookups for this group
                 // = number of line endpoints = group.lines.length × 2.
+                // Each hookup item also has its own paired Nuts & Bolts pair
+                // with its own qty per hookup.
                 const hookupCount = group.lines.length * 2;
                 if (mainOpt && hookupCount > 0) {
                     const conn = (recipe.connections && recipe.connections.perMainPost) ? recipe.connections.perMainPost[mainOpt.id] : null;
                     if (conn) {
-                        const items = [
-                            ['tensionBar', conn.tensionBarQty],
-                            ['railEnd', conn.railEndQty],
-                            ['braceBand', conn.braceBandQty],
-                            ['tensionBand', conn.tensionBandQty],
-                            ['nutsBolts', conn.nutsBoltsQty]
-                        ];
-                        items.forEach(function(arr) {
-                            const prefix = arr[0], perHookup = arr[1];
+                        const items = ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'];
+                        items.forEach(function(prefix) {
+                            // The hookup item itself
                             const code = pickColor(conn[prefix + 'Galv'], conn[prefix + 'Black'], color);
-                            materialCost += priceOf(code) * (perHookup || 0) * hookupCount;
+                            materialCost += priceOf(code) * (conn[prefix + 'Qty'] || 0) * hookupCount;
+                            // Its paired nuts & bolts
+                            const nbCode = pickColor(conn[prefix + 'NbGalv'], conn[prefix + 'NbBlack'], color);
+                            materialCost += priceOf(nbCode) * (conn[prefix + 'NbQty'] || 0) * hookupCount;
                         });
                     }
                 }
