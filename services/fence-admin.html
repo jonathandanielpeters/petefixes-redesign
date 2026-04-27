@@ -1226,11 +1226,19 @@ a{color:var(--accent);text-decoration:none}
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">Profit Target Floor</div>
-    <div class="card-desc">Floor every quote at <em>material cost + labour cost + target profit</em> so a job never books below your daily profit goal. Optional — leave disabled to use only the markup multiplier.</div>
-    <div class="card-row">
-      <div class="field"><label>Target profit / workday ($)</label><input type="number" id="lab2-target-profit-day" step="25" min="0" value="800" oninput="markDirty();refreshSamplePrices()" title="How much net profit you want to net per full workday after material cost + labour cost. Samples below flag any job that falls short of this target prorated to its share of a workday."></div>
+  <div class="card" style="border-left:3px solid var(--accent)">
+    <div class="card-title">Per-Fence-Type Settings <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— TASKS · PROFIT · MIN JOB</span></div>
+    <div class="card-desc">Each fence type below has its own task-time table, target profit, and minimum job charge. Hourly rates &amp; travel above stay shared across all types (same crew, same wages).</div>
+    <div class="pill-tabs" id="lab2-type-tabs" style="margin-top:6px">
+      <div class="pill-tab active" data-labtype="chainlink"  onclick="setLabActiveType('chainlink')">Chain Link</div>
+      <div class="pill-tab"        data-labtype="wood"       onclick="setLabActiveType('wood')">Wood</div>
+      <div class="pill-tab"        data-labtype="ornamental" onclick="setLabActiveType('ornamental')">Ornamental</div>
+      <div class="pill-tab"        data-labtype="weldedWire" onclick="setLabActiveType('weldedWire')">Welded Wire</div>
+      <div class="pill-tab"        data-labtype="vinyl"      onclick="setLabActiveType('vinyl')">Vinyl</div>
+    </div>
+    <div class="card-row" style="margin-top:10px">
+      <div class="field"><label>Target profit / workday ($) <span style="font-size:10px;color:var(--gray-400)">— this fence type</span></label><input type="number" id="lab2-target-profit-day" step="25" min="0" value="800" oninput="markDirty();refreshSamplePrices()" title="Net profit target per workday for THIS fence type. Samples flag jobs that fall short of this prorated to their share of a workday."></div>
+      <div class="field"><label>Minimum job charge ($) <span style="font-size:10px;color:var(--gray-400)">— this fence type</span></label><input type="number" id="lab2-min-job-charge" step="25" min="0" value="0" oninput="markDirty();refreshSamplePrices()" title="Quotes for THIS fence type below this amount get raised to meet the minimum. 0 = no minimum."></div>
       <div class="field" style="display:flex;align-items:end;gap:8px">
         <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;margin-bottom:8px">
           <input type="checkbox" id="lab2-enforce-profit-target" oninput="markDirty();refreshSamplePrices()" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
@@ -1258,8 +1266,8 @@ a{color:var(--accent);text-decoration:none}
   </div>
 
   <div class="card">
-    <div class="card-title">Task Times</div>
-    <div class="card-desc">For each task, how many minutes per unit and how many crew members. Units: <strong>per job</strong> = once, <strong>per line</strong> = × line count, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count.</div>
+    <div class="card-title">Task Times <span style="font-size:10px;font-weight:600;color:var(--gray-400);margin-left:8px">— for the selected fence type above</span></div>
+    <div class="card-desc">Time estimates for the <strong>currently-selected fence type</strong> (tabs above). Units: <strong>per job</strong> = once, <strong>per line</strong> = × line count, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count.</div>
     <div class="table-scroll">
       <table class="data-table" id="lab2-tasks-table">
         <thead>
@@ -8125,6 +8133,10 @@ function applyClMasterMarkup() {
 }
 
 // ── Labour Calculator ──
+// Per-fence-type task breakdowns. Hourly rates / OT / travel / load-up
+// stay GLOBAL (same crew, same wages, same overhead). Tasks + profit
+// target + minimum job charge become per-type so wood, ornamental,
+// chain link, etc. each get their own time estimates and profit floor.
 const LAB2_TASK_DEFS = [
   { key: 'setupDiscussion',   label: 'Set up / discussing job',         unit: 'perJob',    minutes: 30,  employees: 2 },
   { key: 'markingPosts',      label: 'Marking posts',                   unit: 'perPost',   minutes: 2,   employees: 1 },
@@ -8141,6 +8153,16 @@ const LAB2_TASK_DEFS = [
 ];
 const LAB2_UNITS = ['perJob', 'perLine', 'perPost', 'perFoot', 'perHookup', 'perGate'];
 const LAB2_UNIT_LABEL = { perJob: 'per job', perLine: 'per line', perPost: 'per post', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
+const LAB2_TYPES = [
+  { key: 'chainlink',  label: 'Chain Link' },
+  { key: 'wood',       label: 'Wood' },
+  { key: 'ornamental', label: 'Ornamental' },
+  { key: 'weldedWire', label: 'Welded Wire' },
+  { key: 'vinyl',      label: 'Vinyl' }
+];
+// Tracks which fence-type tab is open in the admin Labour Calculator.
+// Engine reads byType[fenceType] regardless of this — it's UI-only state.
+window._labActiveType = window._labActiveType || 'chainlink';
 
 function ensureLab2() {
   if (!config.labour2) {
@@ -8155,13 +8177,10 @@ function ensureLab2() {
       shopAddress: '',
       sampleCustomerAddress: '',
       travelMinOneWay: 25,
-      loadUpMin: 30,
-      tasks: {},
-      customTaskOrder: []
+      loadUpMin: 30
     };
   }
-  if (!config.labour2.tasks) config.labour2.tasks = {};
-  // Migrate legacy fields to new shape
+  // Global rate / OT / travel defaults
   if (config.labour2.breakMinPerDay == null) {
     if (config.labour2.breakPct != null) {
       config.labour2.breakMinPerDay = Math.round(config.labour2.breakPct * 4.8);
@@ -8174,25 +8193,116 @@ function ensureLab2() {
   if (config.labour2.otCostMult == null) config.labour2.otCostMult = 1.5;
   if (config.labour2.otChargeMult == null) config.labour2.otChargeMult = 1.5;
   if (config.labour2.maxHoursPerDay == null) config.labour2.maxHoursPerDay = 12;
-  if (config.labour2.targetProfitPerDay == null) config.labour2.targetProfitPerDay = 800;
-  if (config.labour2.enforceProfitTarget == null) config.labour2.enforceProfitTarget = false;
   delete config.labour2.breakPct;
   delete config.labour2.cushioningPct;
-  if (!config.labour2.customTaskOrder) config.labour2.customTaskOrder = [];
-  // Seed any missing predefined task defaults
-  for (const def of LAB2_TASK_DEFS) {
-    if (!config.labour2.tasks[def.key]) {
-      config.labour2.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
-    }
+
+  // ── byType: per-fence-type tasks + profit target + min job ──
+  if (!config.labour2.byType) config.labour2.byType = {};
+  // Migrate legacy single-type tasks into byType.chainlink. The old global
+  // tasks list was tuned for chain link, so it's the right home. Also moves
+  // legacy targetProfitPerDay / enforceProfitTarget into the chain-link slot.
+  const hasLegacy = (config.labour2.tasks && Object.keys(config.labour2.tasks).length > 0)
+                 || config.labour2.customTaskOrder
+                 || config.labour2.targetProfitPerDay != null
+                 || config.labour2.enforceProfitTarget != null;
+  if (hasLegacy && !config.labour2.byType.chainlink) {
+    config.labour2.byType.chainlink = {
+      tasks: config.labour2.tasks || {},
+      customTaskOrder: config.labour2.customTaskOrder || [],
+      targetProfitPerDay: config.labour2.targetProfitPerDay != null ? config.labour2.targetProfitPerDay : 800,
+      enforceProfitTarget: !!config.labour2.enforceProfitTarget,
+      minimumJobCharge: 0
+    };
   }
+  // Seed each fence type with its own slot. New types start as a fresh
+  // copy of the chain-link defaults so admin only has to tune deltas.
+  LAB2_TYPES.forEach(t => {
+    if (!config.labour2.byType[t.key]) {
+      const base = config.labour2.byType.chainlink;
+      config.labour2.byType[t.key] = {
+        tasks: {},
+        customTaskOrder: [],
+        targetProfitPerDay: base ? base.targetProfitPerDay : 800,
+        enforceProfitTarget: base ? !!base.enforceProfitTarget : false,
+        minimumJobCharge: 0
+      };
+    }
+    const slot = config.labour2.byType[t.key];
+    if (!slot.tasks) slot.tasks = {};
+    if (!slot.customTaskOrder) slot.customTaskOrder = [];
+    if (slot.targetProfitPerDay == null) slot.targetProfitPerDay = 800;
+    if (slot.enforceProfitTarget == null) slot.enforceProfitTarget = false;
+    if (slot.minimumJobCharge == null) slot.minimumJobCharge = 0;
+    // Seed predefined task defaults that aren't already set
+    for (const def of LAB2_TASK_DEFS) {
+      if (!slot.tasks[def.key]) {
+        slot.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
+      }
+    }
+  });
+  // Drop legacy top-level fields once everything is migrated. Keep them
+  // briefly in case an older save round-trips through this code, but the
+  // engine only reads byType going forward.
+  delete config.labour2.tasks;
+  delete config.labour2.customTaskOrder;
+  delete config.labour2.targetProfitPerDay;
+  delete config.labour2.enforceProfitTarget;
+
   return config.labour2;
 }
 
-function addCustomLabourTask() {
+// Return the active type's labour slot ({tasks, customTaskOrder, targetProfitPerDay, ...}).
+// All UI handlers use this so they don't need to know the active-type plumbing.
+function lab2Slot(type) {
   const lab = ensureLab2();
+  const t = type || window._labActiveType || 'chainlink';
+  return lab.byType[t] || lab.byType.chainlink;
+}
+
+// Switch the active fence-type tab in the Labour Calculator. Before swapping,
+// we collect any per-type fields (target/minimum/enforce) into the OLD type's
+// slot so the user's last edits don't get lost when they tab away. Then we
+// re-render with the NEW type's data.
+function setLabActiveType(type) {
+  if (!type || type === window._labActiveType) {
+    // Still update tab UI in case it's out of sync
+    document.querySelectorAll('#lab2-type-tabs .pill-tab, .lab2-type-pill').forEach(p => {
+      p.classList.toggle('active', p.dataset.labtype === type);
+    });
+    return;
+  }
+  // 1) Persist the OLD type's per-type fields before switching
+  const oldSlot = lab2Slot(window._labActiveType);
+  const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+  const gn = id => parseFloat(g(id)) || 0;
+  oldSlot.targetProfitPerDay = gn('lab2-target-profit-day');
+  oldSlot.minimumJobCharge = gn('lab2-min-job-charge');
+  const oldEnforceEl = document.getElementById('lab2-enforce-profit-target');
+  oldSlot.enforceProfitTarget = oldEnforceEl ? !!oldEnforceEl.checked : false;
+
+  // 2) Switch active type
+  window._labActiveType = type;
+  document.querySelectorAll('#lab2-type-tabs .pill-tab, .lab2-type-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.labtype === type);
+  });
+
+  // 3) Load NEW type's fields + re-render task table
+  const slot = lab2Slot(type);
+  const setV = (id, v) => { const el = document.getElementById(id); if (el != null) el.value = v; };
+  setV('lab2-target-profit-day', slot.targetProfitPerDay);
+  setV('lab2-min-job-charge', slot.minimumJobCharge || 0);
+  const enforceEl = document.getElementById('lab2-enforce-profit-target');
+  if (enforceEl) enforceEl.checked = !!slot.enforceProfitTarget;
+  renderLabourTasks();
+  updateLabourPreview();
+  refreshSamplePrices();
+}
+
+function addCustomLabourTask() {
+  const slot = lab2Slot();
   const id = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  lab.tasks[id] = { minutes: 0, employees: 1, unit: 'perJob', label: 'Custom task', custom: true };
-  lab.customTaskOrder.push(id);
+  slot.tasks[id] = { minutes: 0, employees: 1, unit: 'perJob', label: 'Custom task', custom: true };
+  slot.customTaskOrder.push(id);
   renderLabourTasks();
   markDirty();
   // Focus the label of the new row
@@ -8203,10 +8313,10 @@ function addCustomLabourTask() {
 }
 
 function deleteCustomLabourTask(key) {
-  const lab = ensureLab2();
-  if (!lab.tasks[key] || !lab.tasks[key].custom) return;
-  delete lab.tasks[key];
-  lab.customTaskOrder = (lab.customTaskOrder || []).filter(x => x !== key);
+  const slot = lab2Slot();
+  if (!slot.tasks[key] || !slot.tasks[key].custom) return;
+  delete slot.tasks[key];
+  slot.customTaskOrder = (slot.customTaskOrder || []).filter(x => x !== key);
   renderLabourTasks();
   markDirty();
   updateLabourPreview();
@@ -8216,11 +8326,11 @@ function deleteCustomLabourTask(key) {
 function renderLabourTasks() {
   const body = document.getElementById('lab2-tasks-body');
   if (!body) return;
-  const lab = ensureLab2();
+  const slot = lab2Slot();
   let html = '';
   // Predefined tasks first (fixed labels)
   for (const def of LAB2_TASK_DEFS) {
-    const t = lab.tasks[def.key] || {};
+    const t = slot.tasks[def.key] || {};
     const unitOpts = LAB2_UNITS.map(u => `<option value="${u}"${t.unit === u ? ' selected' : ''}>${LAB2_UNIT_LABEL[u]}</option>`).join('');
     html += `<tr>
       <td class="cell-label">${clEscHtml(def.label)}</td>
@@ -8231,9 +8341,9 @@ function renderLabourTasks() {
     </tr>`;
   }
   // Custom tasks (editable label + delete button)
-  const customKeys = lab.customTaskOrder || [];
+  const customKeys = slot.customTaskOrder || [];
   for (const key of customKeys) {
-    const t = lab.tasks[key];
+    const t = slot.tasks[key];
     if (!t) continue;
     const unitOpts = LAB2_UNITS.map(u => `<option value="${u}"${t.unit === u ? ' selected' : ''}>${LAB2_UNIT_LABEL[u]}</option>`).join('');
     html += `<tr>
@@ -8248,12 +8358,12 @@ function renderLabourTasks() {
 }
 
 function updateLab2Task(key, field, value) {
-  const lab = ensureLab2();
-  if (!lab.tasks[key]) lab.tasks[key] = { minutes: 0, employees: 1, unit: 'perJob' };
+  const slot = lab2Slot();
+  if (!slot.tasks[key]) slot.tasks[key] = { minutes: 0, employees: 1, unit: 'perJob' };
   if (field === 'minutes' || field === 'employees') {
-    lab.tasks[key][field] = parseFloat(value) || 0;
+    slot.tasks[key][field] = parseFloat(value) || 0;
   } else {
-    lab.tasks[key][field] = value;
+    slot.tasks[key][field] = value;
   }
   markDirty();
   updateLabourPreview();
@@ -8263,6 +8373,7 @@ function updateLab2Task(key, field, value) {
 function loadLabourUI() {
   const lab = ensureLab2();
   const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  // Global rates / OT / travel
   setV('lab2-cost-hour', lab.costPerHour);
   setV('lab2-charge-hour', lab.chargePerHour);
   setV('lab2-break-min-per-day', lab.breakMinPerDay);
@@ -8271,13 +8382,23 @@ function loadLabourUI() {
   setV('lab2-max-hours-per-day', lab.maxHoursPerDay);
   setV('lab2-ot-cost-mult', lab.otCostMult);
   setV('lab2-ot-charge-mult', lab.otChargeMult);
-  setV('lab2-target-profit-day', lab.targetProfitPerDay);
-  const enforceEl = document.getElementById('lab2-enforce-profit-target');
-  if (enforceEl) enforceEl.checked = !!lab.enforceProfitTarget;
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
   setV('lab2-travel-min', lab.travelMinOneWay);
   setV('lab2-load-min', lab.loadUpMin);
+  // Per-type fields (active type's slot)
+  const slot = lab2Slot();
+  setV('lab2-target-profit-day', slot.targetProfitPerDay);
+  setV('lab2-min-job-charge', slot.minimumJobCharge || 0);
+  const enforceEl = document.getElementById('lab2-enforce-profit-target');
+  if (enforceEl) enforceEl.checked = !!slot.enforceProfitTarget;
+  // Render type tabs (in case the section just mounted)
+  const tabHost = document.getElementById('lab2-type-tabs');
+  if (tabHost) {
+    tabHost.innerHTML = LAB2_TYPES.map(t =>
+      '<div class="lab2-type-pill' + (t.key === window._labActiveType ? ' active' : '') + '" data-labtype="' + t.key + '" onclick="setLabActiveType(\'' + t.key + '\')">' + t.label + '</div>'
+    ).join('');
+  }
   renderLabourTasks();
   updateLabourPreview();
 }
@@ -8286,6 +8407,7 @@ function collectLabourUI() {
   const lab = ensureLab2();
   const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
   const gn = id => parseFloat(g(id)) || 0;
+  // Global
   lab.costPerHour = gn('lab2-cost-hour');
   lab.chargePerHour = gn('lab2-charge-hour');
   lab.breakMinPerDay = gn('lab2-break-min-per-day');
@@ -8294,19 +8416,28 @@ function collectLabourUI() {
   lab.maxHoursPerDay = gn('lab2-max-hours-per-day') || 12;
   lab.otCostMult = gn('lab2-ot-cost-mult') || 1;
   lab.otChargeMult = gn('lab2-ot-charge-mult') || 1;
-  lab.targetProfitPerDay = gn('lab2-target-profit-day');
-  const enforceEl = document.getElementById('lab2-enforce-profit-target');
-  lab.enforceProfitTarget = enforceEl ? !!enforceEl.checked : false;
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
   lab.travelMinOneWay = gn('lab2-travel-min');
   lab.loadUpMin = gn('lab2-load-min');
+  // Per-type — write into the active type's slot only. Other types
+  // already have their values stored via prior setLabActiveType events.
+  const slot = lab2Slot();
+  slot.targetProfitPerDay = gn('lab2-target-profit-day');
+  slot.minimumJobCharge = gn('lab2-min-job-charge');
+  const enforceEl = document.getElementById('lab2-enforce-profit-target');
+  slot.enforceProfitTarget = enforceEl ? !!enforceEl.checked : false;
 }
 
 // Compute labour minutes for a given job context (posts, feet, hookups, gates, lines).
 // Returns { minutes, cost, charge, withCushioning, breakdown }.
-function computeLabour(ctx) {
+//
+// `ctx.fenceType` (or arg `type`) selects the per-type task slot. Defaults to
+// 'chainlink' so existing call sites keep working without change.
+function computeLabour(ctx, type) {
   const lab = ensureLab2();
+  const fenceType = type || ctx.fenceType || 'chainlink';
+  const slot = lab.byType[fenceType] || lab.byType.chainlink;
   const counts = {
     perJob:    1,
     perLine:   ctx.lines || 0,
@@ -8317,14 +8448,14 @@ function computeLabour(ctx) {
   };
   const breakdown = [];
 
-  // All task entries — predefined + custom
+  // All task entries — predefined + custom (from active type's slot)
   const allTasks = [];
   for (const def of LAB2_TASK_DEFS) {
-    const t = lab.tasks[def.key] || def;
+    const t = slot.tasks[def.key] || def;
     allTasks.push({ key: def.key, label: def.label, task: t });
   }
-  for (const key of (lab.customTaskOrder || [])) {
-    const t = lab.tasks[key];
+  for (const key of (slot.customTaskOrder || [])) {
+    const t = slot.tasks[key];
     if (!t) continue;
     allTasks.push({ key, label: t.label || 'Custom task', task: t });
   }
@@ -8347,8 +8478,9 @@ function computeLabour(ctx) {
     : 0;
   if (breakMinutes > 0) breakdown.push({ label: 'Breaks (' + breakMinPerDay + ' min/' + hoursPerDay + 'hr day, prorated)', minutes: breakMinutes });
 
-  // Travel (round trip × crew size)
-  const crewSize = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+  // Travel (round trip × crew size). Crew size comes from the active type's
+  // setupDiscussion task — wood vs chain link can have different crew sizes.
+  const crewSize = (slot.tasks.setupDiscussion && slot.tasks.setupDiscussion.employees) || 2;
   const travelMin = (lab.travelMinOneWay || 0) * 2 * crewSize;
   const loadMin = (lab.loadUpMin || 0) * crewSize;
   if (travelMin > 0) breakdown.push({ label: 'Travel (round trip × ' + crewSize + ')', minutes: travelMin });
@@ -8494,20 +8626,23 @@ function computeFenceSample(spec) {
     apply(gateRecipe, gates, gateType + ' × ' + gates);
   }
 
-  // Labour
+  // Labour — sample is chain link by default. Pass fenceType so computeLabour
+  // pulls the chain-link task slot (or whichever the spec asks for).
   const lineCount = spec.lines != null ? spec.lines : 1;
-  const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates, lines: lineCount });
+  const sampleType = spec.fenceType || 'chainlink';
+  const lab = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates, lines: lineCount }, sampleType);
 
   let totalCost = matCost + lab.cost;
   let totalCharge = matSell + lab.charge;
-  // Honor the profit-target floor if it's enabled in admin settings.  Keeps
-  // the sample card in lock-step with what the live tool will actually quote.
+  // Honor the profit-target floor if enabled for this fence type. Keeps the
+  // sample card in lock-step with what the live tool will actually quote.
   const labCfgEarly = ensureLab2();
+  const sampleSlot = labCfgEarly.byType[sampleType] || labCfgEarly.byType.chainlink;
   let enforcedByFloor = false;
-  if (labCfgEarly.enforceProfitTarget) {
+  if (sampleSlot.enforceProfitTarget) {
     const hpd = labCfgEarly.hoursPerDay || 8;
     const dayFrac = hpd > 0 ? ((lab.perPersonPerDay || 0) / hpd) * (lab.daysNeeded || 1) : 0;
-    const tgtProfit = dayFrac * (labCfgEarly.targetProfitPerDay || 0);
+    const tgtProfit = dayFrac * (sampleSlot.targetProfitPerDay || 0);
     const floorCharge = totalCost + tgtProfit;
     if (floorCharge > totalCharge) {
       totalCharge = floorCharge;
@@ -8521,7 +8656,7 @@ function computeFenceSample(spec) {
   // For multi-day jobs, days count toward the target (2 days = 2× daily target).
   const labCfg = ensureLab2();
   const hoursPerDay = labCfg.hoursPerDay || 8;
-  const targetProfitPerDay = labCfg.targetProfitPerDay || 0;
+  const targetProfitPerDay = sampleSlot.targetProfitPerDay || 0;
   // Use per-person hours per day × number of days to compute fraction.
   // lab.daysNeeded is full days; perPersonPerDay is hours/person/day.
   const dayFraction = hoursPerDay > 0 ? ((lab.perPersonPerDay || 0) / hoursPerDay) * (lab.daysNeeded || 1) : 0;

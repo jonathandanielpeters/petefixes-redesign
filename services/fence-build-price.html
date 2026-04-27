@@ -6837,16 +6837,19 @@
             const markup = getMarkup(totalFt) || 1.0;
             const matSell = materialCost * markup;
 
-            // Labour (mirrors V2's logic — same lab object, same formulas)
+            // Labour — V3 only handles all-chainlink projects, so we always
+            // resolve the chain-link slot from byType. Falls back to the
+            // legacy top-level fields if a stale config still has them.
             const lab = PCFG.labour2;
+            const labSlot = (lab && lab.byType && lab.byType.chainlink) || lab || {};
             let labourCost = 0, labourCharge = 0;
             const totalPosts = totalEndPosts + totalCornerPosts + totalLinePosts;
             const totalHookups = totalEndPosts + totalCornerPosts;
             const lineCount = clLines.length;
-            if (lab && lab.tasks) {
+            if (lab && labSlot.tasks) {
                 const counts = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: totalHookups, perGate: enabledGates.length };
                 let workMinutes = 0;
-                for (const t of Object.values(lab.tasks)) {
+                for (const t of Object.values(labSlot.tasks)) {
                     const units = counts[t.unit || 'perJob'] || 0;
                     workMinutes += (t.minutes || 0) * units * (t.employees || 1);
                 }
@@ -6855,7 +6858,7 @@
                 const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
                     ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
                     : 0;
-                const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                const crew = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
                 const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
                 const totalHours = totalMinutes / 60;
@@ -6891,14 +6894,15 @@
             } catch (e) { console.warn('[v3 addons]', e); }
 
             let total = Math.round(matSell + labourCharge + addonTotal);
-            // Profit-target floor (mirrors V2)
-            if (lab && lab.enforceProfitTarget && lab.tasks) {
+            // Profit-target floor — uses the chain-link slot's enforce flag +
+            // target-per-day. Mirrors V2's calc.
+            if (lab && labSlot.enforceProfitTarget && labSlot.tasks) {
                 const hoursPerDay = lab.hoursPerDay || 8;
-                const targetPerDay = lab.targetProfitPerDay || 0;
-                const crewForFloor = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                const targetPerDay = labSlot.targetProfitPerDay || 0;
+                const crewForFloor = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
                 const counts2 = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: totalHookups, perGate: enabledGates.length };
                 let workMin2 = 0;
-                for (const t of Object.values(lab.tasks)) {
+                for (const t of Object.values(labSlot.tasks)) {
                     const units = counts2[t.unit || 'perJob'] || 0;
                     workMin2 += (t.minutes || 0) * units * (t.employees || 1);
                 }
@@ -6916,8 +6920,10 @@
                 if (profitTargetFloor > total) total = Math.round(profitTargetFloor);
             }
 
-            // Minimum job charge floor
-            const minJob = getMinJobCharge();
+            // Per-fence-type minimum job charge — wins over the global min.
+            // For an all-chain-link V3 project, that's the chain-link slot.
+            const slotMin = labSlot.minimumJobCharge || 0;
+            const minJob = Math.max(slotMin, getMinJobCharge() || 0);
             if (minJob && total < minJob) total = minJob;
 
             return {
@@ -7066,15 +7072,16 @@
                 if (gateRecipe) apply(gateRecipe, count);
             });
 
-            // Labour
+            // Labour — V2 is chain-link only, so always pull the chain-link slot
+            const labSlot = (lab && lab.byType && lab.byType.chainlink) || lab || {};
             const totalPosts = endCount + cornerCount + linePostCount;
             const hookups = endCount + cornerCount;
             const lineCount = clLines.length;
             let labourCost = 0, labourCharge = 0;
-            if (lab && lab.tasks) {
+            if (lab && labSlot.tasks) {
                 const counts = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: hookups, perGate: enabledGates.length };
                 let workMinutes = 0;
-                for (const t of Object.values(lab.tasks)) {
+                for (const t of Object.values(labSlot.tasks)) {
                     const units = counts[t.unit || 'perJob'] || 0;
                     workMinutes += (t.minutes || 0) * units * (t.employees || 1);
                 }
@@ -7084,7 +7091,7 @@
                 const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
                     ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
                     : 0;
-                const crew = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
+                const crew = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
                 const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
                 const totalHours = totalMinutes / 60;
@@ -7107,26 +7114,17 @@
             let total = Math.round(matSell + labourCharge);
 
             // ── Profit-target price floor ───────────────────────────────
-            // If the admin has enabled "enforce profit target", bump the total
-            // up to at least (material cost + labour cost + per-job target
-            // profit).  Per-job target = dayFraction × daily target, where
-            // dayFraction = (perPersonPerDay / hoursPerDay) × daysNeeded.
-            // Small / short jobs that would otherwise lose money get priced
-            // to meet the per-day target share.
+            // If the admin has enabled "enforce profit target" for chain link,
+            // bump the total up to at least (material cost + labour cost +
+            // per-job target profit).
             let profitTargetFloor = 0;
-            if (lab && lab.enforceProfitTarget && lab.tasks) {
+            if (lab && labSlot.enforceProfitTarget && labSlot.tasks) {
                 const hoursPerDay = lab.hoursPerDay || 8;
-                const targetPerDay = lab.targetProfitPerDay || 0;
-                // perPersonPerDay + daysNeeded already exist in the labour
-                // block above — recompute from the same numbers here so the
-                // floor uses the same day-share the sample previews show.
-                const crewForFloor = (lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
-                // Re-derive perPersonHrs and daysNeeded from the numbers
-                // we already computed above (we closed the block, so pull
-                // them through the closure by re-computing):
+                const targetPerDay = labSlot.targetProfitPerDay || 0;
+                const crewForFloor = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
                 const counts2 = { perJob: 1, perLine: clLines.length, perPost: endCount + cornerCount + linePostCount, perFoot: totalFt, perHookup: endCount + cornerCount, perGate: enabledGates.length };
                 let workMin2 = 0;
-                for (const t of Object.values(lab.tasks)) {
+                for (const t of Object.values(labSlot.tasks)) {
                     const units = counts2[t.unit || 'perJob'] || 0;
                     workMin2 += (t.minutes || 0) * units * (t.employees || 1);
                 }
@@ -8765,6 +8763,51 @@
             if (labTotal > 0) {
                 html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">+ Labour Charges</td><td style="padding:6px 8px;text-align:right;font-weight:600">$' + labTotal.toLocaleString() + '</td></tr>';
             }
+
+            // Per-fence-type labour settings — admin can see WHICH config slot
+            // drove the labour math for each fence type in this project. The
+            // engine pulls tasks + target profit + min job from the type's
+            // byType slot, so this is the authoritative snapshot.
+            try {
+                var labPCFG = (typeof PCFG !== 'undefined' && PCFG.labour2) ? PCFG.labour2 : null;
+                if (labPCFG && labPCFG.byType) {
+                    // Gather distinct fence types used in this project
+                    var typesUsed = {};
+                    (state.lines || []).forEach(function(l) {
+                        if (typeof isLineEnabled === 'function' && !isLineEnabled(l)) return;
+                        var s = (typeof getStyleForLine === 'function') ? getStyleForLine(l) : null;
+                        if (s && s.fenceType) typesUsed[s.fenceType] = true;
+                    });
+                    var typeKeys = Object.keys(typesUsed);
+                    if (typeKeys.length > 0) {
+                        html += '</table>';  // close pricing math table early so we can insert sub-table
+                        html += '<h4 style="margin:10px 0 6px;font-size:12px;color:#555">⚙️ Per-Fence-Type Labour Settings (applied)</h4>';
+                        html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+                        html += '<tr style="background:#444;color:#fff">';
+                        html += '<th style="text-align:left;padding:5px 8px">Fence Type</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Target $/day</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Min Job</th>';
+                        html += '<th style="text-align:center;padding:5px 8px">Enforce?</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Tasks</th>';
+                        html += '</tr>';
+                        var typeLabels = { chainlink: 'Chain Link', wood: 'Wood', ornamental: 'Ornamental', weldedWire: 'Welded Wire', vinyl: 'Vinyl' };
+                        typeKeys.forEach(function(tk) {
+                            var slot = labPCFG.byType[tk] || {};
+                            var taskCount = slot.tasks ? Object.values(slot.tasks).filter(function(t) { return (t.minutes || 0) > 0; }).length : 0;
+                            html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                            html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(typeLabels[tk] || tk) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right">$' + (slot.targetProfitPerDay || 0).toLocaleString() + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right">$' + (slot.minimumJobCharge || 0).toLocaleString() + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:center">' + (slot.enforceProfitTarget ? '✓' : '—') + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#888">' + taskCount + ' active</td>';
+                            html += '</tr>';
+                        });
+                        html += '</table>';
+                        // Re-open the pricing math table so subsequent rows still flow
+                        html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">';
+                    }
+                }
+            } catch (e) { /* swallow — fallback to legacy single-block view */ }
             // Add-on breakdown
             var aoTotal = breakdown.addonTotal || 0;
             if (aoTotal > 0) {
