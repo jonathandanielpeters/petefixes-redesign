@@ -6581,7 +6581,9 @@
                         let bestDelta = Math.abs((best.widthFt || 0) - widthFt);
                         gateRecipe.gates.forEach(rec => {
                             const d = Math.abs((rec.widthFt || 0) - widthFt);
-                            if (d < bestDelta) { best = rec; bestDelta = d; }
+                            if (d < bestDelta || (d === bestDelta && (rec.widthFt || 0) < (best.widthFt || 0))) {
+                                best = rec; bestDelta = d;
+                            }
                         });
                         add(pickColor(best.gateGalv, best.gateBlack, color), 1);
                         (best.hardware || []).forEach(hw => {
@@ -6645,12 +6647,18 @@
                 const heightKey = s.height + 'ft';
                 // Resolve color, respecting recipe.colorsAvailable: if a customer's
                 // color is no longer offered for this height, fall back to the
-                // first available color from the recipe.
+                // first available color from the recipe AND sync that back onto
+                // the style so the color pills stop showing a phantom selection
+                // (the customer was being silently downgraded from black to galv
+                // without any UI feedback).
                 let color = s.chainlinkColor || 'galvanized';
                 const recipe = cl3[tier] && cl3[tier][heightKey];
                 if (recipe) {
                     const avail = Array.isArray(recipe.colorsAvailable) ? recipe.colorsAvailable.filter(Boolean) : ['galvanized', 'black'];
-                    if (avail.length > 0 && avail.indexOf(color) === -1) color = avail[0];
+                    if (avail.length > 0 && avail.indexOf(color) === -1) {
+                        color = avail[0];
+                        if (s.chainlinkColor !== color) s.chainlinkColor = color;
+                    }
                 }
                 if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color, style: s };
                 linesByHeight[heightKey].lines.push(l);
@@ -6743,12 +6751,14 @@
                     const code = pickColor(tr.galv, tr.black, color);
                     const trItem = itemByCode[code];
                     if (trItem) {
-                        // Per-ft cost = unit price ÷ stick length × ft (proportional pricing).
-                        // Admin override on stickLengthFt wins; falls back to parsing variantSize.
+                        // You can only buy WHOLE sticks — bill the customer for the
+                        // ceiling rather than a fractional quantity. This matches the
+                        // parts list on the internal email so admin's pull list and
+                        // the customer's price agree.
                         const parsedFt = parseFloat((trItem.variantSize || '').replace(/'/g, ''));
                         const stickFt = (tr.stickLengthFt > 0 ? tr.stickLengthFt : parsedFt) || 21;
-                        const perFtPrice = stickFt > 0 ? (trItem.priceAfterTax || 0) / stickFt : 0;
-                        materialCost += perFtPrice * groupFt;
+                        const sticks = stickFt > 0 ? Math.ceil(groupFt / stickFt) : 0;
+                        materialCost += sticks * (trItem.priceAfterTax || 0);
                     }
                 }
                 const tie = def(pf.fenceTieOptions, 'perFoot.fenceTieOptions');
@@ -6799,12 +6809,17 @@
                 if (gateRecipe && gateRecipe.gates && gateRecipe.gates.length > 0) {
                     enabledGates.forEach(function(g) {
                         const widthFt = g.widthFt || 3.5;
-                        // Closest-width match
+                        // Closest-width match — break ties by preferring the
+                        // SMALLER width so customers don't accidentally get
+                        // upsized into a pricier gate when their request is
+                        // exactly between two recipe sizes.
                         let best = gateRecipe.gates[0];
                         let bestDelta = Math.abs((best.widthFt || 0) - widthFt);
                         gateRecipe.gates.forEach(function(rec) {
                             const d = Math.abs((rec.widthFt || 0) - widthFt);
-                            if (d < bestDelta) { best = rec; bestDelta = d; }
+                            if (d < bestDelta || (d === bestDelta && (rec.widthFt || 0) < (best.widthFt || 0))) {
+                                best = rec; bestDelta = d;
+                            }
                         });
                         materialCost += priceOf(pickColor(best.gateGalv, best.gateBlack, color));
                         (best.hardware || []).forEach(function(hw) {
