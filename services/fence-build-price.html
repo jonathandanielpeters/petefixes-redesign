@@ -6234,6 +6234,72 @@
             const it = items.find(x => x.itemCode === code);
             return it ? (it.priceAfterTax || 0) : 0;
         }
+        // Snap a single fence style to the currently-active tier's V3 recipe set.
+        // Adjusts height to the closest available, swaps color to a supported one,
+        // and clears any cl3Picks that point at option ids not in the new recipe.
+        // Idempotent: safe to call after every mode toggle / config sync.
+        function snapStyleToTier(style) {
+            if (!style || style.fenceType !== 'chainlink') return false;
+            const cl3 = PCFG.chainlinkRecipesV3;
+            if (!cl3) return false;
+            const tier = state.mode === 'commercial' ? 'commercial' : 'residential';
+            const tierRecipes = cl3[tier] || {};
+            const heights = Object.keys(tierRecipes).map(k => parseFloat(k)).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+            if (heights.length === 0) return false;  // V3 has nothing for this tier
+            let changed = false;
+            // 1) Snap height — closest match (ties prefer the smaller height)
+            const cur = parseFloat(style.height) || 6;
+            if (heights.indexOf(cur) === -1) {
+                let closest = heights[0];
+                let bestDelta = Math.abs(closest - cur);
+                heights.forEach(h => {
+                    const d = Math.abs(h - cur);
+                    if (d < bestDelta) { closest = h; bestDelta = d; }
+                });
+                style.height = closest;
+                changed = true;
+            }
+            // 2) Snap color to one offered by the resolved recipe
+            const recipe = tierRecipes[style.height + 'ft'];
+            if (recipe) {
+                const colors = Array.isArray(recipe.colorsAvailable) && recipe.colorsAvailable.length
+                    ? recipe.colorsAvailable
+                    : ['galvanized', 'black'];
+                if (style.chainlinkColor && colors.indexOf(style.chainlinkColor) === -1) {
+                    style.chainlinkColor = colors[0];
+                    changed = true;
+                }
+            }
+            // 3) Drop stale cl3Picks — option ids that don't exist in the new recipe.
+            //    The engine already falls back to isDefault if a pick is missing,
+            //    but clearing keeps the UI clean (the Material Options pills won't
+            //    show a phantom selection).
+            if (style.cl3Picks && recipe) {
+                const lists = {
+                    'mainAssembly.postOptions': (recipe.mainAssembly && recipe.mainAssembly.postOptions) || [],
+                    'linePostAssembly.postOptions': (recipe.linePostAssembly && recipe.linePostAssembly.postOptions) || [],
+                    'perFoot.fabricOptions': (recipe.perFoot && recipe.perFoot.fabricOptions) || [],
+                    'perFoot.bottomWireOptions': (recipe.perFoot && recipe.perFoot.bottomWireOptions) || [],
+                    'perFoot.topRailOptions': (recipe.perFoot && recipe.perFoot.topRailOptions) || [],
+                    'perFoot.fenceTieOptions': (recipe.perFoot && recipe.perFoot.fenceTieOptions) || []
+                };
+                Object.keys(style.cl3Picks).forEach(k => {
+                    const list = lists[k];
+                    if (!list) return;
+                    if (!list.find(o => o.id === style.cl3Picks[k])) {
+                        delete style.cl3Picks[k];
+                        changed = true;
+                    }
+                });
+            }
+            return changed;
+        }
+        // Snap every fence style in the project. Returns true if anything changed.
+        function snapAllStylesToTier() {
+            let any = false;
+            (state.fenceStyles || []).forEach(s => { if (snapStyleToTier(s)) any = true; });
+            return any;
+        }
 
         // Render the Material Options pills for the active style. Only categories with
         // 2+ options appear — single-option lists silently apply the only entry. Color
@@ -9076,6 +9142,12 @@
                 state.lines.forEach(l => { if (l.mode === 'commercial') l.mode = 'residential'; });
                 state.gates.forEach(g => { if (g.mode === 'commercial') g.mode = 'residential'; });
             }
+            // Snap each chainlink style to the new tier's available heights / colors
+            // / cl3Picks. Fixes "phantom selections" where the customer was on a 5ft
+            // residential fence then flipped to commercial (which has 6ft+ only) —
+            // height auto-jumps to the closest commercial height, color falls back
+            // if the new recipe doesn't offer it, stale cl3Picks get cleared.
+            try { if (typeof snapAllStylesToTier === 'function') snapAllStylesToTier(); } catch (e) { console.warn('[snap]', e); }
             // Refresh tile/pill UI to reflect any auto-snap above
             if (typeof syncPanelToActiveStyle === 'function') syncPanelToActiveStyle();
             if (typeof updateConditionalSections === 'function') updateConditionalSections();
