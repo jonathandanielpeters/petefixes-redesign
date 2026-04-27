@@ -4084,12 +4084,15 @@ function validateConfig() {
   return errors;
 }
 
-function saveConfig() {
+function saveConfig(opts) {
+  // opts.silent=true: skip the file download + success toast (used after auto-save flows
+  // like the pricelist import). State + localStorage still update normally.
+  opts = opts || {};
   collectAll();
   const errors = validateConfig();
   if (errors.length > 0) {
-    toast('Validation errors: ' + errors.join('; '), 'error');
-    return;
+    if (!opts.silent) toast('Validation errors: ' + errors.join('; '), 'error');
+    return false;
   }
 
   const jsonStr = JSON.stringify(config, null, 2);
@@ -4110,19 +4113,24 @@ function saveConfig() {
   }
   localStorage.setItem('fence-pricing-default', taggedStr);
 
-  // Download file — user must replace configs/{deployId}.json on server for other visitors
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = (deployId || 'fence-config') + '.json';
-  a.click();
-  URL.revokeObjectURL(url);
+  if (!opts.silent) {
+    // Download file — user must replace configs/{deployId}.json on server for other visitors
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (deployId || 'fence-config') + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   dirty = false;
   document.getElementById('unsavedDot').classList.remove('visible');
   setVal('cfg-lastModified', config.lastModified);
-  toast('Config saved — live pricing updated. Replace configs/' + (deployId || 'default-config') + '.json on server for all visitors.', 'success');
+  if (!opts.silent) {
+    toast('Config saved — live pricing updated. Replace configs/' + (deployId || 'default-config') + '.json on server for all visitors.', 'success');
+  }
+  return true;
 }
 
 function exportJson() {
@@ -4668,7 +4676,13 @@ async function clMasterImport2026() {
     m.importedAt = new Date().toISOString();
     markDirty();
     renderClMasterList();
-    toast('Pricelist imported: ' + added + ' added, ' + updated + ' updated (' + m.items.length + ' total)', 'success');
+    // Auto-persist to localStorage so the import survives reload + the V3 pickers
+    // and the customer-side build tool see the new prices immediately. We skip the
+    // file download (silent) since the user usually wants the in-browser data
+    // staged first, then a regular Save Config to push the JSON to disk.
+    const saved = saveConfig({ silent: true });
+    const suffix = saved ? ' — saved' : ' (NOT saved: validation errors)';
+    toast('Pricelist imported: ' + added + ' added, ' + updated + ' updated (' + m.items.length + ' total)' + suffix, 'success');
   } catch (err) {
     toast('Import failed: ' + err.message, 'error');
   }
