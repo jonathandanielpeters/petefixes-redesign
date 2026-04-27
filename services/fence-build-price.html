@@ -6421,6 +6421,199 @@
         // IIFE keeps function declarations off the global scope by default).
         window.setCl3Pick = setCl3Pick;
 
+        // ───────────────────────────────────────────────────────────────────
+        // V3 PARTS LIST (for internal admin email)
+        // ───────────────────────────────────────────────────────────────────
+        // Mirrors calculateV3Project's iteration but accumulates SKU usage
+        // into a tally keyed by itemCode. Returns categorized parts list:
+        //   { categories: [{ category, items: [{code, description, qty,
+        //                  unitPrice, total}], subtotal }], grandTotal }
+        // The internal email renders this as a shopping list grouped by the
+        // master pricelist's classification (Posts, Fabric, Fittings, etc.).
+        function generateV3PartsList() {
+            const isCommercial = state.mode === 'commercial';
+            const tier = isCommercial ? 'commercial' : 'residential';
+            const cl3 = PCFG.chainlinkRecipesV3;
+            const masterItems = (PCFG.chainlinkMaster && PCFG.chainlinkMaster.items) || [];
+            if (!cl3 || !cl3[tier] || masterItems.length === 0) return null;
+
+            const enabledLines = state.lines.filter(isLineEnabled);
+            const clLines = enabledLines.filter(l => getStyleForLine(l).fenceType === 'chainlink');
+            const enabledGates = state.gates.filter(isGateEnabled);
+            if (clLines.length === 0 && enabledGates.length === 0) return null;
+
+            const itemByCode = {};
+            masterItems.forEach(it => { itemByCode[it.itemCode] = it; });
+            const pickColor = (g, b, color) => color === 'black' ? b : g;
+
+            // Tally: code → { code, description, category, subcategory, qty, unitPrice }
+            const usage = {};
+            function add(code, qty) {
+                if (!code || !(qty > 0)) return;
+                const item = itemByCode[code];
+                if (!item) return;
+                if (!usage[code]) {
+                    usage[code] = {
+                        code,
+                        description: item.description || '',
+                        category: item.category || 'Other',
+                        subcategory: item.subcategory || '',
+                        qty: 0,
+                        unitPrice: item.priceAfterTax || 0
+                    };
+                }
+                usage[code].qty += qty;
+            }
+
+            // Group lines by height (mirrors calculateV3Project)
+            const linesByHeight = {};
+            clLines.forEach(l => {
+                const s = getStyleForLine(l);
+                const heightKey = s.height + 'ft';
+                let color = s.chainlinkColor || 'galvanized';
+                const recipe = cl3[tier] && cl3[tier][heightKey];
+                if (recipe) {
+                    const avail = Array.isArray(recipe.colorsAvailable) ? recipe.colorsAvailable.filter(Boolean) : ['galvanized', 'black'];
+                    if (avail.length > 0 && avail.indexOf(color) === -1) color = avail[0];
+                }
+                if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color, style: s };
+                linesByHeight[heightKey].lines.push(l);
+            });
+
+            Object.entries(linesByHeight).forEach(([heightKey, group]) => {
+                const recipe = cl3[tier][heightKey];
+                if (!recipe) return;
+                const color = group.color;
+                const styleObj = group.style || {};
+                const picks = styleObj.cl3Picks || {};
+                const def = (list, listKey) => {
+                    const arr = list || [];
+                    if (arr.length === 0) return null;
+                    if (listKey && picks[listKey]) {
+                        const found = arr.find(o => o.id === picks[listKey]);
+                        if (found) return found;
+                    }
+                    return arr.find(o => o.isDefault) || arr[0];
+                };
+
+                // Tally posts/feet for this group
+                const endIds = new Set(), cornerIds = new Set();
+                let linePostCount = 0, groupFt = 0;
+                group.lines.forEach(line => {
+                    const p1 = state.points.find(p => p.id === line.p1);
+                    const p2 = state.points.find(p => p.id === line.p2);
+                    if (!p1 || !p2) return;
+                    groupFt += getLineLengthFt(p1, p2);
+                    linePostCount += Math.max(0, calculatePostsForLine(p1, p2, line).length - 2);
+                    [p1, p2].forEach(p => {
+                        if (isCornerPost(p.id)) cornerIds.add(p.id);
+                        else endIds.add(p.id);
+                    });
+                });
+                const mainCount = endIds.size + cornerIds.size;
+                const hookupCount = group.lines.length * 2;
+
+                // Main posts + caps
+                const mainOpt = def(recipe.mainAssembly && recipe.mainAssembly.postOptions, 'mainAssembly.postOptions');
+                if (mainOpt && mainCount > 0) {
+                    add(pickColor(mainOpt.galv, mainOpt.black, color), mainCount);
+                    add(pickColor(mainOpt.capGalv, mainOpt.capBlack, color), mainCount);
+                }
+                // Line posts + caps + ties (+ optional barb arms)
+                const lineOpt = def(recipe.linePostAssembly && recipe.linePostAssembly.postOptions, 'linePostAssembly.postOptions');
+                if (lineOpt && linePostCount > 0) {
+                    add(pickColor(lineOpt.galv, lineOpt.black, color), linePostCount);
+                    add(pickColor(lineOpt.capGalv, lineOpt.capBlack, color), linePostCount);
+                    const ties = lineOpt.fenceTiesPerPost || 0;
+                    add(pickColor(lineOpt.fenceTieGalv, lineOpt.fenceTieBlack, color), ties * linePostCount);
+                    if (tier === 'commercial' && lineOpt.barbArmGalv) {
+                        add(pickColor(lineOpt.barbArmGalv, lineOpt.barbArmBlack, color), linePostCount);
+                    }
+                }
+                // Per-foot
+                const pf = recipe.perFoot || {};
+                const fab = def(pf.fabricOptions, 'perFoot.fabricOptions');
+                if (fab && groupFt > 0) add(pickColor(fab.galv, fab.black, color), groupFt);
+                const bw = def(pf.bottomWireOptions, 'perFoot.bottomWireOptions');
+                if (bw && groupFt > 0) add(pickColor(bw.galv, bw.black, color), groupFt);
+                const tr = def(pf.topRailOptions, 'perFoot.topRailOptions');
+                if (tr && groupFt > 0) {
+                    const code = pickColor(tr.galv, tr.black, color);
+                    const trItem = itemByCode[code];
+                    if (trItem) {
+                        // Round UP to whole sticks for the parts list (can't buy fractions)
+                        const parsedFt = parseFloat((trItem.variantSize || '').replace(/'/g, ''));
+                        const stickFt = (tr.stickLengthFt > 0 ? tr.stickLengthFt : parsedFt) || 21;
+                        add(code, Math.ceil(groupFt / stickFt));
+                    }
+                }
+                const tie = def(pf.fenceTieOptions, 'perFoot.fenceTieOptions');
+                if (tie && groupFt > 0) {
+                    const tiesPerFt = recipe.perFoot.tiesPerFoot || 0;
+                    add(pickColor(tie.galv, tie.black, color), Math.ceil(tiesPerFt * groupFt));
+                }
+                // Connections + extras
+                if (mainOpt && hookupCount > 0) {
+                    const conn = (recipe.connections && recipe.connections.perMainPost) ? recipe.connections.perMainPost[mainOpt.id] : null;
+                    if (conn) {
+                        ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'].forEach(prefix => {
+                            add(pickColor(conn[prefix + 'Galv'], conn[prefix + 'Black'], color), (conn[prefix + 'Qty'] || 0) * hookupCount);
+                            add(pickColor(conn[prefix + 'NbGalv'], conn[prefix + 'NbBlack'], color), (conn[prefix + 'NbQty'] || 0) * hookupCount);
+                        });
+                        (conn.extras || []).forEach(x => {
+                            add(pickColor(x.galv, x.black, color), (x.qty || 0) * hookupCount);
+                            add(pickColor(x.nbGalv, x.nbBlack, color), (x.nbQty || 0) * hookupCount);
+                        });
+                    }
+                }
+            });
+
+            // Gates
+            if (enabledGates.length > 0) {
+                const firstStyle = clLines.length > 0 ? getStyleForLine(clLines[0]) : activeStyle();
+                const heightKey = firstStyle.height + 'ft';
+                const gateRecipe = cl3[tier][heightKey];
+                const color = firstStyle.chainlinkColor || 'galvanized';
+                if (gateRecipe && gateRecipe.gates && gateRecipe.gates.length > 0) {
+                    enabledGates.forEach(g => {
+                        const widthFt = g.widthFt || 3.5;
+                        let best = gateRecipe.gates[0];
+                        let bestDelta = Math.abs((best.widthFt || 0) - widthFt);
+                        gateRecipe.gates.forEach(rec => {
+                            const d = Math.abs((rec.widthFt || 0) - widthFt);
+                            if (d < bestDelta) { best = rec; bestDelta = d; }
+                        });
+                        add(pickColor(best.gateGalv, best.gateBlack, color), 1);
+                        (best.hardware || []).forEach(hw => {
+                            add(pickColor(hw.galv, hw.black, color), hw.qty || 0);
+                        });
+                        if (best.wheelEnabled) {
+                            add(pickColor(best.wheelGalv, best.wheelBlack, color), 1);
+                        }
+                    });
+                }
+            }
+
+            // Group by master pricelist category
+            const grouped = {};
+            Object.values(usage).forEach(it => {
+                if (!grouped[it.category]) grouped[it.category] = { category: it.category, items: [], subtotal: 0 };
+                const total = it.qty * it.unitPrice;
+                grouped[it.category].items.push({ ...it, total });
+                grouped[it.category].subtotal += total;
+            });
+            // Order categories by build sequence (Posts first, Fasteners last)
+            const order = ['POSTS', 'CHAIN LINK FABRIC', 'RAILS', 'CHAIN LINK FITTINGS', 'GATE FITTINGS', 'WIRE PRODUCTS', 'RES.GATE', 'IND.GATE', 'MISC.', 'EXTRAS 2026', 'FASTENERS'];
+            const categories = Object.values(grouped).sort((a, b) => {
+                const ia = order.indexOf(a.category);
+                const ib = order.indexOf(b.category);
+                return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+            });
+            categories.forEach(g => g.items.sort((a, b) => a.description.localeCompare(b.description)));
+            const grandTotal = categories.reduce((s, g) => s + g.subtotal, 0);
+            return { categories, grandTotal };
+        }
+
         function calculateV3Project() {
             const isCommercial = state.mode === 'commercial';
             const tier = isCommercial ? 'commercial' : 'residential';
@@ -8489,6 +8682,46 @@
             html += '<td colspan="3" style="padding:8px">Material Subtotal</td>';
             html += '<td style="padding:8px;text-align:right">$' + matOrder.totalMaterial.toLocaleString() + '</td>';
             html += '</tr></table>';
+
+            // ── SECTION 1b: V3 Parts List (chain-link itemized SKUs by category) ──
+            try {
+                var v3Parts = generateV3PartsList();
+                if (v3Parts && v3Parts.categories && v3Parts.categories.length > 0) {
+                    html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">🔩 Parts List — Exact SKUs (by Category)</h3>';
+                    html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Itemized chain-link parts from current admin recipes. Use this to pull stock / order materials.</p>';
+                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+                    html += '<tr style="background:#333;color:#fff">';
+                    html += '<th style="text-align:left;padding:6px 8px;width:90px">Code</th>';
+                    html += '<th style="text-align:left;padding:6px 8px">Description</th>';
+                    html += '<th style="text-align:right;padding:6px 8px;width:60px">Qty</th>';
+                    html += '<th style="text-align:right;padding:6px 8px;width:80px">Unit $</th>';
+                    html += '<th style="text-align:right;padding:6px 8px;width:90px">Total</th>';
+                    html += '</tr>';
+                    v3Parts.categories.forEach(function(cat) {
+                        html += '<tr style="background:#555;color:#fff">';
+                        html += '<td colspan="5" style="padding:5px 8px;font-weight:700;letter-spacing:0.5px;font-size:11px">' + escHtml(cat.category) + '</td>';
+                        html += '</tr>';
+                        cat.items.forEach(function(it) {
+                            html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                            html += '<td style="padding:5px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:#666">' + escHtml(it.code) + '</td>';
+                            html += '<td style="padding:5px 8px">' + escHtml(it.description) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + it.qty + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + it.unitPrice.toFixed(2) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + it.total.toFixed(2) + '</td>';
+                            html += '</tr>';
+                        });
+                        html += '<tr style="background:#f5f5f5;font-weight:600">';
+                        html += '<td colspan="4" style="padding:5px 8px;text-align:right;color:#555">' + escHtml(cat.category) + ' subtotal</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">$' + cat.subtotal.toFixed(2) + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '<tr style="background:#f0ead6;font-weight:700">';
+                    html += '<td colspan="4" style="padding:8px;text-align:right">Parts List Grand Total</td>';
+                    html += '<td style="padding:8px;text-align:right">$' + v3Parts.grandTotal.toFixed(2) + '</td>';
+                    html += '</tr>';
+                    html += '</table>';
+                }
+            } catch (e) { /* swallow — fallback to legacy material order only */ }
 
             // ── SECTION 2: Pricing Math ──
             html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">Pricing Math</h3>';
