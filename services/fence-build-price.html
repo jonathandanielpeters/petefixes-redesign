@@ -6131,12 +6131,11 @@
         }
 
         // ──────────────────────────────────────────────────────────────
-        // TASK-BASED LABOUR (per-fence-type)
+        // TASK-BASED LABOUR (fully per-fence-type)
         // ──────────────────────────────────────────────────────────────
-        // Mirrors the V3 chain-link engine's labour math but accepts ANY
-        // fence type. Pulls tasks from config.labour2.byType[fenceType]
-        // and global rates (cost/charge/OT/travel) from config.labour2.
-        // Returns { cost, charge, hours, daysNeeded, perPersonPerDay, otHrs }.
+        // EVERYTHING reads from config.labour2.byType[fenceType] — hourly
+        // rates, OT rules, breaks, travel, load-up, tasks. Each fence
+        // type owns its own complete labour settings.
         function calculateTaskLabour(fenceType, ctx) {
             const lab = PCFG.labour2;
             if (!lab || !lab.byType) return null;
@@ -6155,19 +6154,19 @@
                 const units = counts[t.unit || 'perJob'] || 0;
                 workMinutes += (t.minutes || 0) * units * (t.employees || 1);
             }
-            const hoursPerDay = lab.hoursPerDay || 8;
-            const breakMinPerDay = lab.breakMinPerDay || 0;
+            const hoursPerDay = slot.hoursPerDay || 8;
+            const breakMinPerDay = slot.breakMinPerDay || 0;
             const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
                 ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
                 : 0;
             const crew = (slot.tasks.setupDiscussion && slot.tasks.setupDiscussion.employees) || 2;
-            const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+            const overhead = (slot.travelMinOneWay || 0) * 2 * crew + (slot.loadUpMin || 0) * crew;
             const totalMinutes = workMinutes + breakMinutes + overhead;
             const totalHours = totalMinutes / 60;
-            const otThreshold = lab.overtimeAfterHours || 8;
-            const maxHoursPerDay = lab.maxHoursPerDay || 12;
-            const otCostMult = lab.otCostMult || 1;
-            const otChargeMult = lab.otChargeMult || 1;
+            const otThreshold = slot.overtimeAfterHours || 8;
+            const maxHoursPerDay = slot.maxHoursPerDay || 12;
+            const otCostMult = slot.otCostMult || 1;
+            const otChargeMult = slot.otChargeMult || 1;
             const perPersonHrs = totalHours / crew;
             const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
             const perPersonPerDay = perPersonHrs / daysNeeded;
@@ -6175,8 +6174,8 @@
             const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
             const regHrs = regPerPersonPerDay * daysNeeded * crew;
             const otHrs = otPerPersonPerDay * daysNeeded * crew;
-            const cost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
-            const charge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+            const cost = regHrs * (slot.costPerHour || 0) + otHrs * (slot.costPerHour || 0) * otCostMult;
+            const charge = regHrs * (slot.chargePerHour || 0) + otHrs * (slot.chargePerHour || 0) * otChargeMult;
             return { cost, charge, workMinutes, totalMinutes, hours: totalHours, regHrs, otHrs, daysNeeded, perPersonPerDay, perPersonHrs, crew };
         }
 
@@ -6252,12 +6251,9 @@
                 const slot = lab.byType[t];
                 if (!slot || !slot.enforceProfitTarget) return;
                 const typeLab = projectLabour.byType[t];
-                const hpd = lab.hoursPerDay || 8;
+                const hpd = slot.hoursPerDay || 8;  // per-type
                 const dayFraction = hpd > 0 ? ((typeLab.perPersonPerDay || 0) / hpd) * (typeLab.daysNeeded || 1) : 0;
                 const targetProfit = dayFraction * (slot.targetProfitPerDay || 0);
-                // Each type contributes its own (material allocation + labour cost + target).
-                // Without per-type material allocation we use the FULL material cost as the
-                // floor — this matches the V3 engine's behavior. Take MAX across all types.
                 const typeFloor = materialCost + typeLab.cost + targetProfit;
                 if (typeFloor > floor) floor = typeFloor;
             });
@@ -7039,19 +7035,19 @@
                     const units = counts[t.unit || 'perJob'] || 0;
                     workMinutes += (t.minutes || 0) * units * (t.employees || 1);
                 }
-                const hoursPerDay = lab.hoursPerDay || 8;
-                const breakMinPerDay = lab.breakMinPerDay || 0;
+                const hoursPerDay = labSlot.hoursPerDay || 8;
+                const breakMinPerDay = labSlot.breakMinPerDay || 0;
                 const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
                     ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
                     : 0;
                 const crew = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
-                const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+                const overhead = (labSlot.travelMinOneWay || 0) * 2 * crew + (labSlot.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
                 const totalHours = totalMinutes / 60;
-                const otThreshold = lab.overtimeAfterHours || 8;
-                const maxHoursPerDay = lab.maxHoursPerDay || 12;
-                const otCostMult = lab.otCostMult || 1;
-                const otChargeMult = lab.otChargeMult || 1;
+                const otThreshold = labSlot.overtimeAfterHours || 8;
+                const maxHoursPerDay = labSlot.maxHoursPerDay || 12;
+                const otCostMult = labSlot.otCostMult || 1;
+                const otChargeMult = labSlot.otChargeMult || 1;
                 const perPersonHrs = totalHours / crew;
                 const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
                 const perPersonPerDay = perPersonHrs / daysNeeded;
@@ -7059,13 +7055,10 @@
                 const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
                 const regHrs = regPerPersonPerDay * daysNeeded * crew;
                 const otHrs = otPerPersonPerDay * daysNeeded * crew;
-                labourCost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
-                labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+                labourCost = regHrs * (labSlot.costPerHour || 0) + otHrs * (labSlot.costPerHour || 0) * otCostMult;
+                labourCharge = regHrs * (labSlot.chargePerHour || 0) + otHrs * (labSlot.chargePerHour || 0) * otChargeMult;
             }
 
-            // Add-on charges (extras like privacy install, post upgrades, custom
-            // fees) — V3 was missing these so the live total was lower than the
-            // saved estimate. Same calc the legacy buildEstimateBreakdown uses.
             let addonTotal = 0;
             try {
                 clLines.forEach(function(line) {
@@ -7080,10 +7073,9 @@
             } catch (e) { console.warn('[v3 addons]', e); }
 
             let total = Math.round(matSell + labourCharge + addonTotal);
-            // Profit-target floor — uses the chain-link slot's enforce flag +
-            // target-per-day. Mirrors V2's calc.
+            // Profit-target floor — all rates from the chain-link slot.
             if (lab && labSlot.enforceProfitTarget && labSlot.tasks) {
-                const hoursPerDay = lab.hoursPerDay || 8;
+                const hoursPerDay = labSlot.hoursPerDay || 8;
                 const targetPerDay = labSlot.targetProfitPerDay || 0;
                 const crewForFloor = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
                 const counts2 = { perJob: 1, perLine: lineCount, perPost: totalPosts, perFoot: totalFt, perHookup: totalHookups, perGate: enabledGates.length };
@@ -7092,12 +7084,12 @@
                     const units = counts2[t.unit || 'perJob'] || 0;
                     workMin2 += (t.minutes || 0) * units * (t.employees || 1);
                 }
-                const breakMinPerDay2 = lab.breakMinPerDay || 0;
+                const breakMinPerDay2 = labSlot.breakMinPerDay || 0;
                 const breakMin2 = (hoursPerDay > 0 && breakMinPerDay2 > 0) ? (workMin2 / (hoursPerDay * 60)) * breakMinPerDay2 : 0;
-                const overhead2 = (lab.travelMinOneWay || 0) * 2 * crewForFloor + (lab.loadUpMin || 0) * crewForFloor;
+                const overhead2 = (labSlot.travelMinOneWay || 0) * 2 * crewForFloor + (labSlot.loadUpMin || 0) * crewForFloor;
                 const totalMin2 = workMin2 + breakMin2 + overhead2;
                 const perPersonHrs2 = (totalMin2 / 60) / crewForFloor;
-                const maxHours2 = lab.maxHoursPerDay || 12;
+                const maxHours2 = labSlot.maxHoursPerDay || 12;
                 const daysNeeded2 = Math.max(1, Math.ceil(perPersonHrs2 / maxHours2));
                 const perPersonPerDay2 = perPersonHrs2 / daysNeeded2;
                 const dayFraction = hoursPerDay > 0 ? (perPersonPerDay2 / hoursPerDay) * daysNeeded2 : 0;
@@ -7271,21 +7263,19 @@
                     const units = counts[t.unit || 'perJob'] || 0;
                     workMinutes += (t.minutes || 0) * units * (t.employees || 1);
                 }
-                // Breaks: (work min / workday min) × break min per day
-                const hoursPerDay = lab.hoursPerDay || 8;
-                const breakMinPerDay = lab.breakMinPerDay || 0;
+                const hoursPerDay = labSlot.hoursPerDay || 8;
+                const breakMinPerDay = labSlot.breakMinPerDay || 0;
                 const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
                     ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
                     : 0;
                 const crew = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
-                const overhead = (lab.travelMinOneWay || 0) * 2 * crew + (lab.loadUpMin || 0) * crew;
+                const overhead = (labSlot.travelMinOneWay || 0) * 2 * crew + (labSlot.loadUpMin || 0) * crew;
                 const totalMinutes = workMinutes + breakMinutes + overhead;
                 const totalHours = totalMinutes / 60;
-                // Overtime split with max-hours-per-day cap → auto-split across multiple days
-                const otThreshold = lab.overtimeAfterHours || 8;
-                const maxHoursPerDay = lab.maxHoursPerDay || 12;
-                const otCostMult = lab.otCostMult || 1;
-                const otChargeMult = lab.otChargeMult || 1;
+                const otThreshold = labSlot.overtimeAfterHours || 8;
+                const maxHoursPerDay = labSlot.maxHoursPerDay || 12;
+                const otCostMult = labSlot.otCostMult || 1;
+                const otChargeMult = labSlot.otChargeMult || 1;
                 const perPersonHrs = totalHours / crew;
                 const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
                 const perPersonPerDay = perPersonHrs / daysNeeded;
@@ -7293,19 +7283,16 @@
                 const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
                 const regHrs = regPerPersonPerDay * daysNeeded * crew;
                 const otHrs = otPerPersonPerDay * daysNeeded * crew;
-                labourCost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
-                labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+                labourCost = regHrs * (labSlot.costPerHour || 0) + otHrs * (labSlot.costPerHour || 0) * otCostMult;
+                labourCharge = regHrs * (labSlot.chargePerHour || 0) + otHrs * (labSlot.chargePerHour || 0) * otChargeMult;
             }
 
             let total = Math.round(matSell + labourCharge);
 
-            // ── Profit-target price floor ───────────────────────────────
-            // If the admin has enabled "enforce profit target" for chain link,
-            // bump the total up to at least (material cost + labour cost +
-            // per-job target profit).
+            // Profit-target floor — all rates from chain-link slot
             let profitTargetFloor = 0;
             if (lab && labSlot.enforceProfitTarget && labSlot.tasks) {
-                const hoursPerDay = lab.hoursPerDay || 8;
+                const hoursPerDay = labSlot.hoursPerDay || 8;
                 const targetPerDay = labSlot.targetProfitPerDay || 0;
                 const crewForFloor = (labSlot.tasks.setupDiscussion && labSlot.tasks.setupDiscussion.employees) || 2;
                 const counts2 = { perJob: 1, perLine: clLines.length, perPost: endCount + cornerCount + linePostCount, perFoot: totalFt, perHookup: endCount + cornerCount, perGate: enabledGates.length };
@@ -7314,12 +7301,12 @@
                     const units = counts2[t.unit || 'perJob'] || 0;
                     workMin2 += (t.minutes || 0) * units * (t.employees || 1);
                 }
-                const breakMinPerDay2 = lab.breakMinPerDay || 0;
+                const breakMinPerDay2 = labSlot.breakMinPerDay || 0;
                 const breakMin2 = (hoursPerDay > 0 && breakMinPerDay2 > 0) ? (workMin2 / (hoursPerDay * 60)) * breakMinPerDay2 : 0;
-                const overhead2 = (lab.travelMinOneWay || 0) * 2 * crewForFloor + (lab.loadUpMin || 0) * crewForFloor;
+                const overhead2 = (labSlot.travelMinOneWay || 0) * 2 * crewForFloor + (labSlot.loadUpMin || 0) * crewForFloor;
                 const totalMin2 = workMin2 + breakMin2 + overhead2;
                 const perPersonHrs2 = (totalMin2 / 60) / crewForFloor;
-                const maxHours2 = lab.maxHoursPerDay || 12;
+                const maxHours2 = labSlot.maxHoursPerDay || 12;
                 const daysNeeded2 = Math.max(1, Math.ceil(perPersonHrs2 / maxHours2));
                 const perPersonPerDay2 = perPersonHrs2 / daysNeeded2;
                 const dayFraction = hoursPerDay > 0 ? (perPersonPerDay2 / hoursPerDay) * daysNeeded2 : 0;

@@ -1205,11 +1205,24 @@ a{color:var(--accent);text-decoration:none}
 <!-- ────── Labour Calculator ────── -->
 <div class="section" id="sec-labour">
   <h2 class="section-title">Labour Calculator</h2>
-  <p class="section-subtitle">Hourly rates, overtime rules, travel/load-up overhead, profit-target floor, and per-task time estimates. Drives the labour charge added on top of marked-up material cost.</p>
+  <p class="section-subtitle">EVERY labour setting below is per fence type. Pick a tab — the inputs swap to that type's hourly rates, OT rules, breaks, travel, load-up, tasks, profit target, and minimum job. Each fence type is fully isolated; nothing is shared.</p>
+
+  <!-- ═══ Fence-Type Tab Strip — switches the entire settings panel below ═══ -->
+  <div class="card" style="border-left:3px solid var(--accent);background:var(--accent-light)">
+    <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Editing labour settings for:</div>
+    <div class="pill-tabs" id="lab2-type-tabs">
+      <div class="pill-tab active" data-labtype="chainlink"  onclick="setLabActiveType('chainlink')">Chain Link</div>
+      <div class="pill-tab"        data-labtype="wood"       onclick="setLabActiveType('wood')">Wood</div>
+      <div class="pill-tab"        data-labtype="ornamental" onclick="setLabActiveType('ornamental')">Ornamental</div>
+      <div class="pill-tab"        data-labtype="weldedWire" onclick="setLabActiveType('weldedWire')">Welded Wire</div>
+      <div class="pill-tab"        data-labtype="vinyl"      onclick="setLabActiveType('vinyl')">Vinyl</div>
+    </div>
+    <div style="font-size:10px;color:var(--gray-500);margin-top:6px">All fields below belong to the active fence type only. Switch tabs to edit a different type's settings — your edits are auto-saved when you switch.</div>
+  </div>
 
   <div class="card">
-    <div class="card-title">Hourly Rates &amp; Overtime</div>
-    <div class="card-desc">What you pay your crew vs. what you charge the customer. Overtime kicks in past the daily threshold; legal default in MB is 8 hrs/day at 1.5×.</div>
+    <div class="card-title">Hourly Rates &amp; Overtime <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— this fence type</span></div>
+    <div class="card-desc">What you pay your crew vs. what you charge the customer for THIS fence type. Different fence types can have different rates if you use specialty crews or different equipment.</div>
     <div class="card-row">
       <div class="field"><label>Labour cost / hour ($)</label><input type="number" id="lab2-cost-hour" step="0.01" min="0" value="25" oninput="markDirty();updateLabourPreview();refreshSamplePrices()"></div>
       <div class="field"><label>Charge / hour ($)</label><input type="number" id="lab2-charge-hour" step="0.01" min="0" value="85" oninput="markDirty();updateLabourPreview();refreshSamplePrices()"></div>
@@ -1226,19 +1239,25 @@ a{color:var(--accent);text-decoration:none}
     </div>
   </div>
 
-  <div class="card" style="border-left:3px solid var(--accent)">
-    <div class="card-title">Per-Fence-Type Settings <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— TASKS · PROFIT · MIN JOB</span></div>
-    <div class="card-desc">Each fence type below has its own task-time table, target profit, and minimum job charge. Hourly rates &amp; travel above stay shared across all types (same crew, same wages).</div>
-    <div class="pill-tabs" id="lab2-type-tabs" style="margin-top:6px">
-      <div class="pill-tab active" data-labtype="chainlink"  onclick="setLabActiveType('chainlink')">Chain Link</div>
-      <div class="pill-tab"        data-labtype="wood"       onclick="setLabActiveType('wood')">Wood</div>
-      <div class="pill-tab"        data-labtype="ornamental" onclick="setLabActiveType('ornamental')">Ornamental</div>
-      <div class="pill-tab"        data-labtype="weldedWire" onclick="setLabActiveType('weldedWire')">Welded Wire</div>
-      <div class="pill-tab"        data-labtype="vinyl"      onclick="setLabActiveType('vinyl')">Vinyl</div>
+  <div class="card">
+    <div class="card-title">Travel &amp; Load-Up <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— this fence type</span></div>
+    <div class="card-desc">Round-trip travel + load-up overhead for THIS fence type. Wood may need different equipment / vehicle than chain link, so each type has its own travel/load times.</div>
+    <div class="card-row">
+      <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty();refreshSamplePrices()"></div>
+      <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty();refreshSamplePrices()"></div>
+      <div class="field" style="display:flex;align-items:end;gap:8px">
+        <button class="btn btn-sm" onclick="calcDistanceFromShop()" id="lab2-distance-btn" title="Calculate driving time between shop and customer address using Google Maps. Auto-fills THIS type's travel time field.">📍 Auto-calc driving time</button>
+        <span id="lab2-distance-status" style="font-size:11px;color:var(--gray-400)"></span>
+      </div>
     </div>
-    <div class="card-row" style="margin-top:10px">
-      <div class="field"><label>Target profit / workday ($) <span style="font-size:10px;color:var(--gray-400)">— this fence type</span></label><input type="number" id="lab2-target-profit-day" step="25" min="0" value="800" oninput="markDirty();refreshSamplePrices()" title="Net profit target per workday for THIS fence type. Samples flag jobs that fall short of this prorated to their share of a workday."></div>
-      <div class="field"><label>Minimum job charge ($) <span style="font-size:10px;color:var(--gray-400)">— this fence type</span></label><input type="number" id="lab2-min-job-charge" step="25" min="0" value="0" oninput="markDirty();refreshSamplePrices()" title="Quotes for THIS fence type below this amount get raised to meet the minimum. 0 = no minimum."></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Profit Target &amp; Minimum Job <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— this fence type</span></div>
+    <div class="card-desc">Floor every quote for THIS fence type at <em>material + labour cost + target profit</em>. Different fence types can have different daily profit targets.</div>
+    <div class="card-row">
+      <div class="field"><label>Target profit / workday ($)</label><input type="number" id="lab2-target-profit-day" step="25" min="0" value="800" oninput="markDirty();refreshSamplePrices()" title="Net profit target per workday for THIS fence type. Samples flag jobs that fall short of this prorated to their share of a workday."></div>
+      <div class="field"><label>Minimum job charge ($)</label><input type="number" id="lab2-min-job-charge" step="25" min="0" value="0" oninput="markDirty();refreshSamplePrices()" title="Quotes for THIS fence type below this amount get raised to meet the minimum. 0 = no minimum."></div>
       <div class="field" style="display:flex;align-items:end;gap:8px">
         <label style="display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer;margin-bottom:8px">
           <input type="checkbox" id="lab2-enforce-profit-target" oninput="markDirty();refreshSamplePrices()" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
@@ -1249,25 +1268,8 @@ a{color:var(--accent);text-decoration:none}
   </div>
 
   <div class="card">
-    <div class="card-title">Travel &amp; Setup</div>
-    <div class="card-desc">Round-trip travel + load-up overhead is added once per job, multiplied by crew size.</div>
-    <div class="card-row">
-      <div class="field" style="flex:2"><label>Shop address</label><input type="text" id="lab2-shop-addr" placeholder="123 Main St, Winnipeg" oninput="markDirty()"></div>
-      <div class="field" style="flex:2"><label>Sample customer address (for distance test)</label><input type="text" id="lab2-cust-addr" placeholder="456 Elm St, Winnipeg" oninput="markDirty()"></div>
-    </div>
-    <div class="card-row">
-      <div class="field"><label>Travel time (min, one-way)</label><input type="number" id="lab2-travel-min" step="1" min="0" value="25" oninput="markDirty();refreshSamplePrices()"></div>
-      <div class="field"><label>Load up time (min)</label><input type="number" id="lab2-load-min" step="1" min="0" value="30" oninput="markDirty();refreshSamplePrices()"></div>
-      <div class="field" style="display:flex;align-items:end;gap:8px">
-        <button class="btn btn-sm" onclick="calcDistanceFromShop()" id="lab2-distance-btn" title="Calculate driving time between shop and customer address using Google Maps. Auto-fills the travel time field.">📍 Auto-calc driving time</button>
-        <span id="lab2-distance-status" style="font-size:11px;color:var(--gray-400)"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Task Times <span style="font-size:10px;font-weight:600;color:var(--gray-400);margin-left:8px">— for the selected fence type above</span></div>
-    <div class="card-desc">Time estimates for the <strong>currently-selected fence type</strong> (tabs above). Units: <strong>per job</strong> = once, <strong>per line</strong> = × line count, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count.</div>
+    <div class="card-title">Task Times <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— this fence type</span></div>
+    <div class="card-desc">Time estimates for THIS fence type's tasks. Units: <strong>per job</strong> = once, <strong>per line</strong> = × line count, <strong>per post</strong> = × total post count, <strong>per foot</strong> = × linear footage, <strong>per hookup</strong> = × end+corner posts, <strong>per gate</strong> = × gate count.</div>
     <div class="table-scroll">
       <table class="data-table" id="lab2-tasks-table">
         <thead>
@@ -1284,6 +1286,18 @@ a{color:var(--accent);text-decoration:none}
     </div>
     <div class="btn-row" style="margin-top:8px">
       <button class="btn btn-sm btn-outline" onclick="addCustomLabourTask()">+ Add custom task</button>
+    </div>
+  </div>
+
+  <!-- Address book lives outside the per-type tabs since it's shared physical
+       infrastructure (one shop, one sample address) — used by the auto-distance
+       calculator which then writes the result into the active type's travel time. -->
+  <div class="card">
+    <div class="card-title">Address Book</div>
+    <div class="card-desc">Shop and sample customer addresses for the auto-distance lookup. The "Auto-calc driving time" button (above) uses these addresses and writes the result into <em>this fence type's</em> Travel time field.</div>
+    <div class="card-row">
+      <div class="field" style="flex:2"><label>Shop address</label><input type="text" id="lab2-shop-addr" placeholder="123 Main St, Winnipeg" oninput="markDirty()"></div>
+      <div class="field" style="flex:2"><label>Sample customer address (for distance test)</label><input type="text" id="lab2-cust-addr" placeholder="456 Elm St, Winnipeg" oninput="markDirty()"></div>
     </div>
   </div>
 
@@ -8164,85 +8178,118 @@ const LAB2_TYPES = [
 // Engine reads byType[fenceType] regardless of this — it's UI-only state.
 window._labActiveType = window._labActiveType || 'chainlink';
 
+// FULL per-fence-type labour. EVERY field — hourly rates, OT rules,
+// break time, travel, load-up, tasks, profit target, minimum job —
+// lives in config.labour2.byType[fenceType]. Each tab in the admin
+// loads its slot's complete settings; chain link / wood / etc. share
+// nothing. The shop/sample addresses are kept top-level too because
+// the auto-distance Google Maps lookup uses them at call time.
 function ensureLab2() {
-  if (!config.labour2) {
-    config.labour2 = {
-      costPerHour: 25,
-      chargePerHour: 85,
-      breakMinPerDay: 60,
-      hoursPerDay: 8,
-      overtimeAfterHours: 8,
-      otCostMult: 1.5,
-      otChargeMult: 1.5,
-      shopAddress: '',
-      sampleCustomerAddress: '',
-      travelMinOneWay: 25,
-      loadUpMin: 30
-    };
-  }
-  // Global rate / OT / travel defaults
-  if (config.labour2.breakMinPerDay == null) {
-    if (config.labour2.breakPct != null) {
-      config.labour2.breakMinPerDay = Math.round(config.labour2.breakPct * 4.8);
-    } else {
-      config.labour2.breakMinPerDay = 60;
-    }
-  }
-  if (config.labour2.hoursPerDay == null) config.labour2.hoursPerDay = 8;
-  if (config.labour2.overtimeAfterHours == null) config.labour2.overtimeAfterHours = 8;
-  if (config.labour2.otCostMult == null) config.labour2.otCostMult = 1.5;
-  if (config.labour2.otChargeMult == null) config.labour2.otChargeMult = 1.5;
-  if (config.labour2.maxHoursPerDay == null) config.labour2.maxHoursPerDay = 12;
+  if (!config.labour2) config.labour2 = {};
+  // Top-level keeps only the addresses (used by the distance API) and
+  // the byType map. Everything else moved into per-type slots.
+  if (config.labour2.shopAddress == null) config.labour2.shopAddress = '';
+  if (config.labour2.sampleCustomerAddress == null) config.labour2.sampleCustomerAddress = '';
   delete config.labour2.breakPct;
   delete config.labour2.cushioningPct;
 
-  // ── byType: per-fence-type tasks + profit target + min job ──
+  // Capture legacy top-level rate fields once so we can copy them into
+  // chain link's slot during migration (chain link was the previous
+  // single-type defaults home). These get deleted at the end.
+  const legacy = {
+    costPerHour: config.labour2.costPerHour,
+    chargePerHour: config.labour2.chargePerHour,
+    breakMinPerDay: config.labour2.breakMinPerDay,
+    hoursPerDay: config.labour2.hoursPerDay,
+    overtimeAfterHours: config.labour2.overtimeAfterHours,
+    otCostMult: config.labour2.otCostMult,
+    otChargeMult: config.labour2.otChargeMult,
+    maxHoursPerDay: config.labour2.maxHoursPerDay,
+    travelMinOneWay: config.labour2.travelMinOneWay,
+    loadUpMin: config.labour2.loadUpMin,
+    tasks: config.labour2.tasks,
+    customTaskOrder: config.labour2.customTaskOrder,
+    targetProfitPerDay: config.labour2.targetProfitPerDay,
+    enforceProfitTarget: config.labour2.enforceProfitTarget
+  };
+  const hasLegacy = legacy.tasks || legacy.targetProfitPerDay != null || legacy.costPerHour != null;
+
   if (!config.labour2.byType) config.labour2.byType = {};
-  // Migrate legacy single-type tasks into byType.chainlink. The old global
-  // tasks list was tuned for chain link, so it's the right home. Also moves
-  // legacy targetProfitPerDay / enforceProfitTarget into the chain-link slot.
-  const hasLegacy = (config.labour2.tasks && Object.keys(config.labour2.tasks).length > 0)
-                 || config.labour2.customTaskOrder
-                 || config.labour2.targetProfitPerDay != null
-                 || config.labour2.enforceProfitTarget != null;
+
+  // Migrate legacy top-level fields into chain-link slot if it doesn't exist
   if (hasLegacy && !config.labour2.byType.chainlink) {
     config.labour2.byType.chainlink = {
-      tasks: config.labour2.tasks || {},
-      customTaskOrder: config.labour2.customTaskOrder || [],
-      targetProfitPerDay: config.labour2.targetProfitPerDay != null ? config.labour2.targetProfitPerDay : 800,
-      enforceProfitTarget: !!config.labour2.enforceProfitTarget,
+      costPerHour: legacy.costPerHour != null ? legacy.costPerHour : 25,
+      chargePerHour: legacy.chargePerHour != null ? legacy.chargePerHour : 85,
+      breakMinPerDay: legacy.breakMinPerDay != null ? legacy.breakMinPerDay : 60,
+      hoursPerDay: legacy.hoursPerDay != null ? legacy.hoursPerDay : 8,
+      overtimeAfterHours: legacy.overtimeAfterHours != null ? legacy.overtimeAfterHours : 8,
+      otCostMult: legacy.otCostMult != null ? legacy.otCostMult : 1.5,
+      otChargeMult: legacy.otChargeMult != null ? legacy.otChargeMult : 1.5,
+      maxHoursPerDay: legacy.maxHoursPerDay != null ? legacy.maxHoursPerDay : 12,
+      travelMinOneWay: legacy.travelMinOneWay != null ? legacy.travelMinOneWay : 25,
+      loadUpMin: legacy.loadUpMin != null ? legacy.loadUpMin : 30,
+      tasks: legacy.tasks || {},
+      customTaskOrder: legacy.customTaskOrder || [],
+      targetProfitPerDay: legacy.targetProfitPerDay != null ? legacy.targetProfitPerDay : 800,
+      enforceProfitTarget: !!legacy.enforceProfitTarget,
       minimumJobCharge: 0
     };
   }
-  // Seed each fence type with its own slot. New types start as a fresh
-  // copy of the chain-link defaults so admin only has to tune deltas.
+
+  // Seed each fence type with its OWN complete slot. New types start
+  // from generic defaults — admin tunes them independently. They share
+  // nothing with chain link by design.
   LAB2_TYPES.forEach(t => {
     if (!config.labour2.byType[t.key]) {
-      const base = config.labour2.byType.chainlink;
       config.labour2.byType[t.key] = {
-        tasks: {},
-        customTaskOrder: [],
-        targetProfitPerDay: base ? base.targetProfitPerDay : 800,
-        enforceProfitTarget: base ? !!base.enforceProfitTarget : false,
+        costPerHour: 25, chargePerHour: 85,
+        breakMinPerDay: 60, hoursPerDay: 8,
+        overtimeAfterHours: 8, otCostMult: 1.5, otChargeMult: 1.5,
+        maxHoursPerDay: 12,
+        travelMinOneWay: 25, loadUpMin: 30,
+        tasks: {}, customTaskOrder: [],
+        targetProfitPerDay: 800,
+        enforceProfitTarget: false,
         minimumJobCharge: 0
       };
     }
     const slot = config.labour2.byType[t.key];
+    // Backfill any missing fields on existing slots (older saves)
+    if (slot.costPerHour == null) slot.costPerHour = 25;
+    if (slot.chargePerHour == null) slot.chargePerHour = 85;
+    if (slot.breakMinPerDay == null) slot.breakMinPerDay = 60;
+    if (slot.hoursPerDay == null) slot.hoursPerDay = 8;
+    if (slot.overtimeAfterHours == null) slot.overtimeAfterHours = 8;
+    if (slot.otCostMult == null) slot.otCostMult = 1.5;
+    if (slot.otChargeMult == null) slot.otChargeMult = 1.5;
+    if (slot.maxHoursPerDay == null) slot.maxHoursPerDay = 12;
+    if (slot.travelMinOneWay == null) slot.travelMinOneWay = 25;
+    if (slot.loadUpMin == null) slot.loadUpMin = 30;
     if (!slot.tasks) slot.tasks = {};
     if (!slot.customTaskOrder) slot.customTaskOrder = [];
     if (slot.targetProfitPerDay == null) slot.targetProfitPerDay = 800;
     if (slot.enforceProfitTarget == null) slot.enforceProfitTarget = false;
     if (slot.minimumJobCharge == null) slot.minimumJobCharge = 0;
-    // Seed predefined task defaults that aren't already set
+    // Seed predefined task defaults if missing
     for (const def of LAB2_TASK_DEFS) {
       if (!slot.tasks[def.key]) {
         slot.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
       }
     }
   });
-  // Drop legacy top-level fields once everything is migrated. Keep them
-  // briefly in case an older save round-trips through this code, but the
-  // engine only reads byType going forward.
+
+  // Drop legacy top-level fields once everything is migrated
+  delete config.labour2.costPerHour;
+  delete config.labour2.chargePerHour;
+  delete config.labour2.breakMinPerDay;
+  delete config.labour2.hoursPerDay;
+  delete config.labour2.overtimeAfterHours;
+  delete config.labour2.otCostMult;
+  delete config.labour2.otChargeMult;
+  delete config.labour2.maxHoursPerDay;
+  delete config.labour2.travelMinOneWay;
+  delete config.labour2.loadUpMin;
   delete config.labour2.tasks;
   delete config.labour2.customTaskOrder;
   delete config.labour2.targetProfitPerDay;
@@ -8259,22 +8306,32 @@ function lab2Slot(type) {
   return lab.byType[t] || lab.byType.chainlink;
 }
 
-// Switch the active fence-type tab in the Labour Calculator. Before swapping,
-// we collect any per-type fields (target/minimum/enforce) into the OLD type's
-// slot so the user's last edits don't get lost when they tab away. Then we
-// re-render with the NEW type's data.
+// Switch the active fence-type tab in the Labour Calculator. ALL labour
+// fields are per-type, so before swapping we serialize the OLD type's
+// inputs into its slot, then load the NEW type's complete settings —
+// hourly rates, OT rules, breaks, travel, tasks, profit, min job. Each
+// fence type's settings are fully isolated.
 function setLabActiveType(type) {
   if (!type || type === window._labActiveType) {
-    // Still update tab UI in case it's out of sync
     document.querySelectorAll('#lab2-type-tabs .pill-tab, .lab2-type-pill').forEach(p => {
       p.classList.toggle('active', p.dataset.labtype === type);
     });
     return;
   }
-  // 1) Persist the OLD type's per-type fields before switching
+  // 1) Persist OLD type's full input set into its slot
   const oldSlot = lab2Slot(window._labActiveType);
   const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
   const gn = id => parseFloat(g(id)) || 0;
+  oldSlot.costPerHour = gn('lab2-cost-hour');
+  oldSlot.chargePerHour = gn('lab2-charge-hour');
+  oldSlot.breakMinPerDay = gn('lab2-break-min-per-day');
+  oldSlot.hoursPerDay = gn('lab2-hours-per-day') || 8;
+  oldSlot.overtimeAfterHours = gn('lab2-ot-after') || 8;
+  oldSlot.maxHoursPerDay = gn('lab2-max-hours-per-day') || 12;
+  oldSlot.otCostMult = gn('lab2-ot-cost-mult') || 1;
+  oldSlot.otChargeMult = gn('lab2-ot-charge-mult') || 1;
+  oldSlot.travelMinOneWay = gn('lab2-travel-min');
+  oldSlot.loadUpMin = gn('lab2-load-min');
   oldSlot.targetProfitPerDay = gn('lab2-target-profit-day');
   oldSlot.minimumJobCharge = gn('lab2-min-job-charge');
   const oldEnforceEl = document.getElementById('lab2-enforce-profit-target');
@@ -8286,9 +8343,19 @@ function setLabActiveType(type) {
     p.classList.toggle('active', p.dataset.labtype === type);
   });
 
-  // 3) Load NEW type's fields + re-render task table
+  // 3) Load NEW type's full input set
   const slot = lab2Slot(type);
   const setV = (id, v) => { const el = document.getElementById(id); if (el != null) el.value = v; };
+  setV('lab2-cost-hour', slot.costPerHour);
+  setV('lab2-charge-hour', slot.chargePerHour);
+  setV('lab2-break-min-per-day', slot.breakMinPerDay);
+  setV('lab2-hours-per-day', slot.hoursPerDay);
+  setV('lab2-ot-after', slot.overtimeAfterHours);
+  setV('lab2-max-hours-per-day', slot.maxHoursPerDay);
+  setV('lab2-ot-cost-mult', slot.otCostMult);
+  setV('lab2-ot-charge-mult', slot.otChargeMult);
+  setV('lab2-travel-min', slot.travelMinOneWay);
+  setV('lab2-load-min', slot.loadUpMin);
   setV('lab2-target-profit-day', slot.targetProfitPerDay);
   setV('lab2-min-job-charge', slot.minimumJobCharge || 0);
   const enforceEl = document.getElementById('lab2-enforce-profit-target');
@@ -8373,21 +8440,21 @@ function updateLab2Task(key, field, value) {
 function loadLabourUI() {
   const lab = ensureLab2();
   const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
-  // Global rates / OT / travel
-  setV('lab2-cost-hour', lab.costPerHour);
-  setV('lab2-charge-hour', lab.chargePerHour);
-  setV('lab2-break-min-per-day', lab.breakMinPerDay);
-  setV('lab2-hours-per-day', lab.hoursPerDay);
-  setV('lab2-ot-after', lab.overtimeAfterHours);
-  setV('lab2-max-hours-per-day', lab.maxHoursPerDay);
-  setV('lab2-ot-cost-mult', lab.otCostMult);
-  setV('lab2-ot-charge-mult', lab.otChargeMult);
+  // Top-level: ONLY shop / sample-customer addresses (used by distance API).
   setV('lab2-shop-addr', lab.shopAddress || '');
   setV('lab2-cust-addr', lab.sampleCustomerAddress || '');
-  setV('lab2-travel-min', lab.travelMinOneWay);
-  setV('lab2-load-min', lab.loadUpMin);
-  // Per-type fields (active type's slot)
+  // EVERYTHING else is per-type — load the active type's complete settings.
   const slot = lab2Slot();
+  setV('lab2-cost-hour', slot.costPerHour);
+  setV('lab2-charge-hour', slot.chargePerHour);
+  setV('lab2-break-min-per-day', slot.breakMinPerDay);
+  setV('lab2-hours-per-day', slot.hoursPerDay);
+  setV('lab2-ot-after', slot.overtimeAfterHours);
+  setV('lab2-max-hours-per-day', slot.maxHoursPerDay);
+  setV('lab2-ot-cost-mult', slot.otCostMult);
+  setV('lab2-ot-charge-mult', slot.otChargeMult);
+  setV('lab2-travel-min', slot.travelMinOneWay);
+  setV('lab2-load-min', slot.loadUpMin);
   setV('lab2-target-profit-day', slot.targetProfitPerDay);
   setV('lab2-min-job-charge', slot.minimumJobCharge || 0);
   const enforceEl = document.getElementById('lab2-enforce-profit-target');
@@ -8396,7 +8463,7 @@ function loadLabourUI() {
   const tabHost = document.getElementById('lab2-type-tabs');
   if (tabHost) {
     tabHost.innerHTML = LAB2_TYPES.map(t =>
-      '<div class="lab2-type-pill' + (t.key === window._labActiveType ? ' active' : '') + '" data-labtype="' + t.key + '" onclick="setLabActiveType(\'' + t.key + '\')">' + t.label + '</div>'
+      '<div class="pill-tab' + (t.key === window._labActiveType ? ' active' : '') + '" data-labtype="' + t.key + '" onclick="setLabActiveType(\'' + t.key + '\')">' + t.label + '</div>'
     ).join('');
   }
   renderLabourTasks();
@@ -8407,22 +8474,23 @@ function collectLabourUI() {
   const lab = ensureLab2();
   const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
   const gn = id => parseFloat(g(id)) || 0;
-  // Global
-  lab.costPerHour = gn('lab2-cost-hour');
-  lab.chargePerHour = gn('lab2-charge-hour');
-  lab.breakMinPerDay = gn('lab2-break-min-per-day');
-  lab.hoursPerDay = gn('lab2-hours-per-day') || 8;
-  lab.overtimeAfterHours = gn('lab2-ot-after') || 8;
-  lab.maxHoursPerDay = gn('lab2-max-hours-per-day') || 12;
-  lab.otCostMult = gn('lab2-ot-cost-mult') || 1;
-  lab.otChargeMult = gn('lab2-ot-charge-mult') || 1;
+  // Top-level — addresses only
   lab.shopAddress = g('lab2-shop-addr');
   lab.sampleCustomerAddress = g('lab2-cust-addr');
-  lab.travelMinOneWay = gn('lab2-travel-min');
-  lab.loadUpMin = gn('lab2-load-min');
-  // Per-type — write into the active type's slot only. Other types
-  // already have their values stored via prior setLabActiveType events.
+  // Per-type — write the active type's full input set into its slot.
+  // Other types already have their values stored via prior setLabActiveType
+  // events, so we only ever write the visible tab's data.
   const slot = lab2Slot();
+  slot.costPerHour = gn('lab2-cost-hour');
+  slot.chargePerHour = gn('lab2-charge-hour');
+  slot.breakMinPerDay = gn('lab2-break-min-per-day');
+  slot.hoursPerDay = gn('lab2-hours-per-day') || 8;
+  slot.overtimeAfterHours = gn('lab2-ot-after') || 8;
+  slot.maxHoursPerDay = gn('lab2-max-hours-per-day') || 12;
+  slot.otCostMult = gn('lab2-ot-cost-mult') || 1;
+  slot.otChargeMult = gn('lab2-ot-charge-mult') || 1;
+  slot.travelMinOneWay = gn('lab2-travel-min');
+  slot.loadUpMin = gn('lab2-load-min');
   slot.targetProfitPerDay = gn('lab2-target-profit-day');
   slot.minimumJobCharge = gn('lab2-min-job-charge');
   const enforceEl = document.getElementById('lab2-enforce-profit-target');
@@ -8469,35 +8537,31 @@ function computeLabour(ctx, type) {
     workMinutes += m;
   }
 
-  // Breaks scale with time worked — (work minutes / workday minutes) × break minutes per day.
-  // workMinutes is person-minutes (already multiplied by crew), so breakMinutes is also person-minutes.
-  const hoursPerDay = lab.hoursPerDay || 8;
-  const breakMinPerDay = lab.breakMinPerDay || 0;
+  // ALL labour math now reads from the active type's slot — hourly rates,
+  // OT rules, breaks, travel, load-up. Each fence type owns its own
+  // numbers; no field is shared with any other type.
+  const hoursPerDay = slot.hoursPerDay || 8;
+  const breakMinPerDay = slot.breakMinPerDay || 0;
   const breakMinutes = (hoursPerDay > 0 && breakMinPerDay > 0)
     ? (workMinutes / (hoursPerDay * 60)) * breakMinPerDay
     : 0;
   if (breakMinutes > 0) breakdown.push({ label: 'Breaks (' + breakMinPerDay + ' min/' + hoursPerDay + 'hr day, prorated)', minutes: breakMinutes });
 
-  // Travel (round trip × crew size). Crew size comes from the active type's
-  // setupDiscussion task — wood vs chain link can have different crew sizes.
   const crewSize = (slot.tasks.setupDiscussion && slot.tasks.setupDiscussion.employees) || 2;
-  const travelMin = (lab.travelMinOneWay || 0) * 2 * crewSize;
-  const loadMin = (lab.loadUpMin || 0) * crewSize;
+  const travelMin = (slot.travelMinOneWay || 0) * 2 * crewSize;
+  const loadMin = (slot.loadUpMin || 0) * crewSize;
   if (travelMin > 0) breakdown.push({ label: 'Travel (round trip × ' + crewSize + ')', minutes: travelMin });
   if (loadMin > 0)   breakdown.push({ label: 'Load up × ' + crewSize,                 minutes: loadMin });
 
   const totalMinutes = workMinutes + breakMinutes + travelMin + loadMin;
   const totalHours = totalMinutes / 60;
 
-  // Per-person wall-clock hours for the whole job
-  const otThreshold = lab.overtimeAfterHours || 8;
-  const maxHoursPerDay = lab.maxHoursPerDay || 12;
-  const otCostMult = lab.otCostMult || 1;
-  const otChargeMult = lab.otChargeMult || 1;
+  const otThreshold = slot.overtimeAfterHours || 8;
+  const maxHoursPerDay = slot.maxHoursPerDay || 12;
+  const otCostMult = slot.otCostMult || 1;
+  const otChargeMult = slot.otChargeMult || 1;
   const perPersonHrs = totalHours / crewSize;
 
-  // Split across days if perPersonHrs > maxHoursPerDay. Work is distributed
-  // evenly across days so each day's hours = perPersonHrs / daysNeeded.
   const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
   const perPersonPerDay = perPersonHrs / daysNeeded;
   const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
@@ -8505,8 +8569,8 @@ function computeLabour(ctx, type) {
   const regHrs = regPerPersonPerDay * daysNeeded * crewSize;
   const otHrs = otPerPersonPerDay * daysNeeded * crewSize;
 
-  const cost = regHrs * (lab.costPerHour || 0) + otHrs * (lab.costPerHour || 0) * otCostMult;
-  const charge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
+  const cost = regHrs * (slot.costPerHour || 0) + otHrs * (slot.costPerHour || 0) * otCostMult;
+  const charge = regHrs * (slot.chargePerHour || 0) + otHrs * (slot.chargePerHour || 0) * otChargeMult;
 
   if (daysNeeded > 1) breakdown.push({ label: 'Job spans ' + daysNeeded + ' workdays (' + perPersonPerDay.toFixed(1) + ' hrs/person/day)', minutes: 0 });
   if (otHrs > 0) breakdown.push({ label: 'OVERTIME — ' + otHrs.toFixed(1) + ' hrs × ' + otCostMult + 'x cost / ' + otChargeMult + 'x charge', minutes: otHrs * 60 });
@@ -8634,13 +8698,13 @@ function computeFenceSample(spec) {
 
   let totalCost = matCost + lab.cost;
   let totalCharge = matSell + lab.charge;
-  // Honor the profit-target floor if enabled for this fence type. Keeps the
-  // sample card in lock-step with what the live tool will actually quote.
+  // Profit-target floor — pull hoursPerDay + targetProfit from the
+  // active fence type's slot since those are now per-type.
   const labCfgEarly = ensureLab2();
   const sampleSlot = labCfgEarly.byType[sampleType] || labCfgEarly.byType.chainlink;
   let enforcedByFloor = false;
   if (sampleSlot.enforceProfitTarget) {
-    const hpd = labCfgEarly.hoursPerDay || 8;
+    const hpd = sampleSlot.hoursPerDay || 8;
     const dayFrac = hpd > 0 ? ((lab.perPersonPerDay || 0) / hpd) * (lab.daysNeeded || 1) : 0;
     const tgtProfit = dayFrac * (sampleSlot.targetProfitPerDay || 0);
     const floorCharge = totalCost + tgtProfit;
@@ -8652,10 +8716,8 @@ function computeFenceSample(spec) {
   const profit = totalCharge - totalCost;
   const profitPct = totalCost > 0 ? (profit / totalCharge) * 100 : 0;
 
-  // Per-job target profit — scales by fraction of a workday consumed.
-  // For multi-day jobs, days count toward the target (2 days = 2× daily target).
-  const labCfg = ensureLab2();
-  const hoursPerDay = labCfg.hoursPerDay || 8;
+  // Per-job target profit — uses THIS type's hoursPerDay + targetProfit
+  const hoursPerDay = sampleSlot.hoursPerDay || 8;
   const targetProfitPerDay = sampleSlot.targetProfitPerDay || 0;
   // Use per-person hours per day × number of days to compute fraction.
   // lab.daysNeeded is full days; perPersonPerDay is hours/person/day.
@@ -8681,17 +8743,20 @@ function renderSamplePriceCard(title, spec) {
   const r = computeFenceSample(spec);
   const money = n => '$' + (n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-  // Labour breakdown — run computeLabour again to get the detailed pieces
+  // Labour breakdown — run computeLabour again to get the detailed pieces.
+  // Pull travel/load-up from the active type's slot since those are now per-type.
   const lineCount = spec.lines != null ? spec.lines : 1;
   const totalPosts = (r.endPosts || 0) + (r.cornerPosts || 0) + (r.linePosts || 0);
   const hookups = (r.endPosts || 0) + (r.cornerPosts || 0);
-  const labDetail = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates: r.gates, lines: lineCount });
+  const sampleTypeForCard = spec.fenceType || 'chainlink';
+  const labDetail = computeLabour({ lengthFt: spec.lengthFt, totalPosts, hookups, gates: r.gates, lines: lineCount }, sampleTypeForCard);
   const workHrs = (labDetail.workMinutes || 0) / 60;
   const breakHrs = (labDetail.breakMinutes || 0) / 60;
   const lab = ensureLab2();
-  const crew = (lab.tasks && lab.tasks.setupDiscussion && lab.tasks.setupDiscussion.employees) || 2;
-  const travelHrs = ((lab.travelMinOneWay || 0) * 2 * crew) / 60;
-  const loadHrs = ((lab.loadUpMin || 0) * crew) / 60;
+  const sampleSlot = lab.byType[sampleTypeForCard] || lab.byType.chainlink;
+  const crew = (sampleSlot && sampleSlot.tasks && sampleSlot.tasks.setupDiscussion && sampleSlot.tasks.setupDiscussion.employees) || 2;
+  const travelHrs = ((sampleSlot && sampleSlot.travelMinOneWay || 0) * 2 * crew) / 60;
+  const loadHrs = ((sampleSlot && sampleSlot.loadUpMin || 0) * crew) / 60;
 
   // Derived metrics
   const matMarkup = r.matSell - r.matCost;
