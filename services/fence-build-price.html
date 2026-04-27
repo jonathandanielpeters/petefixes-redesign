@@ -6602,6 +6602,10 @@
                         (best.hardware || []).forEach(function(hw) {
                             materialCost += priceOf(pickColor(hw.galv, hw.black, color)) * (hw.qty || 0);
                         });
+                        // Optional wheel — only billed when admin enabled it on the recipe gate
+                        if (best.wheelEnabled) {
+                            materialCost += priceOf(pickColor(best.wheelGalv, best.wheelBlack, color));
+                        }
                     });
                 }
             }

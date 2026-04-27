@@ -5158,7 +5158,10 @@ function blankCl3Connection() {
 }
 function blankCl3Gate() {
   return { id: cl3NewId('gate'), label: '', widthFt: 3.5, heightInches: 48,
-    gateGalv: '', gateBlack: '', hardware: [] };
+    gateGalv: '', gateBlack: '', hardware: [],
+    // Wheel / caster — optional for any gate, useful on heavy commercial widths.
+    // wheelEnabled false hides the pickers + skips wheel cost in pricing.
+    wheelEnabled: false, wheelGalv: '', wheelBlack: '' };
 }
 function blankCl3GateHardware(kind) {
   return { id: cl3NewId('hw'), label: '', galv: '', black: '', qty: 1, kind: kind || '' };
@@ -6288,11 +6291,19 @@ function renderCl3Gates(recipe) {
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\')">×</button></td>' +
         '</tr>';
     });
-    // Per-gate total: frame + sum(hardware × qty)
+    // Per-gate total: frame + sum(hardware × qty) + (wheel if enabled)
     const hwTotG = (g.hardware || []).reduce((s, h) => s + (cl3PriceFor(h.galv) || 0) * (h.qty || 0), 0);
     const hwTotB = (g.hardware || []).reduce((s, h) => s + (cl3PriceFor(h.black) || 0) * (h.qty || 0), 0);
-    const gTotG = (cl3PriceFor(g.gateGalv) || 0) + hwTotG;
-    const gTotB = (cl3PriceFor(g.gateBlack) || 0) + hwTotB;
+    const wheelG = g.wheelEnabled ? (cl3PriceFor(g.wheelGalv) || 0) : 0;
+    const wheelB = g.wheelEnabled ? (cl3PriceFor(g.wheelBlack) || 0) : 0;
+    const gTotG = (cl3PriceFor(g.gateGalv) || 0) + hwTotG + wheelG;
+    const gTotB = (cl3PriceFor(g.gateBlack) || 0) + hwTotB + wheelB;
+    // Suggested widths to clone — common gate sizes that don't already exist on this recipe
+    const usedWidthsCur = new Set((recipe.gates || []).map(x => x.widthFt));
+    const cloneWidthSuggestions = [3.5, 4, 5, 6, 8, 10, 12, 14, 16].filter(w => !usedWidthsCur.has(w));
+    const cloneButtons = cloneWidthSuggestions.length === 0
+      ? '<span style="font-size:11px;color:var(--gray-400);align-self:center">All common widths already added</span>'
+      : cloneWidthSuggestions.map(w => '<button class="btn btn-sm" onclick="cloneCl3GateAsWidth(\'' + g.id + '\',' + w + ')" title="Duplicate this gate at ' + w + '\'W with the same hardware + wheel option">+ ' + w + "' clone</button>").join('');
     blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:12px;margin-top:10px">' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
       '<input type="text" value="' + clEscAttr(g.label) + '" placeholder="Gate label (e.g. 3.5\'W single)" oninput="updCl3Gate(\'' + g.id + '\',\'label\',this.value)" style="flex:1;min-width:160px;padding:5px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--gray-200);border-radius:6px">' +
@@ -6300,13 +6311,26 @@ function renderCl3Gates(recipe) {
       '<label style="font-size:11px;color:var(--gray-500);display:flex;align-items:center;gap:4px">Height (in)<input type="number" step="6" min="0" value="' + (g.heightInches || 0) + '" oninput="updCl3Gate(\'' + g.id + '\',\'heightInches\',+this.value)" style="width:60px;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></label>' +
       '<button class="btn btn-sm" onclick="removeCl3Gate(\'' + g.id + '\')">Delete gate</button>' +
       '</div>' +
-      '<div style="margin-bottom:10px;padding:6px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px" title="Total cost per single gate: frame/leaf + Σ(hardware × qty)">' +
-      '<span style="color:var(--gray-600);font-weight:600">Total per gate (frame + all hardware):</span>' +
+      '<div style="margin-bottom:10px;padding:6px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px" title="Total cost per single gate: frame/leaf + Σ(hardware × qty) + wheel (if enabled)">' +
+      '<span style="color:var(--gray-600);font-weight:600">Total per gate (frame + hardware' + (g.wheelEnabled ? ' + wheel' : '') + '):</span>' +
       '<span style="font-weight:700;color:#3c8a1d">G: ' + cl3FmtPrice(gTotG || null) + '  ·  <span style="color:#444">B: ' + cl3FmtPrice(gTotB || null) + '</span></span>' +
       '</div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
       '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',?)", 'Galv gate frame/leaf — ' + (g.label || '(unlabeled)')) + '</div>' +
       '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',?)", 'Black gate frame/leaf — ' + (g.label || '(unlabeled)')) + '</div>' +
+      '</div>' +
+      // ── Wheel option (optional, off by default) ──
+      '<div style="margin-top:10px;padding:8px 10px;background:var(--gray-50);border:1px dashed var(--gray-200);border-radius:4px">' +
+      '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray-600)">' +
+      '<input type="checkbox" ' + (g.wheelEnabled ? 'checked' : '') + ' onchange="updCl3Gate(\'' + g.id + '\',\'wheelEnabled\',this.checked)" style="width:14px;height:14px;cursor:pointer">' +
+      'Add wheel / caster <span style="font-weight:400;color:var(--gray-400)">— optional, useful on heavy commercial gates ≥ 6ft wide</span>' +
+      '</label>' +
+      (g.wheelEnabled
+        ? '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">' +
+          '<div style="flex:1;min-width:240px"><div style="font-size:10px;color:var(--gray-500);margin-bottom:3px">Galv wheel</div>' + cl3PickerHtml(g.wheelGalv, /Wheel Assembly|Cantilever Roller/, 'galvanized', "updCl3Gate('" + g.id + "','wheelGalv',?)", 'Galv wheel for ' + (g.label || '(unlabeled gate)')) + '</div>' +
+          '<div style="flex:1;min-width:240px"><div style="font-size:10px;color:var(--gray-500);margin-bottom:3px">Black wheel</div>' + cl3PickerHtml(g.wheelBlack, /Wheel Assembly|Cantilever Roller/, 'black', "updCl3Gate('" + g.id + "','wheelBlack',?)", 'Black wheel for ' + (g.label || '(unlabeled gate)')) + '</div>' +
+          '</div>'
+        : '') +
       '</div>' +
       '<div style="margin-top:10px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:4px;font-weight:600">Hardware list (hinges, latches, drop bolts, etc.)</div>' +
       '<div style="overflow:auto"><table style="width:100%;min-width:780px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
@@ -6316,14 +6340,71 @@ function renderCl3Gates(recipe) {
         '<button class="btn btn-sm" onclick="addCl3GateHw(\'' + g.id + '\')">+ Add hardware row</button>' +
         '<button class="btn btn-sm" onclick="openCl3HwMultiPicker(\'' + g.id + '\', this)" title="Pick multiple master pricelist items at once">+ Add multiple from pricelist…</button>' +
       '</div></div>' +
+      // ── Clone-as-width row at the bottom ──
+      '<div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--gray-200)">' +
+      '<div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Seed more sizes from this gate</div>' +
+      '<div style="font-size:11px;color:var(--gray-500);margin-bottom:6px">One click duplicates this gate (same hardware, wheel, height) at a new width — finds the matching gate frame SKU automatically.</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + cloneButtons + '</div>' +
+      '</div>' +
       '</div>';
   });
   return '<div class="card">' +
     '<div class="card-title">Gates <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— per gate size, with hardware list</span></div>' +
-    '<div class="card-desc">Define every gate option for this fence height: width × height, the gate frame/leaf, and the hardware (hinges, latches, drop bolts, springs, footbolts…) that come with it.</div>' +
+    '<div class="card-desc">Define every gate option for this fence height. Set up one fully (frame, hardware, wheel) and use the <em>+ N\' clone</em> shortcuts at the bottom of each gate to seed every other width with the same configuration.</div>' +
     blocks +
-    '<button class="btn btn-sm" style="margin-top:10px" onclick="addCl3Gate()">+ Add gate</button>' +
+    '<button class="btn btn-sm" style="margin-top:10px" onclick="addCl3Gate()">+ Add blank gate</button>' +
     '</div>';
+}
+
+// Clone a gate as a new width — same height, hardware list, wheel config.
+// Auto-picks the matching gate-frame SKU at the new W×H if one exists.
+function cloneCl3GateAsWidth(srcGateId, newWidthFt) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const src = r.gates.find(x => x.id === srcGateId);
+  if (!src) return;
+  if (r.gates.some(x => x.widthFt === newWidthFt && x.heightInches === src.heightInches)) {
+    toast(newWidthFt + "' × " + src.heightInches + '"H gate already exists', 'info');
+    return;
+  }
+  // Deep copy hardware (each row gets a fresh id)
+  const newHw = (src.hardware || []).map(h => Object.assign({}, h, { id: cl3NewId('hw') }));
+  const heightInches = src.heightInches;
+  // Try to match the existing materialName + a frame/leaf SKU for the new W×H
+  const heightFt = heightInches / 12;
+  const tier = ensureCl3()._uiTier;
+  const m = ensureClMaster();
+  function findFrame(color) {
+    // Prefer same material kind as the source's gate code, fall back to tier defaults
+    const srcCode = color === 'black' ? src.gateBlack : src.gateGalv;
+    const srcItem = m.items.find(it => it.itemCode === srcCode);
+    const matName = srcItem ? resolveClItemAssignment(srcItem).materialName
+      : (tier === 'commercial' ? 'Industrial Single Swing Gate' : 'Residential Single Gate');
+    const candidates = m.items.filter(it => {
+      if (it.showToCustomer === false) return false;
+      const a = resolveClItemAssignment(it);
+      if (a.color !== color) return false;
+      if (a.materialName !== matName) return false;
+      const v = a.variantSize || '';
+      return v.includes(heightInches + '"H') && v.startsWith(newWidthFt + "'W");
+    });
+    candidates.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+    return candidates[0] ? candidates[0].itemCode : '';
+  }
+  const newGate = blankCl3Gate();
+  newGate.label = newWidthFt + "'W × " + heightInches + '"H';
+  newGate.widthFt = newWidthFt;
+  newGate.heightInches = heightInches;
+  newGate.gateGalv = findFrame('galvanized');
+  newGate.gateBlack = findFrame('black');
+  newGate.hardware = newHw;
+  newGate.wheelEnabled = !!src.wheelEnabled;
+  newGate.wheelGalv = src.wheelGalv || '';
+  newGate.wheelBlack = src.wheelBlack || '';
+  r.gates.push(newGate);
+  markDirty();
+  renderClRecipesV3();
+  const matched = newGate.gateGalv || newGate.gateBlack;
+  toast('Cloned ' + (src.label || 'gate') + ' as ' + newGate.label + (matched ? '' : ' — frame SKU not found, set manually'), matched ? 'success' : 'info');
 }
 function addCl3Gate() {
   const r = _cl3CurRecipe(); if (!r) return;
@@ -6862,6 +6943,14 @@ function renderCl3Summary() {
       addLine('  ↳ ' + (hw.label || 'hardware') + ' (' + hw.qty + '/gate)', hwQty, hwU, hwCode, hwSub, !hwCode && hwQty > 0);
       total += hwSub;
     });
+    // Optional wheel — included only when admin enabled it on this gate
+    if (gate.wheelEnabled) {
+      const wCode = pickColor(gate.wheelGalv, gate.wheelBlack);
+      const wU = priceOf(wCode);
+      const wSub = wU * sample.gates;
+      addLine('  ↳ wheel (1/gate)', sample.gates, wU, wCode, wSub, !wCode);
+      total += wSub;
+    }
   }
 
   return '<div class="card">' +
