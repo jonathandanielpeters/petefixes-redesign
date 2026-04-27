@@ -6238,11 +6238,43 @@
         // Render the Material Options pills for the active style. Only categories with
         // 2+ options appear — single-option lists silently apply the only entry. Color
         // currently selected (galv vs black) is used for the price preview on each pill.
+        // Repopulate the height pills from the V3 recipe set for the active tier,
+        // unioned with the static defaults (4/5/6/8). So admin-added heights like
+        // 7ft / 12ft show up on the customer side automatically.
+        function renderCl3HeightPills(style) {
+            const container = document.getElementById('heightPills');
+            if (!container) return;
+            const cl3 = PCFG.chainlinkRecipesV3;
+            const tier = state.mode === 'commercial' ? 'commercial' : 'residential';
+            const recipeHeights = (cl3 && cl3[tier]) ? Object.keys(cl3[tier]) : [];
+            // Parse the ft suffix and dedupe
+            const parsed = recipeHeights
+                .map(k => parseFloat(k))
+                .filter(n => !isNaN(n) && n > 0);
+            const merged = Array.from(new Set([4, 5, 6, 8].concat(parsed))).sort((a, b) => a - b);
+            const current = parseFloat(style.height) || 6;
+            container.innerHTML = merged.map(h => {
+                // Use integer when possible (matches existing behaviour); otherwise show .5/.25 etc.
+                const label = (h % 1 === 0 ? h.toString() : h.toString()) + ' ft';
+                const active = (h === current) ? ' active' : '';
+                return '<div class="config-pill' + active + '" data-height="' + h + '">' + label + '</div>';
+            }).join('');
+        }
+
         function renderCl3MaterialOptions(style) {
             const host = document.getElementById('chainlinkMaterialOptions');
             if (!host) return;
-            if (style.fenceType !== 'chainlink') { host.style.display = 'none'; host.innerHTML = ''; return; }
+            // Refresh the height pills first — covers admin-added heights (7ft, etc.)
+            try { renderCl3HeightPills(style); } catch (e) { console.warn('[cl3 heights]', e); }
+            // Hide the legacy 2-3/8 / 1-7/8 corner-post picker when V3 has any
+            // main post options for this height — they're now controlled via
+            // the V3 Material Options panel instead (deduplicates the picker).
+            const legacy = document.getElementById('chainlinkPostSizeSection');
             const recipe = _cl3RecipeFor(style);
+            const hasV3Main = !!(recipe && recipe.mainAssembly && recipe.mainAssembly.postOptions && recipe.mainAssembly.postOptions.length > 0);
+            if (legacy) legacy.style.display = (style.fenceType === 'chainlink' && !hasV3Main) ? '' : 'none';
+
+            if (style.fenceType !== 'chainlink') { host.style.display = 'none'; host.innerHTML = ''; return; }
             if (!recipe) { host.style.display = 'none'; host.innerHTML = ''; return; }
             const color = style.chainlinkColor || 'galvanized';
             const pickColor = (g, b) => color === 'black' ? b : g;
@@ -6262,24 +6294,11 @@
                 const list = sec.list || [];
                 if (list.length < 2) return;  // single/zero options never displayed
                 const current = _cl3PickFor(style, sec.key, recipe);
+                // Customer-facing pills hide per-item pricing — admins don't want
+                // wholesale costs visible. The full quote total updates live below.
                 const pills = list.map(o => {
-                    const code = pickColor(o.galv, o.black);
-                    const u = _cl3PriceFor(code);
-                    let priceLabel = '';
-                    if (u > 0) {
-                        if (sec.isPerStick) {
-                            const stickFt = (o.stickLengthFt > 0 ? o.stickLengthFt : 21);
-                            priceLabel = ' <small style="opacity:0.75">$' + (u / stickFt).toFixed(2) + '/ft</small>';
-                        } else if (sec.withCap) {
-                            const capCode = pickColor(o.capGalv, o.capBlack);
-                            const total = u + _cl3PriceFor(capCode);
-                            priceLabel = ' <small style="opacity:0.75">$' + total.toFixed(2) + '</small>';
-                        } else {
-                            priceLabel = ' <small style="opacity:0.75">$' + u.toFixed(2) + '</small>';
-                        }
-                    }
                     const active = current && current.id === o.id;
-                    return '<div class="config-pill' + (active ? ' active' : '') + '" data-cl3pick="' + sec.key + '" data-cl3id="' + o.id + '" onclick="setCl3Pick(\'' + sec.key + '\',\'' + o.id + '\')">' + (o.label || '(unlabeled)') + priceLabel + '</div>';
+                    return '<div class="config-pill' + (active ? ' active' : '') + '" data-cl3pick="' + sec.key + '" data-cl3id="' + o.id + '" onclick="setCl3Pick(\'' + sec.key + '\',\'' + o.id + '\')">' + (o.label || '(unlabeled)') + '</div>';
                 }).join('');
                 html += '<label class="config-label" style="margin-top:8px">' + sec.label + '</label>' +
                     '<div class="config-pills">' + pills + '</div>';
@@ -6467,20 +6486,26 @@
                     const tiesPerFt = (recipe.perFoot.tiesPerFoot || 0);
                     materialCost += priceOf(code) * tiesPerFt * groupFt;
                 }
-                // Connections paired to the chosen main post (per the recipe map)
-                if (mainOpt && mainCount > 0) {
+                // Connections paired to the chosen main post (per the recipe map).
+                // Multiplied by HOOKUP count, not main post count: a corner post
+                // attaches 2 fence runs, so it gets 2 sets of tension bands /
+                // brace bands / nuts & bolts / etc. Total hookups for this group
+                // = number of line endpoints = group.lines.length × 2.
+                const hookupCount = group.lines.length * 2;
+                if (mainOpt && hookupCount > 0) {
                     const conn = (recipe.connections && recipe.connections.perMainPost) ? recipe.connections.perMainPost[mainOpt.id] : null;
                     if (conn) {
                         const items = [
                             ['tensionBar', conn.tensionBarQty],
                             ['railEnd', conn.railEndQty],
                             ['braceBand', conn.braceBandQty],
-                            ['tensionBand', conn.tensionBandQty]
+                            ['tensionBand', conn.tensionBandQty],
+                            ['nutsBolts', conn.nutsBoltsQty]
                         ];
                         items.forEach(function(arr) {
-                            const prefix = arr[0], perPost = arr[1];
+                            const prefix = arr[0], perHookup = arr[1];
                             const code = pickColor(conn[prefix + 'Galv'], conn[prefix + 'Black'], color);
-                            materialCost += priceOf(code) * (perPost || 0) * mainCount;
+                            materialCost += priceOf(code) * (perHookup || 0) * hookupCount;
                         });
                     }
                 }
