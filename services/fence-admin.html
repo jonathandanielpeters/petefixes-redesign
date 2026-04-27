@@ -6222,19 +6222,26 @@ function renderCl3Connections(recipe) {
   mains.forEach(mp => {
     const c = recipe.connections.perMainPost[mp.id] || (recipe.connections.perMainPost[mp.id] = blankCl3Connection());
     const lbl = mp.label || '(unlabeled main post)';
-    // Per-hookup total — sum of (each hookup item × qty + its NB pair × NB qty).
-    // End post = 1 hookup, corner post = 2 hookups, T-post = 3, 4-way = 4.
-    function rowCost(prefix, isBlack) {
-      const itemCol = isBlack ? 'Black' : 'Galv';
-      const itemUnit = cl3PriceFor(c[prefix + itemCol]) || 0;
-      const itemQty  = c[prefix + 'Qty'] || 0;
-      const nbUnit   = cl3PriceFor(c[prefix + 'Nb' + itemCol]) || 0;
-      const nbQty    = c[prefix + 'NbQty'] || 0;
-      return itemUnit * itemQty + nbUnit * nbQty;
+    // Per-hookup totals — split hookup items from their paired Nuts & Bolts so
+    // the banner can show each subtotal. End post = 1 hookup, corner = 2,
+    // T-post = 3, 4-way = 4.
+    function hookupItemCost(prefix, isBlack) {
+      const col = isBlack ? 'Black' : 'Galv';
+      return (cl3PriceFor(c[prefix + col]) || 0) * (c[prefix + 'Qty'] || 0);
     }
+    function nbCost(prefix, isBlack) {
+      const col = isBlack ? 'Black' : 'Galv';
+      return (cl3PriceFor(c[prefix + 'Nb' + col]) || 0) * (c[prefix + 'NbQty'] || 0);
+    }
+    function nbQtySum(prefix) { return (c[prefix + 'NbQty'] || 0); }
     const items = ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'];
-    const totG = items.reduce((s, p) => s + rowCost(p, false), 0);
-    const totB = items.reduce((s, p) => s + rowCost(p, true), 0);
+    const hookupG = items.reduce((s, p) => s + hookupItemCost(p, false), 0);
+    const hookupB = items.reduce((s, p) => s + hookupItemCost(p, true), 0);
+    const nbG = items.reduce((s, p) => s + nbCost(p, false), 0);
+    const nbB = items.reduce((s, p) => s + nbCost(p, true), 0);
+    const nbQtyTotal = items.reduce((s, p) => s + nbQtySum(p), 0);
+    const totG = hookupG + nbG;
+    const totB = hookupB + nbB;
     blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:10px 12px;margin-top:10px">' +
       '<div style="font-weight:700;font-size:12px;color:var(--gray-600);margin-bottom:8px">When customer picks main post: <span style="color:var(--accent)">' + clEscHtml(lbl) + '</span></div>' +
       '<div style="overflow:auto"><table style="width:100%;min-width:1300px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
@@ -6261,9 +6268,21 @@ function renderCl3Connections(recipe) {
       _cl3ConnRow(mp.id, 'braceBand', 'Brace Band', 'Brace Band', c) +
       _cl3ConnRow(mp.id, 'tensionBand', 'Tension Band', 'Tension Band', c) +
       '</tbody></table></div>' +
-      '<div style="margin-top:8px;padding:6px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px">' +
-      '<span style="color:var(--gray-600);font-weight:600">Total hookup cost per hookup (incl. paired N&amp;B):</span>' +
-      '<span style="font-weight:700;color:#3c8a1d">G: ' + cl3FmtPrice(totG || null) + '  ·  <span style="color:#444">B: ' + cl3FmtPrice(totB || null) + '</span></span>' +
+      // Per-hookup cost banner — broken into Hookup items / Nuts & Bolts / Total
+      // so admin can see how much fastener cost is in each hookup at a glance.
+      '<div style="margin-top:8px;padding:8px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;font-size:11px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;color:var(--gray-600)">' +
+          '<span>Hookup hardware (bar + ends + bands):</span>' +
+          '<span style="font-family:monospace">G: ' + cl3FmtPrice(hookupG || null) + ' &nbsp;·&nbsp; <span style="color:#444">B: ' + cl3FmtPrice(hookupB || null) + '</span></span>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;color:var(--gray-600);margin-top:2px">' +
+          '<span>Nuts &amp; bolts (' + nbQtyTotal + '/hookup across all rows):</span>' +
+          '<span style="font-family:monospace">G: ' + cl3FmtPrice(nbG || null) + ' &nbsp;·&nbsp; <span style="color:#444">B: ' + cl3FmtPrice(nbB || null) + '</span></span>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding-top:4px;border-top:1px solid #c9e3b5">' +
+          '<span style="font-weight:700;color:#3c8a1d">Total per hookup:</span>' +
+          '<span style="font-weight:700;color:#3c8a1d">G: ' + cl3FmtPrice(totG || null) + ' &nbsp;·&nbsp; <span style="color:#444">B: ' + cl3FmtPrice(totB || null) + '</span></span>' +
+        '</div>' +
       '</div></div>';
   });
   return '<div class="card">' +
