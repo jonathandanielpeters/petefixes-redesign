@@ -333,11 +333,24 @@ a{color:var(--accent);text-decoration:none}
 <!-- ────── 2. Pricing ────── -->
 <div class="section" id="sec-pricing">
   <h2 class="section-title">Pricing</h2>
-  <p class="section-subtitle">Price = (Material Cost &times; Markup) + Labour + Add-Ons. Toggle each charge category on or off.</p>
+  <p class="section-subtitle">Material markup tiers run per fence type — pick a tab below to set chain link / wood / ornamental / welded wire / vinyl markups independently. Labour rates moved to the <em>Labour Calculator</em> section. Add-ons stay here.</p>
+
+  <!-- ═══ Per-Fence-Type Material Markup ═══ -->
+  <div class="card" style="border-left:3px solid var(--accent);background:var(--accent-light)">
+    <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Editing material markup for:</div>
+    <div class="pill-tabs" id="markup-type-tabs">
+      <div class="pill-tab active" data-mktype="chainlink"  onclick="setMkActiveType('chainlink')">Chain Link</div>
+      <div class="pill-tab"        data-mktype="wood"       onclick="setMkActiveType('wood')">Wood</div>
+      <div class="pill-tab"        data-mktype="ornamental" onclick="setMkActiveType('ornamental')">Ornamental</div>
+      <div class="pill-tab"        data-mktype="weldedWire" onclick="setMkActiveType('weldedWire')">Welded Wire</div>
+      <div class="pill-tab"        data-mktype="vinyl"      onclick="setMkActiveType('vinyl')">Vinyl</div>
+    </div>
+    <div style="font-size:10px;color:var(--gray-500);margin-top:6px">The tier table + basis below belong to the active fence type. Each line in a customer's quote is marked up by ITS fence type's tiers.</div>
+  </div>
 
   <div class="card">
-    <div class="card-title">Markup Basis</div>
-    <div class="card-desc">Determines which value the tier thresholds are compared against.</div>
+    <div class="card-title">Markup Basis <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— this fence type</span></div>
+    <div class="card-desc">Which value the tier thresholds compare against for THIS fence type. Material = tier matched to the line's material cost. Footage = tier matched to the line's linear footage.</div>
     <div class="toggle-row">
       <span class="toggle-label" id="basisLabelMaterial" style="font-weight:600;color:var(--black)">Tier by Material Cost</span>
       <label class="toggle-switch">
@@ -350,17 +363,8 @@ a{color:var(--accent);text-decoration:none}
   </div>
 
   <div class="card">
-    <div class="card-title">Minimum Job Charge</div>
-    <div class="card-desc">Quotes below this amount will be raised to meet the minimum.</div>
-    <div class="field" style="max-width:200px;margin-bottom:0">
-      <label>Minimum ($)</label>
-      <input type="number" id="cfg-minimumJobCharge" min="0" step="10" oninput="markDirty()">
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Markup Tiers</div>
-    <div class="card-desc">Jobs are matched to the first tier where the value is under the max threshold.</div>
+    <div class="card-title">Markup Tiers <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— this fence type</span></div>
+    <div class="card-desc">Tiers for THIS fence type. Each line in a customer quote is matched to the first tier where the line's value is under the max threshold; that tier's multiplier is applied to the line's material cost. Wood and chain link can have completely different tier sets.</div>
     <div class="table-scroll">
       <table class="data-table" id="markupTiersTable">
         <thead><tr><th>Max Value ($)</th><th>Multiplier</th><th>Margin %</th><th>Label</th><th style="width:50px"></th></tr></thead>
@@ -372,20 +376,29 @@ a{color:var(--accent);text-decoration:none}
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-title">Labour Charges</div>
-    <div class="card-desc">Toggle categories on/off. Enabled charges are added on top of the marked-up material cost. Set rates to $0 for unused sub-types.</div>
-    <div id="labourChargesGrid"></div>
-  </div>
+  <!-- Labour Charges card removed — labour rates / OT / travel / tasks /
+       profit target / minimum job charge are all per-fence-type now and
+       live in the dedicated Labour Calculator section (sidebar). -->
 
   <div class="card">
     <div class="card-title">Add-On Charges</div>
-    <div class="card-desc">Extra charges applied when specific customer options are selected (e.g. top cap, cedar, privacy inserts).</div>
+    <div class="card-desc">Extra charges applied when specific customer options are selected (e.g. top cap, cedar, privacy inserts). These stay shared across all fence types — most add-ons only apply to one type anyway.</div>
     <div id="addOnChargesGrid"></div>
   </div>
 
+  <!-- Global minimum job charge — kept as a fallback. Per-type minimums
+       configured in the Labour Calculator win when set higher than this. -->
+  <div class="card">
+    <div class="card-title">Global Minimum Job Charge <span style="font-size:10px;font-weight:600;color:var(--gray-400);margin-left:8px">— fallback</span></div>
+    <div class="card-desc">Floor for ANY quote. Set per-fence-type minimums in the <em>Labour Calculator</em> section — those win when set higher than this fallback.</div>
+    <div class="field" style="max-width:200px;margin-bottom:0">
+      <label>Global minimum ($)</label>
+      <input type="number" id="cfg-minimumJobCharge" min="0" step="10" oninput="markDirty()">
+    </div>
+  </div>
+
   <div class="pricing-preview" id="preview-markup">
-    <div><div class="preview-label">Sample: $400 Material Cost, 50ft wood fence, 7 posts</div><div class="preview-detail">(Material &times; Markup) + Labour + Add-Ons</div></div>
+    <div><div class="preview-label">Sample: $400 Material Cost · this fence type's markup</div><div class="preview-detail">(Material × Markup) + Labour (per type) + Add-Ons</div></div>
     <div class="preview-value" id="preview-markup-val">--</div>
   </div>
 </div>
@@ -1871,9 +1884,12 @@ function populateAll() {
   renderPostMaterials();
   renderGateMaterials();
 
-  // Markup
+  // Markup — per-fence-type. Migration runs inside ensureMarkupByType.
   setVal('cfg-minimumJobCharge', config.minimumJobCharge);
-  document.getElementById('cfg-markupBasis').checked = (config.markupBasis === 'footage');
+  ensureMarkupByType();
+  // Load active type's basis into the toggle
+  const basisEl = document.getElementById('cfg-markupBasis');
+  if (basisEl) basisEl.checked = (mkBasisFor() === 'footage');
   updateBasisLabels();
   renderMarkupTiers();
 
@@ -2149,10 +2165,15 @@ function collectAll() {
   // Build & Price theme (mode is mutated directly by setThemeMode)
   if (typeof collectThemeUI === 'function') collectThemeUI();
 
-  // Markup
+  // Markup — per fence type
   config.minimumJobCharge = getNum('cfg-minimumJobCharge');
-  config.markupBasis = document.getElementById('cfg-markupBasis').checked ? 'footage' : 'material';
-  collectMarkupTiers();
+  ensureMarkupByType();
+  // Save active type's basis from the toggle
+  const basisInput = document.getElementById('cfg-markupBasis');
+  if (basisInput) {
+    config.markupBasisByType[window._mkActiveType] = basisInput.checked ? 'footage' : 'material';
+  }
+  collectMarkupTiers();  // saves active type's tier table
 
   // Chainlink
   const clc = config.materialPricing.chainlink;
@@ -3621,10 +3642,103 @@ function removeGateMaterial(idx) {
 }
 
 // ═══════ MARKUP TIERS ═══════
+// ═══════ PER-FENCE-TYPE MARKUP TIERS + BASIS ═══════
+// Each fence type has its own markup tier table and basis (footage vs
+// material). Migrated from single global config.markupTiers + markupBasis.
+const PRICING_TYPES = [
+  { key: 'chainlink',  label: 'Chain Link' },
+  { key: 'wood',       label: 'Wood' },
+  { key: 'ornamental', label: 'Ornamental' },
+  { key: 'weldedWire', label: 'Welded Wire' },
+  { key: 'vinyl',      label: 'Vinyl' }
+];
+window._mkActiveType = window._mkActiveType || 'chainlink';
+
+// Migrate global markupTiers + markupBasis into per-type structure on first
+// load. Idempotent — runs every renderMarkupTiers but only mutates if the
+// per-type structure is missing.
+function ensureMarkupByType() {
+  if (!config.markupTiersByType) config.markupTiersByType = {};
+  if (!config.markupBasisByType) config.markupBasisByType = {};
+  const legacyTiers = config.markupTiers;
+  const legacyBasis = config.markupBasis;
+  const hasLegacy = Array.isArray(legacyTiers) && legacyTiers.length > 0;
+  // Seed chain-link from legacy if present, otherwise from a sane default
+  if (hasLegacy && !config.markupTiersByType.chainlink) {
+    config.markupTiersByType.chainlink = legacyTiers.map(t => ({ ...t }));
+  }
+  // Default tier set used when seeding empty types
+  const defaultTiers = [
+    { maxValue: 1000, multiplier: 1.6, label: 'Small job' },
+    { maxValue: 5000, multiplier: 1.4, label: 'Mid-size' },
+    { maxValue: null, multiplier: 1.3, label: 'Large job' }
+  ];
+  PRICING_TYPES.forEach(t => {
+    if (!Array.isArray(config.markupTiersByType[t.key]) || config.markupTiersByType[t.key].length === 0) {
+      // Clone chain-link's tiers if available, else use defaults
+      const src = config.markupTiersByType.chainlink || defaultTiers;
+      config.markupTiersByType[t.key] = src.map(tier => ({ ...tier }));
+    }
+    if (!config.markupBasisByType[t.key]) {
+      config.markupBasisByType[t.key] = legacyBasis || 'material';
+    }
+  });
+  // Drop legacy top-level fields once migrated
+  if (hasLegacy) delete config.markupTiers;
+  if (legacyBasis) delete config.markupBasis;
+  return config;
+}
+
+// Return the active type's tier array (mutable reference into config).
+function mkTiersFor(type) {
+  ensureMarkupByType();
+  const t = type || window._mkActiveType || 'chainlink';
+  return config.markupTiersByType[t] || config.markupTiersByType.chainlink;
+}
+function mkBasisFor(type) {
+  ensureMarkupByType();
+  const t = type || window._mkActiveType || 'chainlink';
+  return config.markupBasisByType[t] || 'material';
+}
+
+// Switch the active fence-type tab in the Pricing section. Persists the
+// OLD type's tier inputs into its slot first, then loads NEW type's data.
+function setMkActiveType(type) {
+  if (!type || type === window._mkActiveType) return;
+  // 1) Save OLD tier inputs into old slot
+  collectMarkupTiers();  // writes to config.markupTiersByType[oldActiveType]
+  // 2) Save OLD basis (read radio/checkbox)
+  const basisEl = document.getElementById('cfg-markupBasis');
+  if (basisEl) {
+    config.markupBasisByType[window._mkActiveType] = basisEl.checked ? 'footage' : 'material';
+  }
+  // 3) Switch
+  window._mkActiveType = type;
+  document.querySelectorAll('#markup-type-tabs .pill-tab').forEach(p => {
+    p.classList.toggle('active', p.dataset.mktype === type);
+  });
+  // 4) Load NEW tier table + basis
+  renderMarkupTiers();
+  if (basisEl) {
+    basisEl.checked = (config.markupBasisByType[type] === 'footage');
+    updateBasisLabels();
+  }
+}
+
 function renderMarkupTiers() {
   const body = document.getElementById('markupTiersBody');
+  if (!body) return;
+  ensureMarkupByType();
+  // Render the type-tab strip if it doesn't exist or is stale
+  const tabHost = document.getElementById('markup-type-tabs');
+  if (tabHost && tabHost.children.length === 0) {
+    tabHost.innerHTML = PRICING_TYPES.map(t =>
+      '<div class="pill-tab' + (t.key === window._mkActiveType ? ' active' : '') + '" data-mktype="' + t.key + '" onclick="setMkActiveType(\'' + t.key + '\')">' + t.label + '</div>'
+    ).join('');
+  }
+  const tiers = mkTiersFor();
   body.innerHTML = '';
-  config.markupTiers.forEach((tier, i) => {
+  tiers.forEach((tier, i) => {
     const margin = tier.multiplier > 0 ? ((1 - (1/tier.multiplier)) * 100).toFixed(1) : '0.0';
     const isLast = tier.maxValue === null;
     body.innerHTML += `<tr>
@@ -3644,46 +3758,50 @@ function updateTierMargin(idx) {
 }
 
 function collectMarkupTiers() {
-  config.markupTiers = [];
+  ensureMarkupByType();
+  const tiers = [];
   const rows = document.querySelectorAll('#markupTiersBody tr');
-  rows.forEach((row, i) => {
+  rows.forEach((row) => {
     const maxEl = row.querySelector('.tier-max');
     const multEl = row.querySelector('.tier-mult');
     const labelEl = row.querySelector('.tier-label');
+    if (!maxEl || !multEl) return;
     const maxVal = maxEl.value === '' ? null : parseFloat(maxEl.value);
-    config.markupTiers.push({
+    tiers.push({
       maxValue: maxVal,
       multiplier: parseFloat(multEl.value) || 1,
-      label: labelEl.value
+      label: labelEl ? labelEl.value : ''
     });
   });
+  config.markupTiersByType[window._mkActiveType] = tiers;
 }
 
 function addMarkupTier() {
   collectMarkupTiers();
-  const lastTier = config.markupTiers[config.markupTiers.length - 1];
+  const tiers = mkTiersFor();
+  const lastTier = tiers[tiers.length - 1];
   const newMax = lastTier && lastTier.maxValue !== null ? lastTier.maxValue + 500 : 10000;
-  // Insert before the null-max tier if it exists
-  const nullIdx = config.markupTiers.findIndex(t => t.maxValue === null);
+  const nullIdx = tiers.findIndex(t => t.maxValue === null);
   const newTier = { maxValue: newMax, multiplier: 1.5, label: "New tier" };
-  if (nullIdx >= 0) {
-    config.markupTiers.splice(nullIdx, 0, newTier);
-  } else {
-    config.markupTiers.push(newTier);
-  }
+  if (nullIdx >= 0) tiers.splice(nullIdx, 0, newTier);
+  else tiers.push(newTier);
   renderMarkupTiers();
   markDirty();
 }
 
 function removeMarkupTier(idx) {
   collectMarkupTiers();
-  if (config.markupTiers.length <= 1) { toast('Must have at least one tier', 'error'); return; }
-  config.markupTiers.splice(idx, 1);
+  const tiers = mkTiersFor();
+  if (tiers.length <= 1) { toast('Must have at least one tier', 'error'); return; }
+  tiers.splice(idx, 1);
   renderMarkupTiers();
   markDirty();
 }
 
 function toggleMarkupBasis() {
+  ensureMarkupByType();
+  const isFootage = document.getElementById('cfg-markupBasis').checked;
+  config.markupBasisByType[window._mkActiveType] = isFootage ? 'footage' : 'material';
   updateBasisLabels();
   markDirty();
 }
@@ -4019,6 +4137,7 @@ function renderLabourCharges() {
   if (!config.labour) config.labour = {};
   const lab = config.labour;
   const grid = document.getElementById('labourChargesGrid');
+  if (!grid) return;  // legacy card removed from Pricing section; per-type labour now lives in Labour Calculator
   let html = '';
 
   LABOUR_CATEGORIES.forEach(cat => {

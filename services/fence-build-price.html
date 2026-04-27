@@ -2496,9 +2496,24 @@
             return selectedLen || defaultLen || null;
         }
 
-        // Tapered markup from config tiers
-        function getMarkup(value) {
-            const tiers = PCFG.markupTiers || DEFAULT_PRICING_CONFIG.markupTiers;
+        // Per-fence-type markup tiers. Each fence type owns its own tier
+        // table + basis; admin sets them independently in the Pricing
+        // section. Lookup falls back to legacy global tiers if byType
+        // hasn't been populated for this type yet.
+        function getMarkupTiersFor(fenceType) {
+            const byType = PCFG.markupTiersByType || {};
+            const tiers = byType[fenceType] || byType.chainlink;
+            if (Array.isArray(tiers) && tiers.length > 0) return tiers;
+            return PCFG.markupTiers || DEFAULT_PRICING_CONFIG.markupTiers;
+        }
+        function getMarkupBasisFor(fenceType) {
+            const byType = PCFG.markupBasisByType || {};
+            return byType[fenceType] || byType.chainlink || PCFG.markupBasis || 'material';
+        }
+        // Tapered markup. `fenceType` selects which tier table to use;
+        // defaults to chain link for legacy / single-type call sites.
+        function getMarkup(value, fenceType) {
+            const tiers = getMarkupTiersFor(fenceType || 'chainlink');
             for (const t of tiers) {
                 if (t.maxValue === null || t.maxValue === undefined || value <= t.maxValue) return t.multiplier;
             }
@@ -3436,11 +3451,14 @@
 
             const items = Object.values(order).sort((a, b) => b.total - a.total);
             const totalMaterial = items.reduce((s, i) => s + i.total, 0);
-            // Respect markupBasis setting — use footage or material cost, matching calculatePrice()
+            // Per-type markup — generateMaterialOrder is the legacy material
+            // shopping list view. Walk projectMaterial to get the proper
+            // per-type effective markup for this project.
             const stats = getTotalStats();
-            const basis = PCFG.markupBasis === 'footage' ? stats.totalLengthFt : totalMaterial;
-            const markup = getMarkup(basis);
-            let displayedPrice = Math.round(totalMaterial * markup);
+            const pm = (typeof calculateProjectMaterial === 'function') ? calculateProjectMaterial() : null;
+            const effectiveMarkup = (pm && pm.totalMatCost > 0) ? (pm.totalMatSell / pm.totalMatCost) : getMarkup(totalMaterial, 'chainlink');
+            const markup = effectiveMarkup;
+            let displayedPrice = pm ? Math.round(pm.totalMatSell) : Math.round(totalMaterial * markup);
             if (totalMaterial > 0) displayedPrice = Math.max(displayedPrice, getMinJobCharge());
             const profit = displayedPrice - Math.round(totalMaterial);
             const margin = displayedPrice > 0 ? Math.round((profit / displayedPrice) * 100) : 0;
@@ -6106,13 +6124,18 @@
             return (pf.gateFlat && pf.gateFlat[gateType]) || 350;
         }
 
-        // ── Unified pricing: Price = (Material × Markup) + Labour + Add-Ons ──
+        // ── Unified pricing: Price = (Material × per-type Markup) + Labour + Add-Ons ──
         function calculatePriceForLine(line, lengthFt, postCount, markup) {
             const material = calculateLineMaterial(line, lengthFt, postCount);
             if (!markup) {
-                var totalMat = calculateTotalMaterial();
-                var b = PCFG.markupBasis === 'footage' ? getTotalStats().totalLengthFt : totalMat;
-                markup = getMarkup(b);
+                // Pull the line's fence type and use its own basis + tiers
+                const style = getStyleForLine(line);
+                const ft = (style && style.fenceType) || 'chainlink';
+                const basis = getMarkupBasisFor(ft);
+                // Use this line's value rather than project total: each line
+                // is now priced with its own type's markup independently.
+                const basisVal = basis === 'footage' ? lengthFt : material;
+                markup = getMarkup(basisVal, ft);
             }
             const labour = calculateLabourForLine(line, lengthFt, postCount);
             const addons = calculateAddOnsForLine(line, lengthFt);
@@ -6275,20 +6298,75 @@
             return Math.max(globalMin, perTypeMax);
         }
 
+        // Compute project-level material cost broken out by fence type.
+        // Used by per-line markup allocation: each line gets marked up by
+        // ITS type's tier, where the tier is selected by THAT type's basis
+        // (footage or material) using the PROJECT's per-type total. Returns
+        // { byType: { wood: { matCost, lengthFt }, chainlink: {...} },
+        //   totalMatCost, totalMatSell, types: [...] }
+        function calculateProjectMaterial() {
+            const counts = {};
+            const ensure = t => {
+                if (!counts[t]) counts[t] = { matCost: 0, lengthFt: 0, lines: [], gates: [] };
+                return counts[t];
+            };
+            state.lines.forEach(line => {
+                if (!isLineEnabled(line)) return;
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                const len = getLineLengthFt(p1, p2);
+                const posts = calculatePostsForLine(p1, p2, line);
+                const mat = calculateLineMaterial(line, len, posts.length);
+                const style = getStyleForLine(line);
+                const fenceType = (style && style.fenceType) || 'chainlink';
+                const c = ensure(fenceType);
+                c.matCost += mat;
+                c.lengthFt += len;
+                c.lines.push({ line, len, posts, mat });
+            });
+            state.gates.forEach(g => {
+                if (!isGateEnabled(g)) return;
+                const p1 = state.points.find(p => p.id === g.p1);
+                const p2 = state.points.find(p => p.id === g.p2);
+                if (!p1 || !p2) return;
+                const w = getLineLengthFt(p1, p2);
+                const gs = getStyleForLine(g);
+                const fenceType = (gs && gs.fenceType) || 'chainlink';
+                const mat = calculateGateMaterial(g.gateType, w, gs);
+                const c = ensure(fenceType);
+                c.matCost += mat;
+                c.gates.push({ gate: g, w, mat });
+            });
+            // Resolve per-type markup using each type's own basis
+            const types = Object.keys(counts);
+            let totalMatCost = 0, totalMatSell = 0;
+            const byType = {};
+            types.forEach(t => {
+                const c = counts[t];
+                const basis = getMarkupBasisFor(t);
+                const basisVal = basis === 'footage' ? c.lengthFt : c.matCost;
+                const mk = getMarkup(basisVal, t);
+                const matSell = c.matCost * mk;
+                byType[t] = { ...c, basis, basisVal, markup: mk, matSell };
+                totalMatCost += c.matCost;
+                totalMatSell += matSell;
+            });
+            return { byType, totalMatCost, totalMatSell, types };
+        }
+
         function calculatePrice() {
             const stats = getTotalStats();
-            const totalMaterial = calculateTotalMaterial();
-            const basis = PCFG.markupBasis === 'footage' ? stats.totalLengthFt : totalMaterial;
-            const markup = getMarkup(basis);
+            const projectMaterial = calculateProjectMaterial();
+            const totalMaterial = projectMaterial.totalMatCost;
+            const totalMatSell = projectMaterial.totalMatSell;
+            // Project-level effective markup (for backwards-compat display);
+            // real per-line markup is in projectMaterial.byType.
+            const effectiveMarkup = totalMaterial > 0 ? totalMatSell / totalMaterial : 1;
 
             let labourTotal = 0;
             let addonTotal = 0;
 
-            // Try task-based per-fence-type labour FIRST. If it's set up for at
-            // least one type used in this project, we use that — every fence
-            // type now gets the same level of labour detail (Chain Link / Wood
-            // / Ornamental / Welded Wire / Vinyl). Falls back to legacy flat
-            // per-line labour only when labour2.byType isn't populated yet.
             const projectLabour = calculateProjectLabour();
             const useTaskLabour = !!(projectLabour && projectLabour.types.length > 0);
 
@@ -6311,7 +6389,7 @@
                 });
             }
 
-            // Add-ons stay per-line (privacy install, post upgrade, etc.)
+            // Add-ons stay per-line
             state.lines.forEach(line => {
                 if (!isLineEnabled(line)) return;
                 const p1 = state.points.find(p => p.id === line.p1);
@@ -6321,7 +6399,7 @@
                 addonTotal += calculateAddOnsForLine(line, len);
             });
 
-            let total = Math.round(totalMaterial * markup + labourTotal + addonTotal);
+            let total = Math.round(totalMatSell + labourTotal + addonTotal);
 
             // Per-fence-type profit-target floor (max across enforced types)
             if (useTaskLabour) {
@@ -6339,10 +6417,12 @@
                 ...stats,
                 total,
                 materialCost: Math.round(totalMaterial),
-                markup,
+                materialSell: Math.round(totalMatSell),
+                markup: effectiveMarkup,
                 labourTotal: Math.round(labourTotal),
                 addonTotal: Math.round(addonTotal),
-                projectLabour: useTaskLabour ? projectLabour : null  // exposed for email per-type breakdown
+                projectLabour: useTaskLabour ? projectLabour : null,
+                projectMaterial  // exposed for email per-type markup breakdown
             };
         }
 
@@ -7015,8 +7095,11 @@
                 }
             }
 
-            // Apply length-based markup to material cost (existing tier table)
-            const markup = getMarkup(totalFt) || 1.0;
+            // Per-type markup from chain-link's tier table. Basis (footage
+            // vs material cost) also comes from chain-link's per-type setting.
+            const clBasis = getMarkupBasisFor('chainlink');
+            const basisVal = clBasis === 'footage' ? totalFt : materialCost;
+            const markup = getMarkup(basisVal, 'chainlink') || 1.0;
             const matSell = materialCost * markup;
 
             // Labour — V3 only handles all-chainlink projects, so we always
@@ -8738,9 +8821,14 @@
         function buildEstimateBreakdown() {
             const rows = [];
             const pnMap = getPostNumberMap();
-            const totalMat = calculateTotalMaterial();
-            const basis = PCFG.markupBasis === 'footage' ? getTotalStats().totalLengthFt : totalMat;
-            const mk = getMarkup(basis);
+            // Per-line markup: each line is marked up by ITS fence type's
+            // tiers. Helper computes a line's markup given its style + length.
+            function lineMarkup(style, lengthFt, mat) {
+                const ft = (style && style.fenceType) || 'chainlink';
+                const basis = getMarkupBasisFor(ft);
+                const basisVal = basis === 'footage' ? lengthFt : mat;
+                return getMarkup(basisVal, ft);
+            }
 
             // First pass \u2014 gather per-line data with LEGACY labour numbers.
             // We'll use these as ratios to allocate the project-level
@@ -8817,13 +8905,17 @@
 
             lineDrafts.forEach(d => {
                 const labour = allocLine(d);
-                const cost = Math.round(d.mat * mk + labour + d.addons);
-                rows.push({ type: 'line', label: d.label, desc: d.desc, length: d.len.toFixed(1) + ' ft', posts: d.posts.length, cost: cost, material: Math.round(d.mat), labour: Math.round(labour), addons: Math.round(d.addons) });
+                // Use this line's own type's markup (not project-level mk)
+                const lineMk = lineMarkup(d.s, d.len, d.mat);
+                const cost = Math.round(d.mat * lineMk + labour + d.addons);
+                rows.push({ type: 'line', label: d.label, desc: d.desc, length: d.len.toFixed(1) + ' ft', posts: d.posts.length, cost: cost, material: Math.round(d.mat), markup: lineMk, labour: Math.round(labour), addons: Math.round(d.addons) });
             });
             gateDrafts.forEach(d => {
                 const labour = allocGate(d);
-                const cost = Math.round(d.mat * mk + labour);
-                rows.push({ type: 'gate', label: d.label, desc: (GATE_TYPE_LABELS[d.gate.gateType] || 'Gate') + ' ' + d.w.toFixed(1) + "'", cost: cost, material: Math.round(d.mat), labour: Math.round(labour), addons: 0 });
+                // Gate inherits its parent style's fence type for markup
+                const gateMk = lineMarkup(d.gs, d.w, d.mat);
+                const cost = Math.round(d.mat * gateMk + labour);
+                rows.push({ type: 'gate', label: d.label, desc: (GATE_TYPE_LABELS[d.gate.gateType] || 'Gate') + ' ' + d.w.toFixed(1) + "'", cost: cost, material: Math.round(d.mat), markup: gateMk, labour: Math.round(labour), addons: 0 });
             });
 
             return {
@@ -8835,7 +8927,8 @@
                 markup: price.markup,
                 labourTotal: price.labourTotal || 0,
                 addonTotal: price.addonTotal || 0,
-                projectLabour: price.projectLabour || null
+                projectLabour: price.projectLabour || null,
+                projectMaterial: price.projectMaterial || null
             };
         }
 
@@ -8964,19 +9057,45 @@
             // Markup tier description — use the correct basis value from matOrder (respects markupBasis setting)
             var basisVal = matOrder.basisValue || matOrder.totalMaterial;
             var basisLabel = matOrder.markupBasis === 'footage' ? 'footage' : 'material';
-            var tierDesc = mk + '\u00d7';
-            var tiers = PCFG.markupTiers || DEFAULT_PRICING_CONFIG.markupTiers;
-            for (var ti = 0; ti < tiers.length; ti++) {
-                if (tiers[ti].maxValue === null || tiers[ti].maxValue === undefined || basisVal <= tiers[ti].maxValue) {
-                    tierDesc = (tiers[ti].label || '') + ' \u2192 ' + tiers[ti].multiplier + '\u00d7';
-                    break;
-                }
-            }
+            // Markup is per fence type now \u2014 show effective project markup
+            // here, then break out per type below.
+            var pmEarly = breakdown.projectMaterial;
+            var effectiveMk = (pmEarly && pmEarly.totalMatCost > 0) ? (pmEarly.totalMatSell / pmEarly.totalMatCost) : (mk || 1);
+            var markedUpCost = pmEarly ? Math.round(pmEarly.totalMatSell) : Math.round(matOrder.totalMaterial * effectiveMk);
+            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Effective Markup Rate <span style="font-size:11px;color:#aaa">(weighted across fence types)</span></td><td style="padding:6px 8px;text-align:right;font-weight:600">' + effectiveMk.toFixed(2) + '\u00d7</td></tr>';
+            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Materials sell ($' + matOrder.totalMaterial.toLocaleString() + ' \u00d7 ' + effectiveMk.toFixed(2) + ')</td><td style="padding:6px 8px;text-align:right;font-weight:600">= $' + markedUpCost.toLocaleString() + '</td></tr>';
 
-            var markedUpCost = Math.round(matOrder.totalMaterial * mk);
-            var basisNote = matOrder.markupBasis === 'footage' ? ' <span style="font-size:11px;color:#aaa">(based on ' + basisVal + ' ft)</span>' : '';
-            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Markup Rate <span style="font-size:11px;color:#aaa">(' + tierDesc + ')</span>' + basisNote + '</td><td style="padding:6px 8px;text-align:right;font-weight:600">' + mk + '\u00d7</td></tr>';
-            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">$' + matOrder.totalMaterial.toLocaleString() + ' \u00d7 ' + mk + '</td><td style="padding:6px 8px;text-align:right;font-weight:600">= $' + markedUpCost.toLocaleString() + '</td></tr>';
+            // Per-fence-type material markup breakdown
+            try {
+                if (pmEarly && pmEarly.types && pmEarly.types.length > 0) {
+                    html += '</table>';
+                    html += '<h4 style="margin:10px 0 6px;font-size:12px;color:#555">\ud83d\udcb0 Per-Fence-Type Material Markup (applied)</h4>';
+                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:11px">';
+                    html += '<tr style="background:#444;color:#fff">';
+                    html += '<th style="text-align:left;padding:5px 8px">Fence Type</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Mat Cost</th>';
+                    html += '<th style="text-align:center;padding:5px 8px">Basis</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Markup</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Sell</th>';
+                    html += '<th style="text-align:right;padding:5px 8px">Margin</th>';
+                    html += '</tr>';
+                    var typeLabelsM = { chainlink: 'Chain Link', wood: 'Wood', ornamental: 'Ornamental', weldedWire: 'Welded Wire', vinyl: 'Vinyl' };
+                    pmEarly.types.forEach(function(tk) {
+                        var tm = pmEarly.byType[tk] || {};
+                        var typeMargin = (tm.matSell || 0) - (tm.matCost || 0);
+                        html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                        html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(typeLabelsM[tk] || tk) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">$' + Math.round(tm.matCost || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:center;color:#888">' + (tm.basis === 'footage' ? 'footage (' + Math.round(tm.lengthFt || 0) + ' ft)' : 'material') + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + (tm.markup || 1).toFixed(2) + '\u00d7</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + Math.round(tm.matSell || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#27ae60;font-weight:600">+$' + Math.round(typeMargin).toLocaleString() + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">';
+                }
+            } catch (e) { console.warn('[per-type markup email]', e); }
 
             // Labour breakdown
             var labTotal = breakdown.labourTotal || 0;
