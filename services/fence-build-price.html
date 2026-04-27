@@ -8237,12 +8237,17 @@
         // --- Config serialization / deserialization ---
         function serializeConfig() {
             const data = {
-                styles: state.fenceStyles.map(s => ({...s})),
+                styles: state.fenceStyles.map(s => ({...s})),  // spread includes cl3Picks
                 points: state.points.map(p => ({ id: p.id, x: p.x, y: p.y })),
-                lines: state.lines.map(l => ({ p1: l.p1, p2: l.p2, styleIdx: l.styleIdx || 0 })),
-                gates: state.gates.map(g => ({ p1: g.p1, p2: g.p2, gateType: g.gateType, styleIdx: g.styleIdx || 0, hingePost: g.hingePost, swingDir: g.swingDir, slideDir: g.slideDir })),
+                lines: state.lines.map(l => ({ p1: l.p1, p2: l.p2, styleIdx: l.styleIdx || 0, mode: l.mode })),
+                gates: state.gates.map(g => ({ p1: g.p1, p2: g.p2, gateType: g.gateType, styleIdx: g.styleIdx || 0, hingePost: g.hingePost, swingDir: g.swingDir, slideDir: g.slideDir, mode: g.mode })),
                 houses: state.houses.map(h => ({ id: h.id, x: h.x, y: h.y, width: h.width, height: h.height, label: h.label || 'House' })),
-                activeStyleIdx: state.activeStyleIdx
+                activeStyleIdx: state.activeStyleIdx,
+                // Top-level mode flag — drives commercial dark theme, banner,
+                // post-spacing default, and the V3 engine's tier routing. Without
+                // this, restored estimates loaded as residential even when the
+                // customer originally saved them in commercial mode (price mismatch).
+                mode: state.mode || 'residential'
             };
             return btoa(encodeURIComponent(JSON.stringify(data)));
         }
@@ -8261,9 +8266,22 @@
                 state.selectedLineIdx = -1; state.selectedGateIdx = -1; state.selectedHouseIdx = -1;
                 state.pendingPoint = null;
                 syncPanelToActiveStyle(); renderStyleSwitcher();
-                updateHint(); drawCanvas(); updatePricing(); renderSidebar();
+                updateHint(); drawCanvas();
                 if (typeof applyBranding === 'function') applyBranding();
-                    if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
+                if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
+                // Restore commercial mode AFTER applyBranding — applyBranding calls
+                // applyTheme which sets data-theme from PCFG and would clobber the
+                // commercial dark-theme override otherwise. Pass skipMutations so
+                // we don't bump per-style postSpacing / fenceType (already saved).
+                const wantsCommercial = (data.mode === 'commercial');
+                if (typeof setCommercialMode === 'function') {
+                    setCommercialMode(wantsCommercial, { skipMutations: true });
+                } else {
+                    state.mode = wantsCommercial ? 'commercial' : 'residential';
+                }
+                // updatePricing + renderSidebar last so they pick up the restored mode
+                updatePricing();
+                renderSidebar();
                 // Zoom + pan to fit the whole drawing in view.
                 // Wait one frame so the canvas is sized correctly before fitting.
                 requestAnimationFrame(() => {
@@ -8271,7 +8289,7 @@
                     fitDrawingToView();
                 });
                 return true;
-            } catch (e) { return false; }
+            } catch (e) { console.warn('[deserialize]', e); return false; }
         }
 
         // Load config from URL on page load
@@ -9134,9 +9152,13 @@
         //   - 10 ft post-spacing pill becomes available
         //   - if the active fence type is hidden in commercial mode (ornamental,
         //     welded wire, vinyl) we auto-snap to chainlink so the form stays valid
-        function setCommercialMode(on) {
+        function setCommercialMode(on, opts) {
+            opts = opts || {};
             state.mode = on ? 'commercial' : 'residential';
             document.body.classList.toggle('commercial-mode', on);
+            // Sync the header checkbox so a URL-restore reflects the right state visually
+            const cmTogSync = document.getElementById('commercialModeToggle');
+            if (cmTogSync) cmTogSync.checked = on;
             const html = document.documentElement;
             if (on) {
                 html.dataset.themeBeforeCommercial = html.getAttribute('data-theme') || 'light';
@@ -9152,9 +9174,12 @@
                     ? 'Commercial <span class="badge">Heavy-duty</span>'
                     : 'Residential';
             }
-            // If the active style points at a fence type that isn't in commercial,
-            // bump it to chainlink so the option pills don't reference a hidden tile.
-            if (on) {
+            // Style/line mutations are destructive (force-bumping postSpacing,
+            // killing saved fence types). Skip them on URL-restore where the
+            // saved styles are already in their final commercial state.
+            if (opts.skipMutations) {
+                // No-op — caller already has the right styles + line/gate tags.
+            } else if (on) {
                 state.fenceStyles.forEach(style => {
                     if (['ornamental', 'weldedWire', 'vinyl'].includes(style.fenceType)) {
                         style.fenceType = 'chainlink';
