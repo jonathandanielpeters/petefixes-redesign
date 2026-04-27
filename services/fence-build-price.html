@@ -6336,16 +6336,18 @@
             if (!host) return;
             // Refresh the height pills first — covers admin-added heights (7ft, etc.)
             try { renderCl3HeightPills(style); } catch (e) { console.warn('[cl3 heights]', e); }
-            // Hide the legacy 2-3/8 / 1-7/8 corner-post picker when V3 has any
-            // main post options for this height — they're now controlled via
-            // the V3 Material Options panel instead (deduplicates the picker).
-            const legacy = document.getElementById('chainlinkPostSizeSection');
+            // Visibility is class-based: .config-section[data-show-for] is hidden
+            // by CSS unless the .visible class is present. Setting style.display
+            // alone is overridden by the !default rule, so toggle the class.
             const recipe = _cl3RecipeFor(style);
             const hasV3Main = !!(recipe && recipe.mainAssembly && recipe.mainAssembly.postOptions && recipe.mainAssembly.postOptions.length > 0);
-            if (legacy) legacy.style.display = (style.fenceType === 'chainlink' && !hasV3Main) ? '' : 'none';
+            // Legacy 2-3/8 / 1-7/8 picker — hide whenever V3 owns the main post pick.
+            const legacy = document.getElementById('chainlinkPostSizeSection');
+            if (legacy) legacy.classList.toggle('visible', style.fenceType === 'chainlink' && !hasV3Main);
 
-            if (style.fenceType !== 'chainlink') { host.style.display = 'none'; host.innerHTML = ''; return; }
-            if (!recipe) { host.style.display = 'none'; host.innerHTML = ''; return; }
+            const hideHost = () => { host.classList.remove('visible'); host.style.display = ''; host.innerHTML = ''; };
+            if (style.fenceType !== 'chainlink') { hideHost(); return; }
+            if (!recipe) { hideHost(); return; }
             const color = style.chainlinkColor || 'galvanized';
             const pickColor = (g, b) => color === 'black' ? b : g;
             const picks = style.cl3Picks || (style.cl3Picks = {});
@@ -6374,7 +6376,9 @@
                     '<div class="config-pills">' + pills + '</div>';
             });
 
-            if (!html) { host.style.display = 'none'; host.innerHTML = ''; return; }
+            if (!html) { hideHost(); return; }
+            // Show — class-driven (matches the .config-section[data-show-for].visible CSS rule)
+            host.classList.add('visible');
             host.style.display = '';
             host.innerHTML = html;
         }
@@ -6651,7 +6655,23 @@
                 labourCharge = regHrs * (lab.chargePerHour || 0) + otHrs * (lab.chargePerHour || 0) * otChargeMult;
             }
 
-            let total = Math.round(matSell + labourCharge);
+            // Add-on charges (extras like privacy install, post upgrades, custom
+            // fees) — V3 was missing these so the live total was lower than the
+            // saved estimate. Same calc the legacy buildEstimateBreakdown uses.
+            let addonTotal = 0;
+            try {
+                clLines.forEach(function(line) {
+                    const p1 = state.points.find(p => p.id === line.p1);
+                    const p2 = state.points.find(p => p.id === line.p2);
+                    if (!p1 || !p2) return;
+                    const len = getLineLengthFt(p1, p2);
+                    if (typeof calculateAddOnsForLine === 'function') {
+                        addonTotal += calculateAddOnsForLine(line, len) || 0;
+                    }
+                });
+            } catch (e) { console.warn('[v3 addons]', e); }
+
+            let total = Math.round(matSell + labourCharge + addonTotal);
             // Profit-target floor (mirrors V2)
             if (lab && lab.enforceProfitTarget && lab.tasks) {
                 const hoursPerDay = lab.hoursPerDay || 8;
@@ -6687,6 +6707,7 @@
                 materialSell: Math.round(matSell),
                 labourCost: Math.round(labourCost),
                 labourCharge: Math.round(labourCharge),
+                addonTotal: Math.round(addonTotal),
                 endCount: totalEndPosts,
                 cornerCount: totalCornerPosts,
                 linePostCount: totalLinePosts,
