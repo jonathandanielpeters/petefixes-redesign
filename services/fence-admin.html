@@ -5095,7 +5095,13 @@ function blankCl3Recipe() {
   return {
     mainAssembly: { postOptions: [] },
     linePostAssembly: { postOptions: [] },
-    perFoot: { fabricOptions: [], bottomWireOptions: [], topRailOptions: [], tiesPerFoot: 1 },
+    perFoot: {
+      fabricOptions: [],
+      bottomWireOptions: [],
+      topRailOptions: [],
+      fenceTieOptions: [],   // tie wires applied per foot (separate from line-post fence ties)
+      tiesPerFoot: 1
+    },
     connections: { perMainPost: {} },
     gates: []
   };
@@ -5110,7 +5116,11 @@ function blankCl3LinePostOpt() {
     isDefault: false };
 }
 function blankCl3PerFootOpt(kind) {
-  return { id: cl3NewId(kind), label: '', galv: '', black: '', isDefault: false };
+  // For top-rail options, stickLengthFt drives the per-foot price math:
+  //   per_ft_price = item.priceAfterTax / stickLengthFt
+  // Set 0 (or null) to fall back to parsing the variantSize. Customer pricing
+  // does priceOf(code) / stickLengthFt × totalFt rather than ceil-to-stick math.
+  return { id: cl3NewId(kind), label: '', galv: '', black: '', isDefault: false, stickLengthFt: 0 };
 }
 function blankCl3Connection() {
   return {
@@ -5819,43 +5829,71 @@ function setCl3LineDefault(id) { const r = _cl3CurRecipe(); if (!r) return; r.li
 function updCl3Line(id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.linePostAssembly.postOptions.find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label' && field !== 'fenceTiesPerPost') renderClRecipesV3(); }
 
 // ═══════ Card 3 of 5: PER-FOOT ASSEMBLY ═══════
+// Each section (fabric / bottom wire / top rail / fence tie) uses the same
+// option-list pattern. Top rail gets an extra stickLengthFt column so the
+// admin can specify whether it's a 10' or 21' stick — pricing then becomes
+// (item.priceAfterTax / stickLengthFt) × totalFt for proportional per-ft
+// cost, instead of the old whole-stick ceil math.
 function renderCl3PerFoot(recipe) {
-  function renderOptList(kind, opts, materialPattern, label) {
+  function renderOptList(kind, opts, materialPattern, label, descr) {
+    const isTopRail = kind === 'topRail';
     let rows = '';
     opts.forEach(o => {
+      // Compute the effective stick length for top rail: admin override > parsed variantSize > 21
+      let stickHelper = '';
+      if (isTopRail) {
+        const code = o.galv || o.black;
+        const m = ensureClMaster();
+        const it = m.items.find(x => x.itemCode === code);
+        const parsed = it ? parseFloat((resolveClItemAssignment(it).variantSize || '').replace(/'/g, '')) : NaN;
+        const effective = (o.stickLengthFt > 0) ? o.stickLengthFt : (parsed || 21);
+        const perFtG = cl3PriceFor(o.galv) ? (cl3PriceFor(o.galv) / effective) : null;
+        const perFtB = cl3PriceFor(o.black) ? (cl3PriceFor(o.black) / effective) : null;
+        stickHelper =
+          '<td style="padding:6px 8px"><div style="display:flex;align-items:center;gap:4px">' +
+          '<input type="number" min="0" step="0.5" value="' + (o.stickLengthFt || '') + '" placeholder="' + (parsed || 21) + '" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'stickLengthFt\',+this.value || 0)" style="width:48px;text-align:right;padding:3px 4px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px" title="Stick length in feet (10\', 21\', etc.). Per-ft price = unit price ÷ this value. Leave blank to auto-detect from the SKU\'s variant size.">' +
+          '<span style="font-size:9px;color:var(--gray-400)">ft</span>' +
+          '</div></td>' +
+          '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap">' +
+          '<div>G: ' + cl3FmtPrice(perFtG) + '</div>' +
+          '<div>B: ' + cl3FmtPrice(perFtB) + '</div>' +
+          '</td>';
+      }
       rows += '<tr style="border-top:1px solid var(--gray-100)">' +
         '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-pf-' + kind + '" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3PfDefault(\'' + kind + '\',\'' + o.id + '\')"></td>' +
         '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 11ga 2&quot;KK" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
         '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, materialPattern, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',?)", 'Galv ' + kind + ' — ' + (o.label || '(unlabeled)')) + '</td>' +
         '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, materialPattern, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',?)", 'Black ' + kind + ' — ' + (o.label || '(unlabeled)')) + '</td>' +
-        '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap"><div>G: ' + cl3FmtPrice(cl3PriceFor(o.galv)) + '</div><div>B: ' + cl3FmtPrice(cl3PriceFor(o.black)) + '</div></td>' +
+        (isTopRail ? stickHelper : '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap"><div>G: ' + cl3FmtPrice(cl3PriceFor(o.galv)) + '</div><div>B: ' + cl3FmtPrice(cl3PriceFor(o.black)) + '</div></td>') +
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Pf(\'' + kind + '\',\'' + o.id + '\')">×</button></td>' +
         '</tr>';
     });
-    return '<div style="margin-top:14px"><h4 style="margin:0 0 6px;font-size:13px;color:var(--gray-600)">' + label + '</h4>' +
-      '<div style="overflow:auto"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
-      '<colgroup><col style="width:60px"><col style="width:160px"><col><col><col style="width:90px"><col style="width:40px"></colgroup>' +
-      '<thead><tr style="background:var(--gray-50);text-align:left">' +
-      '<th style="padding:6px 8px;text-align:center">Default</th>' +
-      '<th style="padding:6px 8px">Label</th>' +
-      '<th style="padding:6px 8px">Galv</th>' +
-      '<th style="padding:6px 8px">Black</th>' +
-      '<th style="padding:6px 8px;text-align:right">Per ft</th>' +
-      '<th></th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3Pf(\'' + kind + '\')">+ Add ' + label.toLowerCase().replace(/\b./, c => c) + ' option</button>' +
+    const colWidths = isTopRail
+      ? '<col style="width:60px"><col style="width:140px"><col><col><col style="width:60px"><col style="width:90px"><col style="width:40px">'
+      : '<col style="width:60px"><col style="width:160px"><col><col><col style="width:90px"><col style="width:40px">';
+    const headers = isTopRail
+      ? '<th style="padding:6px 8px;text-align:center">Default</th><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px" title="Stick length in feet (e.g. 10, 21). Pricing divides unit price by this to get per-ft cost.">Stick (ft)</th><th style="padding:6px 8px;text-align:right">Per ft</th><th></th>'
+      : '<th style="padding:6px 8px;text-align:center">Default</th><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Per ft</th><th></th>';
+    const minW = isTopRail ? '780px' : '700px';
+    return '<div style="margin-top:14px"><h4 style="margin:0 0 4px;font-size:13px;color:var(--gray-600)">' + label + '</h4>' +
+      (descr ? '<div style="font-size:11px;color:var(--gray-500);margin-bottom:6px;line-height:1.4">' + descr + '</div>' : '') +
+      '<div style="overflow:auto"><table style="width:100%;min-width:' + minW + ';border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+      '<colgroup>' + colWidths + '</colgroup>' +
+      '<thead><tr style="background:var(--gray-50);text-align:left">' + headers + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3Pf(\'' + kind + '\')">+ Add ' + label.toLowerCase().replace(/\(.*?\)/g, '').trim() + ' option</button>' +
       '</div>';
   }
   return '<div class="card">' +
     '<div class="card-title">Per-Foot Assembly <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— per linear foot of fence</span></div>' +
-    '<div class="card-desc">Materials that scale with fence length — fabric, optional bottom wire, optional top rail, plus tie-wires per ft.</div>' +
+    '<div class="card-desc">Materials that scale with fence length — fabric, bottom wire (optional), top rail (priced as stick ÷ length × total ft), and fence ties (qty per foot × total ft).</div>' +
     renderOptList('fabric', recipe.perFoot.fabricOptions, /^Chain Link Fabric/, 'Fabric') +
     renderOptList('bottomWire', recipe.perFoot.bottomWireOptions, 'Bottom Wire', 'Bottom Wire (optional)') +
-    renderOptList('topRail', recipe.perFoot.topRailOptions, /^Top Rail/, 'Top Rail (optional)') +
-    '<div style="margin-top:14px;display:flex;gap:8px;align-items:center">' +
+    renderOptList('topRail', recipe.perFoot.topRailOptions, /^Top Rail/, 'Top Rail (optional)', 'Stick length (10\' or 21\') divides the unit price for the per-ft cost. Leave blank to auto-detect from the SKU.') +
+    renderOptList('fenceTie', recipe.perFoot.fenceTieOptions || [], 'Fence Tie', 'Fence Tie (per foot)', 'Tie wire applied per foot of fence. Quantity = "Ties per foot" below × the picked tie\'s unit price.') +
+    '<div style="margin-top:14px;padding:10px 12px;background:var(--gray-50);border-radius:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
     '<label style="font-size:12px;color:var(--gray-600);font-weight:600">Ties per foot:</label>' +
     '<input type="number" min="0" step="0.25" value="' + (recipe.perFoot.tiesPerFoot || 0) + '" oninput="updCl3PfMeta(\'tiesPerFoot\',+this.value)" style="width:70px;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px">' +
-    '<span style="font-size:11px;color:var(--gray-400)">(uses the selected line-post fence tie code as the tie wire here too)</span>' +
+    '<span style="font-size:11px;color:var(--gray-500)">multiplied by the picked Fence Tie option above (per linear ft of fence)</span>' +
     '</div>' +
     '</div>';
 }
@@ -5863,6 +5901,8 @@ function addCl3Pf(kind) {
   const r = _cl3CurRecipe(); if (!r) return;
   const cl3 = ensureCl3();
   const heightFt = parseFloat(cl3._uiHeight) || 6;
+  // Lazy-init the new fenceTieOptions array on legacy recipes
+  if (kind === 'fenceTie' && !r.perFoot.fenceTieOptions) r.perFoot.fenceTieOptions = [];
   const list = r.perFoot[kind + 'Options'];
   const o = blankCl3PerFootOpt(kind);
 
@@ -5897,7 +5937,41 @@ function addCl3Pf(kind) {
       o.black = _cl3BlackCounterpart(candidates[0].itemCode);
       const a = resolveClItemAssignment(candidates[0]);
       o.label = 'Top rail ' + a.materialName.replace('Top Rail ', '') + ' ' + a.variantSize;
+      // Pre-fill the explicit stick length so the per-ft math works without
+      // re-parsing the variantSize at quote time. Admin can override.
+      o.stickLengthFt = parseFloat(a.variantSize) || 0;
     }
+  } else if (kind === 'fenceTie') {
+    // Cycle gauges (11ga / 9ga / etc.) for the per-ft tie wire pick.
+    // Per-foot ties are typically a different gauge from the line-post ties,
+    // so we don't dedupe against linePostAssembly — admin can choose freely.
+    const usedGauges = new Set();
+    const m = ensureClMaster();
+    list.forEach(opt => {
+      const it = m.items.find(x => x.itemCode === opt.galv || x.itemCode === opt.black);
+      if (!it) return;
+      const a = resolveClItemAssignment(it);
+      const gm = (a.variantSize || '').match(/(\d+(?:\.5)?)\s*ga/);
+      if (gm) usedGauges.add(gm[1]);
+    });
+    const order = ['11', '9', '11.5'];
+    for (const g of order) {
+      if (usedGauges.has(g)) continue;
+      const matches = m.items.filter(it => {
+        if (it.showToCustomer === false) return false;
+        const a = resolveClItemAssignment(it);
+        return a.materialName === 'Fence Tie' && (a.variantSize || '').includes(g + ' ga') && a.color === 'galvanized';
+      });
+      matches.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
+      if (matches[0]) {
+        o.galv = matches[0].itemCode;
+        o.black = _cl3BlackCounterpart(matches[0].itemCode);
+        o.label = g + 'ga tie wire';
+        break;
+      }
+    }
+    // Initialize the global tiesPerFoot the first time a fence tie is added
+    if (list.length === 0 && !(r.perFoot.tiesPerFoot > 0)) r.perFoot.tiesPerFoot = 1;
   } else if (kind === 'bottomWire') {
     // Pick cheapest /ft variant first; fall back to any
     const usedCodes = new Set(list.map(x => x.galv).filter(Boolean));
@@ -5930,7 +6004,27 @@ function addCl3Pf(kind) {
 }
 function removeCl3Pf(kind, id) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const wasDef = list.find(o => o.id === id)?.isDefault; r.perFoot[kind + 'Options'] = list.filter(o => o.id !== id); if (wasDef && r.perFoot[kind + 'Options'][0]) r.perFoot[kind + 'Options'][0].isDefault = true; markDirty(); renderClRecipesV3(); }
 function setCl3PfDefault(kind, id) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[kind + 'Options'].forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
-function updCl3Pf(kind, id, field, value) { const r = _cl3CurRecipe(); if (!r) return; const o = r.perFoot[kind + 'Options'].find(x => x.id === id); if (!o) return; o[field] = value; markDirty(); if (field !== 'label') renderClRecipesV3(); }
+function updCl3Pf(kind, id, field, value) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const o = r.perFoot[kind + 'Options'].find(x => x.id === id);
+  if (!o) return;
+  o[field] = value;
+  // When the admin swaps a top-rail SKU, auto-update stickLengthFt from the
+  // new variantSize so the per-ft price math keeps working without manual
+  // entry. Admin can still override later.
+  if (kind === 'topRail' && (field === 'galv' || field === 'black') && value) {
+    const m = ensureClMaster();
+    const it = m.items.find(x => x.itemCode === value);
+    if (it) {
+      const parsed = parseFloat((resolveClItemAssignment(it).variantSize || '').replace(/'/g, ''));
+      if (parsed > 0 && (!o.stickLengthFt || o.stickLengthFt === 0)) {
+        o.stickLengthFt = parsed;
+      }
+    }
+  }
+  markDirty();
+  if (field !== 'label') renderClRecipesV3();
+}
 function updCl3PfMeta(field, value) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[field] = value; markDirty(); }
 
 // ═══════ Card 4 of 5: CONNECTIONS (paired to each main post option) ═══════
@@ -6203,6 +6297,13 @@ function seedCl3Recipe(tierArg, heightArg, opts) {
     opt.galv = rail.galv;
     opt.black = rail.black;
     opt.isDefault = recipe.perFoot.topRailOptions.length === 0;
+    // Pre-fill explicit stick length from the picked SKU's variantSize so the
+    // per-ft price math (price ÷ stick × ft) works out of the box.
+    const railRef = items.find(it => it.itemCode === (rail.galv || rail.black));
+    if (railRef) {
+      const parsed = parseFloat((resolveClItemAssignment(railRef).variantSize || '').replace(/'/g, ''));
+      if (parsed > 0) opt.stickLengthFt = parsed;
+    }
     recipe.perFoot.topRailOptions.push(opt);
   }
 
@@ -6216,6 +6317,21 @@ function seedCl3Recipe(tierArg, heightArg, opts) {
     opt.isDefault = recipe.perFoot.bottomWireOptions.length === 0;
     recipe.perFoot.bottomWireOptions.push(opt);
   }
+
+  // ── Fence tie (per-foot) — cheapest 11ga galv with 9ga as upgrade row ──
+  if (!recipe.perFoot.fenceTieOptions) recipe.perFoot.fenceTieOptions = [];
+  const tiePref = ['11', '9'];
+  tiePref.forEach((g, idx) => {
+    const tiePair = cheapestPair((it, asn) => asn.materialName === 'Fence Tie' && (asn.variantSize || '').includes(g + ' ga'));
+    if (tiePair.galv || tiePair.black) {
+      const opt = blankCl3PerFootOpt('fenceTie');
+      opt.label = g + 'ga tie wire';
+      opt.galv = tiePair.galv;
+      opt.black = tiePair.black;
+      opt.isDefault = idx === 0;
+      recipe.perFoot.fenceTieOptions.push(opt);
+    }
+  });
 
   if (!recipe.perFoot.tiesPerFoot) recipe.perFoot.tiesPerFoot = 1;
 
@@ -6380,6 +6496,8 @@ function renderCl3Summary() {
   const fabOpt = recipe.perFoot.fabricOptions.find(o => o.isDefault) || recipe.perFoot.fabricOptions[0];
   const railOpt = recipe.perFoot.topRailOptions.find(o => o.isDefault) || recipe.perFoot.topRailOptions[0];
   const bwOpt = recipe.perFoot.bottomWireOptions.find(o => o.isDefault) || recipe.perFoot.bottomWireOptions[0];
+  const tieOpts = recipe.perFoot.fenceTieOptions || [];
+  const tieOpt = tieOpts.find(o => o.isDefault) || tieOpts[0];
   const conn = mainOpt ? recipe.connections.perMainPost[mainOpt.id] : null;
   const gate = recipe.gates[0];
 
@@ -6437,16 +6555,17 @@ function renderCl3Summary() {
     total += sub;
   }
   if (railOpt) {
-    // Top rail — sold per stick (10' or 21' typically). Approximate as per-foot pricing.
+    // Top rail — per-ft cost = unit price ÷ stick length × ft (proportional pricing).
+    // Admin override on stickLengthFt wins; falls back to parsing the SKU's variantSize.
     const code = pickColor(railOpt.galv, railOpt.black);
     const u = priceOf(code);
-    // Stick length: read from variant if possible
     const m = ensureClMaster();
     const it = m.items.find(i => i.itemCode === code);
-    const stickFt = it ? parseFloat((resolveClItemAssignment(it).variantSize || '').replace(/'/g, '')) || 21 : 21;
-    const stickCount = Math.ceil(sample.lengthFt / stickFt);
-    const sub = u * stickCount;
-    addLine('Top rail (' + stickCount + ' × ' + stickFt + 'ft sticks)', stickCount, u, code, sub, !code);
+    const parsedFt = it ? parseFloat((resolveClItemAssignment(it).variantSize || '').replace(/'/g, '')) : 0;
+    const stickFt = (railOpt.stickLengthFt > 0 ? railOpt.stickLengthFt : parsedFt) || 21;
+    const perFt = stickFt > 0 ? u / stickFt : 0;
+    const sub = perFt * sample.lengthFt;
+    addLine('Top rail (' + sample.lengthFt + 'ft ÷ ' + stickFt + "' stick)", sample.lengthFt, perFt, code, sub, !code);
     total += sub;
   }
   if (bwOpt) {
@@ -6454,6 +6573,16 @@ function renderCl3Summary() {
     const u = priceOf(code);
     const sub = u * sample.lengthFt;
     addLine('Bottom wire (' + sample.lengthFt + 'ft)', sample.lengthFt, u, code, sub, !code);
+    total += sub;
+  }
+  if (tieOpt) {
+    // Per-foot fence ties = qty per ft × total ft × picked tie's unit price
+    const code = pickColor(tieOpt.galv, tieOpt.black);
+    const u = priceOf(code);
+    const tiesPerFt = recipe.perFoot.tiesPerFoot || 0;
+    const qty = tiesPerFt * sample.lengthFt;
+    const sub = u * qty;
+    addLine('Fence ties (' + tiesPerFt + '/ft × ' + sample.lengthFt + 'ft)', qty, u, code, sub, !code && qty > 0);
     total += sub;
   }
   // Connections (per main post)

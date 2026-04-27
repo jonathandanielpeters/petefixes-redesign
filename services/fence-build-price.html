@@ -6274,7 +6274,8 @@
                         materialCost += priceOf(pickColor(lineOpt.barbArmGalv, lineOpt.barbArmBlack, color)) * linePostCount;
                     }
                 }
-                // Per-foot: fabric + bottom wire (if defaulted) — top rail uses stick math
+                // Per-foot: fabric + bottom wire (if defaulted), top rail (price ÷ stick × ft),
+                // and fence ties (qty per ft × total ft × picked tie's unit price)
                 const pf = recipe.perFoot || {};
                 const fab = def(pf.fabricOptions);
                 if (fab && groupFt > 0) {
@@ -6289,13 +6290,19 @@
                     const code = pickColor(tr.galv, tr.black, color);
                     const trItem = itemByCode[code];
                     if (trItem) {
-                        // Stick length parsed from the SKU's variantSize (e.g. "10'" → 10)
-                        // — defaults to 21' if unparseable
-                        const v = (trItem.variantSize || '').replace(/'/g, '');
-                        const stickFt = parseFloat(v) || 21;
-                        const stickCount = Math.ceil(groupFt / stickFt);
-                        materialCost += (trItem.priceAfterTax || 0) * stickCount;
+                        // Per-ft cost = unit price ÷ stick length × ft (proportional pricing).
+                        // Admin override on stickLengthFt wins; falls back to parsing variantSize.
+                        const parsedFt = parseFloat((trItem.variantSize || '').replace(/'/g, ''));
+                        const stickFt = (tr.stickLengthFt > 0 ? tr.stickLengthFt : parsedFt) || 21;
+                        const perFtPrice = stickFt > 0 ? (trItem.priceAfterTax || 0) / stickFt : 0;
+                        materialCost += perFtPrice * groupFt;
                     }
+                }
+                const tie = def(pf.fenceTieOptions);
+                if (tie && groupFt > 0) {
+                    const code = pickColor(tie.galv, tie.black, color);
+                    const tiesPerFt = (recipe.perFoot.tiesPerFoot || 0);
+                    materialCost += priceOf(code) * tiesPerFt * groupFt;
                 }
                 // Connections paired to the chosen main post (per the recipe map)
                 if (mainOpt && mainCount > 0) {
