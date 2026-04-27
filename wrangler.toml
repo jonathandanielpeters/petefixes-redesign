@@ -15,3 +15,9 @@ directory = "./"
 binding = "ASSETS"
 not_found_handling = "404-page"
 run_worker_first = ["/services/fence-admin*", "/api/*"]
+
+# Cloud-stored admin config (pricing recipes + master pricelist + branding).
+# Read by /api/config GET, written by /api/config PUT (auth-protected).
+[[kv_namespaces]]
+binding = "CONFIG_KV"
+id = "fe05798a39604d06b029cb2e012b96bc"

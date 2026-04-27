@@ -3961,6 +3961,125 @@ function markDirty() {
   dirty = true;
   document.getElementById('unsavedDot').classList.add('visible');
   updateAllPreviews();
+  // Auto-save to cloud after a short idle period — every settings change triggers
+  // a debounced PUT /api/config so admins never lose work and the customer side
+  // sees updates within ~2s without anyone clicking Save Config.
+  scheduleCloudAutosave();
+}
+
+// ═══════ CLOUD AUTO-SYNC ═══════
+// Single in-flight PUT, queued retry, idle-debounced. Status surfaces in the
+// header next to the unsaved dot so admins can see when sync is up to date.
+let _cloudSaveTimer = null;
+let _cloudSaveInFlight = false;
+let _cloudSaveQueued = false;
+function scheduleCloudAutosave(delayMs) {
+  // Default: 1500ms idle delay so rapid keystrokes coalesce into one PUT
+  const ms = (delayMs == null) ? 1500 : delayMs;
+  if (_cloudSaveTimer) clearTimeout(_cloudSaveTimer);
+  setCloudSyncStatus('pending');
+  _cloudSaveTimer = setTimeout(performCloudAutosave, ms);
+}
+async function performCloudAutosave() {
+  _cloudSaveTimer = null;
+  if (_cloudSaveInFlight) {
+    // Already saving; queue another run for after this finishes
+    _cloudSaveQueued = true;
+    return;
+  }
+  _cloudSaveInFlight = true;
+  try {
+    setCloudSyncStatus('saving');
+    // Reuse the same persistence the manual save uses, just silent (no download)
+    const ok = saveConfig({ silent: true });
+    if (!ok) {
+      setCloudSyncStatus('error', 'Validation failed — fix errors then trigger another change');
+      return;
+    }
+    // Push to cloud
+    const deployId = config.deploymentId || 'default';
+    const res = await fetch('/api/config?id=' + encodeURIComponent(deployId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+      credentials: 'same-origin'
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      setCloudSyncStatus('error', 'Server ' + res.status + ': ' + errBody.slice(0, 200));
+      return;
+    }
+    setCloudSyncStatus('synced');
+  } catch (e) {
+    setCloudSyncStatus('error', e.message || 'Network error');
+  } finally {
+    _cloudSaveInFlight = false;
+    if (_cloudSaveQueued) {
+      _cloudSaveQueued = false;
+      scheduleCloudAutosave(50);
+    }
+  }
+}
+function setCloudSyncStatus(state, detail) {
+  let el = document.getElementById('cloudSyncStatus');
+  if (!el) {
+    el = document.createElement('span');
+    el.id = 'cloudSyncStatus';
+    el.style.cssText = 'font-size:11px;color:var(--gray-500);margin-left:10px;display:inline-flex;align-items:center;gap:4px';
+    const dot = document.getElementById('unsavedDot');
+    if (dot && dot.parentNode) dot.parentNode.insertBefore(el, dot.nextSibling);
+  }
+  const labels = {
+    'idle':    { text: '',                    color: 'var(--gray-400)' },
+    'pending': { text: '⏱ Sync pending…',     color: 'var(--gray-500)' },
+    'saving':  { text: '☁ Saving to cloud…',  color: 'var(--accent)' },
+    'synced':  { text: '✓ Cloud synced',      color: '#3c8a1d' },
+    'error':   { text: '⚠ Cloud sync failed', color: '#b42c2c' }
+  };
+  const cfg = labels[state] || labels.idle;
+  el.textContent = cfg.text;
+  el.style.color = cfg.color;
+  el.title = detail || cfg.text;
+  // Auto-fade "synced" back to idle after 4s so the header stays clean
+  if (state === 'synced') {
+    clearTimeout(window._cloudSyncIdleTimer);
+    window._cloudSyncIdleTimer = setTimeout(() => setCloudSyncStatus('idle'), 4000);
+  }
+}
+
+// Load latest config from cloud, falling back to localStorage on 404 / network failure.
+// Called on admin page load so multiple browsers stay in sync.
+async function loadConfigFromCloud() {
+  try {
+    setCloudSyncStatus('saving');  // reuse the loading visual
+    // Read deploymentId hint from localStorage so we hit the right key
+    const hint = JSON.parse(localStorage.getItem('fenceAdminConfig') || '{}').deploymentId || 'default';
+    const res = await fetch('/api/config?id=' + encodeURIComponent(hint) + '&v=' + Date.now(), { credentials: 'same-origin' });
+    if (res.status === 404) {
+      // No cloud config yet — keep using whatever's in localStorage / default
+      setCloudSyncStatus('idle');
+      return false;
+    }
+    if (!res.ok) {
+      setCloudSyncStatus('error', 'Cloud load failed (' + res.status + '), using local');
+      return false;
+    }
+    const cloudCfg = await res.json();
+    // Replace the in-memory config with the cloud version + persist locally
+    Object.keys(config).forEach(k => delete config[k]);
+    Object.assign(config, cloudCfg);
+    localStorage.setItem('fenceAdminConfig', JSON.stringify(config));
+    const deployId = config.deploymentId || '';
+    const tagged = Object.assign({}, config, { _savedByAdmin: true });
+    if (deployId) localStorage.setItem('fence-pricing-' + deployId, JSON.stringify(tagged, null, 2));
+    localStorage.setItem('fence-pricing-default', JSON.stringify(tagged, null, 2));
+    if (typeof populateAll === 'function') populateAll();
+    setCloudSyncStatus('synced', 'Loaded from cloud');
+    return true;
+  } catch (e) {
+    setCloudSyncStatus('error', e.message || 'Cloud load failed');
+    return false;
+  }
 }
 
 // ═══════ COLOR PICKER SYNC ═══════
@@ -4674,14 +4793,14 @@ async function clMasterImport2026() {
       }
     });
     m.importedAt = new Date().toISOString();
-    markDirty();
+    markDirty();  // also schedules a cloud autosave (debounced) via the new hook
     renderClMasterList();
-    // Auto-persist to localStorage so the import survives reload + the V3 pickers
-    // and the customer-side build tool see the new prices immediately. We skip the
-    // file download (silent) since the user usually wants the in-browser data
-    // staged first, then a regular Save Config to push the JSON to disk.
+    // Auto-persist locally first; cloud save runs via the markDirty debounce.
+    // Force a quicker cloud push for imports (250ms instead of 1500ms) since the
+    // user just made a deliberate batch action and expects it to land remotely.
     const saved = saveConfig({ silent: true });
-    const suffix = saved ? ' — saved' : ' (NOT saved: validation errors)';
+    if (saved) scheduleCloudAutosave(250);
+    const suffix = saved ? ' — saving to cloud…' : ' (NOT saved: validation errors)';
     toast('Pricelist imported: ' + added + ' added, ' + updated + ' updated (' + m.items.length + ' total)' + suffix, 'success');
   } catch (err) {
     toast('Import failed: ' + err.message, 'error');
@@ -7865,6 +7984,11 @@ window.addEventListener('load', () => {
       if (document.getElementById('cl-sample-prices')) refreshSamplePrices();
     } catch (e) { console.warn('[init]', e); }
   }, 300);
+  // Pull the latest config from the cloud so multiple browsers / devices stay
+  // in sync. Falls back to localStorage if the cloud has nothing yet.
+  setTimeout(() => {
+    try { if (typeof loadConfigFromCloud === 'function') loadConfigFromCloud(); } catch (e) { console.warn('[cloud-load]', e); }
+  }, 100);
 });
 
 // ───── Warn on close with unsaved changes ─────

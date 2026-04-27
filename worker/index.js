@@ -357,6 +357,71 @@ async function handleGeocode(request, env) {
   }
 }
 
+// ── /api/config — Cloud-stored admin config ─────────────────────────
+// GET: any visitor (customer Build & Price + admin) reads the latest config
+// PUT: auth-protected (same Basic Auth as the admin page) — saves a new config
+// Storage: Cloudflare KV namespace bound as CONFIG_KV. One key per deployment.
+//   "config:default"        — the canonical config served by GET when no id
+//   "config:<deploymentId>" — alternate configs (e.g. "pete-fixes-wpg")
+async function handleConfig(request, env) {
+  if (!env.CONFIG_KV) {
+    return corsResponse({ ok: false, error: "CONFIG_KV not bound" }, 500);
+  }
+  const url = new URL(request.url);
+  const deployId = (url.searchParams.get("id") || "default").replace(/[^a-z0-9-]/gi, "");
+  const key = "config:" + deployId;
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
+  if (request.method === "GET") {
+    const value = await env.CONFIG_KV.get(key);
+    if (!value) {
+      return corsResponse({ ok: false, error: "not_found", id: deployId }, 404);
+    }
+    // Return the raw config JSON for the client. Cache-busted by the client
+    // via ?v=<timestamp> so we set a short TTL to allow propagation.
+    return new Response(value, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=10",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
+  }
+
+  if (request.method === "PUT") {
+    if (!checkBasicAuth(request, env)) {
+      return unauthorized();
+    }
+    let body;
+    try {
+      body = await request.text();
+      // Parse to validate it's well-formed JSON; sniff size up front
+      if (body.length > 5 * 1024 * 1024) {
+        return corsResponse({ ok: false, error: "config too large (>5MB)" }, 413);
+      }
+      JSON.parse(body);
+    } catch (e) {
+      return corsResponse({ ok: false, error: "invalid JSON: " + (e.message || "parse failed") }, 400);
+    }
+    await env.CONFIG_KV.put(key, body);
+    return corsResponse({ ok: true, id: deployId, savedAt: new Date().toISOString(), size: body.length });
+  }
+
+  return corsResponse({ ok: false, error: "method not allowed" }, 405);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -370,6 +435,9 @@ export default {
     }
     if (url.pathname === "/api/geocode") {
       return handleGeocode(request, env);
+    }
+    if (url.pathname === "/api/config") {
+      return handleConfig(request, env);
     }
 
     // Only enforce auth on protected paths

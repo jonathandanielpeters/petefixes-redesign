@@ -2306,25 +2306,42 @@
                     if (typeof applyBranding === 'function') applyBranding();
                     if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
                 }
-                // Always fetch the canonical JSON file from the server
-                fetch('configs/' + encodeURIComponent(d) + '.json').then(r => r.ok ? r.json() : Promise.reject()).then(cfg => {
-                    var localMod = localCfg && localCfg.lastModified ? new Date(localCfg.lastModified).getTime() : 0;
-                    var fetchMod = cfg && cfg.lastModified ? new Date(cfg.lastModified).getTime() : 0;
-                    // If localStorage was written by the admin (not random/stale data) and is newer, keep it.
-                    // Otherwise the server JSON file always wins — it's the canonical source of truth.
-                    var adminSaved = localCfg && localCfg._savedByAdmin === true;
-                    if (adminSaved && localMod > fetchMod) {
-                    } else {
-                        PCFG = cfg; localStorage.setItem('fence-pricing-' + d, JSON.stringify(cfg));
-                        if (typeof updatePricing === 'function') updatePricing();
-                        if (typeof applyBranding === 'function') applyBranding();
-                    if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
-                    }
-                }).catch(() => { /* config fetch failed, using localStorage cache */ });
+                // Cloud config wins (admin auto-syncs every change to /api/config).
+                // Falls back to the static configs/*.json file if the cloud is empty.
+                fetch('/api/config?id=' + encodeURIComponent(d) + '&v=' + Date.now())
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error('cloud_404')))
+                    .catch(() => fetch('configs/' + encodeURIComponent(d) + '.json').then(r => r.ok ? r.json() : Promise.reject()))
+                    .then(cfg => {
+                        var localMod = localCfg && localCfg.lastModified ? new Date(localCfg.lastModified).getTime() : 0;
+                        var fetchMod = cfg && cfg.lastModified ? new Date(cfg.lastModified).getTime() : 0;
+                        // If localStorage was written by the admin (not random/stale data) and is newer, keep it.
+                        // Otherwise the cloud / server JSON wins — canonical source of truth.
+                        var adminSaved = localCfg && localCfg._savedByAdmin === true;
+                        if (adminSaved && localMod > fetchMod) {
+                            // local is newer
+                        } else {
+                            PCFG = cfg;
+                            localStorage.setItem('fence-pricing-' + d, JSON.stringify(cfg));
+                            if (typeof updatePricing === 'function') updatePricing();
+                            if (typeof applyBranding === 'function') applyBranding();
+                            if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
+                        }
+                    }).catch(() => { /* both cloud + static failed; using localStorage cache */ });
                 return;
             }
-            // Priority 3: default deployment from localStorage
-            try { const c = localStorage.getItem('fence-pricing-default'); if (c) PCFG = JSON.parse(c); } catch(e) {}
+            // Priority 3: default deployment from cloud, then localStorage
+            fetch('/api/config?id=default&v=' + Date.now())
+                .then(r => r.ok ? r.json() : Promise.reject())
+                .then(cfg => {
+                    PCFG = cfg;
+                    localStorage.setItem('fence-pricing-default', JSON.stringify(cfg));
+                    if (typeof updatePricing === 'function') updatePricing();
+                    if (typeof applyBranding === 'function') applyBranding();
+                    if (typeof applyFenceTypeVisibility === 'function') applyFenceTypeVisibility();
+                })
+                .catch(() => {
+                    try { const c = localStorage.getItem('fence-pricing-default'); if (c) PCFG = JSON.parse(c); } catch(e) {}
+                });
         })();
 
         // Config accessors — all pricing functions use these
