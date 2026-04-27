@@ -6584,6 +6584,13 @@
                             const nbCode = pickColor(conn[prefix + 'NbGalv'], conn[prefix + 'NbBlack'], color);
                             materialCost += priceOf(nbCode) * (conn[prefix + 'NbQty'] || 0) * hookupCount;
                         });
+                        // Admin-added custom hookup materials (extras)
+                        (conn.extras || []).forEach(function(x) {
+                            const code = pickColor(x.galv, x.black, color);
+                            materialCost += priceOf(code) * (x.qty || 0) * hookupCount;
+                            const nbCode = pickColor(x.nbGalv, x.nbBlack, color);
+                            materialCost += priceOf(nbCode) * (x.nbQty || 0) * hookupCount;
+                        });
                     }
                 }
             });

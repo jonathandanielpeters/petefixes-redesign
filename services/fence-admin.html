@@ -5154,8 +5154,11 @@ function blankCl3Connection() {
   // the total hookup count (= lines × 2 endpoints) for the project.
   //
   // Each hookup item has its own paired Nuts & Bolts pick + qty so the
-  // admin can use different fasteners per item (e.g. carriage bolts on
-  // tension bands, machine bolts on brace bands).
+  // admin can use different fasteners per item.
+  //
+  // `extras` is a list of admin-defined custom hookup materials (sleeves,
+  // drop pins, washers, etc.) that don't fit the four fixed items above.
+  // Each extra has the same shape (galv/black/qty + paired N&B fields).
   return {
     tensionBarGalv: '',  tensionBarBlack: '',  tensionBarQty: 1,
       tensionBarNbGalv: '', tensionBarNbBlack: '', tensionBarNbQty: 0,
@@ -5164,8 +5167,13 @@ function blankCl3Connection() {
     braceBandGalv: '',   braceBandBlack: '',   braceBandQty: 1,
       braceBandNbGalv: '',  braceBandNbBlack: '',  braceBandNbQty: 1,
     tensionBandGalv: '', tensionBandBlack: '', tensionBandQty: 4,
-      tensionBandNbGalv: '', tensionBandNbBlack: '', tensionBandNbQty: 4
+      tensionBandNbGalv: '', tensionBandNbBlack: '', tensionBandNbQty: 4,
+    extras: []
   };
+}
+function blankCl3ConnExtra() {
+  return { id: cl3NewId('cnx'), label: '', galv: '', black: '', qty: 1,
+           nbGalv: '', nbBlack: '', nbQty: 0 };
 }
 function blankCl3Gate() {
   return { id: cl3NewId('gate'), label: '', widthFt: 3.5, heightInches: 48,
@@ -6235,11 +6243,20 @@ function renderCl3Connections(recipe) {
     }
     function nbQtySum(prefix) { return (c[prefix + 'NbQty'] || 0); }
     const items = ['tensionBar', 'railEnd', 'braceBand', 'tensionBand'];
-    const hookupG = items.reduce((s, p) => s + hookupItemCost(p, false), 0);
-    const hookupB = items.reduce((s, p) => s + hookupItemCost(p, true), 0);
-    const nbG = items.reduce((s, p) => s + nbCost(p, false), 0);
-    const nbB = items.reduce((s, p) => s + nbCost(p, true), 0);
-    const nbQtyTotal = items.reduce((s, p) => s + nbQtySum(p), 0);
+    let hookupG = items.reduce((s, p) => s + hookupItemCost(p, false), 0);
+    let hookupB = items.reduce((s, p) => s + hookupItemCost(p, true), 0);
+    let nbG = items.reduce((s, p) => s + nbCost(p, false), 0);
+    let nbB = items.reduce((s, p) => s + nbCost(p, true), 0);
+    let nbQtyTotal = items.reduce((s, p) => s + nbQtySum(p), 0);
+    // Custom extras — admin-added hookup items (sleeves, drop pins, etc.)
+    const extras = c.extras || [];
+    extras.forEach(x => {
+      hookupG += (cl3PriceFor(x.galv) || 0) * (x.qty || 0);
+      hookupB += (cl3PriceFor(x.black) || 0) * (x.qty || 0);
+      nbG += (cl3PriceFor(x.nbGalv) || 0) * (x.nbQty || 0);
+      nbB += (cl3PriceFor(x.nbBlack) || 0) * (x.nbQty || 0);
+      nbQtyTotal += (x.nbQty || 0);
+    });
     const totG = hookupG + nbG;
     const totB = hookupB + nbB;
     blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:10px 12px;margin-top:10px">' +
@@ -6267,7 +6284,10 @@ function renderCl3Connections(recipe) {
       _cl3ConnRow(mp.id, 'railEnd', 'Rail End', 'Rail End', c) +
       _cl3ConnRow(mp.id, 'braceBand', 'Brace Band', 'Brace Band', c) +
       _cl3ConnRow(mp.id, 'tensionBand', 'Tension Band', 'Tension Band', c) +
+      // Admin-added custom hookup materials (sleeves, drop pins, etc.)
+      extras.map(x => _cl3ConnExtraRow(mp.id, x)).join('') +
       '</tbody></table></div>' +
+      '<div style="margin-top:6px"><button class="btn btn-sm" onclick="addCl3ConnExtra(\'' + mp.id + '\')" title="Add a custom hookup material (e.g. sleeve, drop pin, washer) — uses any master pricelist item">+ Add connection material</button></div>' +
       // Per-hookup cost banner — broken into Hookup items / Nuts & Bolts / Total
       // so admin can see how much fastener cost is in each hookup at a glance.
       '<div style="margin-top:8px;padding:8px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;font-size:11px">' +
@@ -6303,7 +6323,54 @@ function _cl3ConnRow(mainId, prefix, label, materialPattern, c) {
     '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c[prefix + 'NbQty'] || 0) + '" oninput="updCl3Conn(\'' + mainId + '\',\'' + prefix + 'NbQty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
     '</tr>';
 }
+// Custom hookup material row — same 7-column shape as fixed rows but with
+// an editable label cell + delete button. Material picker is unfiltered
+// (any master item). Useful for sleeves, drop pins, washers, etc.
+function _cl3ConnExtraRow(mainId, x) {
+  const lbl = x.label || '(custom material)';
+  return '<tr style="border-top:1px solid var(--gray-100);background:rgba(60,138,29,0.04)">' +
+    '<td style="padding:6px 8px"><div style="display:flex;align-items:center;gap:4px">' +
+      '<input type="text" value="' + clEscAttr(x.label) + '" placeholder="e.g. Sleeve" oninput="updCl3ConnExtra(\'' + mainId + '\',\'' + x.id + '\',\'label\',this.value)" style="flex:1;min-width:0;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;font-weight:600;color:var(--gray-600)">' +
+      '<button class="btn btn-sm" onclick="removeCl3ConnExtra(\'' + mainId + '\',\'' + x.id + '\')" title="Remove this custom material" style="padding:1px 6px;font-size:11px">×</button>' +
+    '</div></td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(x.galv, () => true, 'galvanized', "updCl3ConnExtra('" + mainId + "','" + x.id + "','galv',?)", 'Galv ' + lbl.toLowerCase()) + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(x.black, () => true, 'black', "updCl3ConnExtra('" + mainId + "','" + x.id + "','black',?)", 'Black ' + lbl.toLowerCase()) + '</td>' +
+    '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (x.qty || 0) + '" oninput="updCl3ConnExtra(\'' + mainId + '\',\'' + x.id + '\',\'qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(x.nbGalv, 'Nuts & Bolts', 'galvanized', "updCl3ConnExtra('" + mainId + "','" + x.id + "','nbGalv',?)", 'Galv N&B for ' + lbl.toLowerCase()) + '</td>' +
+    '<td style="padding:6px 8px">' + cl3PickerHtml(x.nbBlack, 'Nuts & Bolts', 'black', "updCl3ConnExtra('" + mainId + "','" + x.id + "','nbBlack',?)", 'Black N&B for ' + lbl.toLowerCase()) + '</td>' +
+    '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (x.nbQty || 0) + '" oninput="updCl3ConnExtra(\'' + mainId + '\',\'' + x.id + '\',\'nbQty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+    '</tr>';
+}
 function updCl3Conn(mainId, field, value) { const r = _cl3CurRecipe(); if (!r) return; if (!r.connections.perMainPost[mainId]) r.connections.perMainPost[mainId] = blankCl3Connection(); r.connections.perMainPost[mainId][field] = value; markDirty(); if (field.endsWith('Galv') || field.endsWith('Black')) renderClRecipesV3(); }
+function addCl3ConnExtra(mainId) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  if (!r.connections.perMainPost[mainId]) r.connections.perMainPost[mainId] = blankCl3Connection();
+  const conn = r.connections.perMainPost[mainId];
+  if (!Array.isArray(conn.extras)) conn.extras = [];
+  conn.extras.push(blankCl3ConnExtra());
+  markDirty();
+  renderClRecipesV3();
+}
+function removeCl3ConnExtra(mainId, extraId) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const conn = r.connections.perMainPost[mainId];
+  if (!conn || !Array.isArray(conn.extras)) return;
+  conn.extras = conn.extras.filter(x => x.id !== extraId);
+  markDirty();
+  renderClRecipesV3();
+}
+function updCl3ConnExtra(mainId, extraId, field, value) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const conn = r.connections.perMainPost[mainId];
+  if (!conn || !Array.isArray(conn.extras)) return;
+  const x = conn.extras.find(e => e.id === extraId);
+  if (!x) return;
+  x[field] = value;
+  markDirty();
+  // Re-render only when the SKU itself changed (price preview / banner update);
+  // typing label or qty doesn't need a full re-render.
+  if (field === 'galv' || field === 'black' || field === 'nbGalv' || field === 'nbBlack') renderClRecipesV3();
+}
 
 // ═══════ Card 5 of 5: GATES ═══════
 function renderCl3Gates(recipe) {
@@ -6954,6 +7021,26 @@ function renderCl3Summary() {
       if (nbQty > 0) {
         const nbSub = nbU * nbQty;
         addLine('  ↳ N&B for ' + label.toLowerCase() + ' (' + nbPerHookup + '/hookup)', nbQty, nbU, nbCode, nbSub, !nbCode && nbQty > 0);
+        total += nbSub;
+      }
+    });
+    // Custom extras — admin-added hookup materials beyond the 4 fixed items
+    (conn.extras || []).forEach(x => {
+      const lbl = x.label || 'Custom';
+      const code = pickColor(x.galv, x.black);
+      const u = priceOf(code);
+      const qty = (x.qty || 0) * hookupCount;
+      if (qty > 0) {
+        const sub = u * qty;
+        addLine(lbl + ' (' + (x.qty || 0) + '/hookup × ' + hookupCount + ')', qty, u, code, sub, !code && qty > 0);
+        total += sub;
+      }
+      const nbCode = pickColor(x.nbGalv, x.nbBlack);
+      const nbU = priceOf(nbCode);
+      const nbQty = (x.nbQty || 0) * hookupCount;
+      if (nbQty > 0) {
+        const nbSub = nbU * nbQty;
+        addLine('  ↳ N&B for ' + lbl.toLowerCase() + ' (' + (x.nbQty || 0) + '/hookup)', nbQty, nbU, nbCode, nbSub, !nbCode && nbQty > 0);
         total += nbSub;
       }
     });
