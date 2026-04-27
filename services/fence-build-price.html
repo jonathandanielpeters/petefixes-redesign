@@ -6416,6 +6416,10 @@
             });
             if (typeof updatePricing === 'function') updatePricing();
         }
+        // Expose to window so the inline onclick="setCl3Pick(...)" handlers in
+        // the rendered Material Options pills can resolve it (the surrounding
+        // IIFE keeps function declarations off the global scope by default).
+        window.setCl3Pick = setCl3Pick;
 
         function calculateV3Project() {
             const isCommercial = state.mode === 'commercial';
