@@ -5671,9 +5671,9 @@ function renderCl3MainAssembly(recipe) {
       '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Post Tubing/, 'black', "updCl3Main('" + o.id + "','black',?)", 'Black post for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
       '<td style="padding:6px 8px">' + cl3PickerHtml(o.capGalv, 'Post Cap', 'galvanized', "updCl3Main('" + o.id + "','capGalv',?)", 'Galv post cap for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
       '<td style="padding:6px 8px">' + cl3PickerHtml(o.capBlack, 'Post Cap', 'black', "updCl3Main('" + o.id + "','capBlack',?)", 'Black post cap for end/corner — ' + (o.label || '(unlabeled)')) + '</td>' +
-      '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap">' +
+      '<td style="padding:6px 8px;text-align:right;font-size:11px;font-weight:700;color:#3c8a1d;white-space:nowrap" title="Total assembly cost per single end/corner post (post + cap)">' +
       '<div>G: ' + cl3FmtPrice((cl3PriceFor(o.galv) || 0) + (cl3PriceFor(o.capGalv) || 0)) + '</div>' +
-      '<div>B: ' + cl3FmtPrice((cl3PriceFor(o.black) || 0) + (cl3PriceFor(o.capBlack) || 0)) + '</div>' +
+      '<div style="color:#444">B: ' + cl3FmtPrice((cl3PriceFor(o.black) || 0) + (cl3PriceFor(o.capBlack) || 0)) + '</div>' +
       '</td>' +
       '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Main(\'' + o.id + '\')" title="Delete this option">×</button></td>' +
       '</tr>';
@@ -5690,7 +5690,7 @@ function renderCl3MainAssembly(recipe) {
     '<th style="padding:6px 8px">Black post</th>' +
     '<th style="padding:6px 8px">Galv cap</th>' +
     '<th style="padding:6px 8px">Black cap</th>' +
-    '<th style="padding:6px 8px;text-align:right">Per post</th>' +
+    '<th style="padding:6px 8px;text-align:right" title="Total cost per single end/corner post (post + cap)">Total / post</th>' +
     '<th></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<button class="btn btn-sm" style="margin-top:8px" onclick="addCl3Main()">+ Add post option</button>' +
@@ -5746,6 +5746,10 @@ function renderCl3LinePostAssembly(recipe, tier) {
   const isComm = tier === 'commercial';
   let rows = '';
   opts.forEach(o => {
+    // Total per single line post — post + cap + (tie × qty/post) [+ barb arm if commercial]
+    const ties = +o.fenceTiesPerPost || 0;
+    const totG = (cl3PriceFor(o.galv) || 0) + (cl3PriceFor(o.capGalv) || 0) + (cl3PriceFor(o.fenceTieGalv) || 0) * ties + (isComm ? (cl3PriceFor(o.barbArmGalv) || 0) : 0);
+    const totB = (cl3PriceFor(o.black) || 0) + (cl3PriceFor(o.capBlack) || 0) + (cl3PriceFor(o.fenceTieBlack) || 0) * ties + (isComm ? (cl3PriceFor(o.barbArmBlack) || 0) : 0);
     rows += '<tr style="border-top:1px solid var(--gray-100)">' +
       '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-line-default" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3LineDefault(\'' + o.id + '\')"></td>' +
       '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 1-7/8&quot;" oninput="updCl3Line(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
@@ -5760,6 +5764,10 @@ function renderCl3LinePostAssembly(recipe, tier) {
         ? '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmGalv, /Barb Wire Arm/, 'galvanized', "updCl3Line('" + o.id + "','barbArmGalv',?)", 'Galv barb arm — ' + (o.label || '(unlabeled)')) + '</td>' +
           '<td style="padding:6px 8px">' + cl3PickerHtml(o.barbArmBlack, /Barb Wire Arm/, 'black', "updCl3Line('" + o.id + "','barbArmBlack',?)", 'Black barb arm — ' + (o.label || '(unlabeled)')) + '</td>'
         : '') +
+      '<td style="padding:6px 8px;text-align:right;font-size:11px;font-weight:700;color:#3c8a1d;white-space:nowrap" title="Total per single line post: post + cap + (tie × ties/post)' + (isComm ? ' + barb arm' : '') + '">' +
+      '<div>G: ' + cl3FmtPrice(totG || null) + '</div>' +
+      '<div style="color:#444">B: ' + cl3FmtPrice(totB || null) + '</div>' +
+      '</td>' +
       '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Line(\'' + o.id + '\')">×</button></td>' +
       '</tr>';
   });
@@ -5767,9 +5775,9 @@ function renderCl3LinePostAssembly(recipe, tier) {
     ? '<th style="padding:6px 8px">Galv barb arm</th><th style="padding:6px 8px">Black barb arm</th>'
     : '';
   const colWidths = isComm
-    ? '<col style="width:60px"><col style="width:130px"><col><col><col><col><col><col><col style="width:54px"><col><col><col style="width:40px">'
-    : '<col style="width:60px"><col style="width:130px"><col><col><col><col><col><col><col style="width:54px"><col style="width:40px">';
-  const minW = isComm ? '1200px' : '950px';
+    ? '<col style="width:60px"><col style="width:130px"><col><col><col><col><col><col><col style="width:54px"><col><col><col style="width:90px"><col style="width:40px">'
+    : '<col style="width:60px"><col style="width:130px"><col><col><col><col><col><col><col style="width:54px"><col style="width:90px"><col style="width:40px">';
+  const minW = isComm ? '1300px' : '1050px';
   return '<div class="card">' +
     '<div class="card-title">Line Post Assembly <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— intermediate posts along straight runs</span></div>' +
     '<div class="card-desc">Lighter-duty posts placed at the spacing interval between mains. Includes the saddle-style line post cap, fence ties (qty per post)' + (isComm ? ', and barb arm options for commercial' : '') + '.</div>' +
@@ -5786,6 +5794,7 @@ function renderCl3LinePostAssembly(recipe, tier) {
     '<th style="padding:6px 8px">Black tie</th>' +
     '<th style="padding:6px 8px;text-align:right">Ties / post</th>' +
     cmHdr +
+    '<th style="padding:6px 8px;text-align:right" title="Total cost per single line post (post + cap + ties×qty' + (isComm ? ' + barb arm' : '') + ')">Total / post</th>' +
     '<th></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<button class="btn btn-sm" style="margin-top:8px" onclick="addCl3Line()">+ Add line post option</button>' +
@@ -5895,7 +5904,70 @@ function renderCl3PerFoot(recipe) {
     '<input type="number" min="0" step="0.25" value="' + (recipe.perFoot.tiesPerFoot || 0) + '" oninput="updCl3PfMeta(\'tiesPerFoot\',+this.value)" style="width:70px;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px">' +
     '<span style="font-size:11px;color:var(--gray-500)">multiplied by the picked Fence Tie option above (per linear ft of fence)</span>' +
     '</div>' +
+    _cl3PerFootTotalFooter(recipe) +
     '</div>';
+}
+
+// Card-level total per linear foot, summed across the picked default options.
+// Top rail uses unit ÷ stickLengthFt; fence tie uses unit × tiesPerFoot.
+function _cl3PerFootTotalFooter(recipe) {
+  const pf = recipe.perFoot || {};
+  const def = (list) => (list || []).find(o => o.isDefault) || (list || [])[0];
+  const fab = def(pf.fabricOptions);
+  const bw = def(pf.bottomWireOptions);
+  const tr = def(pf.topRailOptions);
+  const tie = def(pf.fenceTieOptions);
+  const tiesPerFt = recipe.perFoot.tiesPerFoot || 0;
+
+  // Pull stick length for top rail (admin override > parsed > 21)
+  let trStickFt = 21;
+  if (tr) {
+    if (tr.stickLengthFt > 0) trStickFt = tr.stickLengthFt;
+    else {
+      const m = ensureClMaster();
+      const code = tr.galv || tr.black;
+      const it = m.items.find(x => x.itemCode === code);
+      const parsed = it ? parseFloat((resolveClItemAssignment(it).variantSize || '').replace(/'/g, '')) : 0;
+      if (parsed > 0) trStickFt = parsed;
+    }
+  }
+
+  function lineFor(color) {
+    const pick = (g, b) => color === 'black' ? b : g;
+    let rows = '';
+    let total = 0;
+    if (fab) {
+      const u = cl3PriceFor(pick(fab.galv, fab.black)) || 0;
+      rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Fabric</td><td style="padding:2px 6px;text-align:right">' + cl3FmtPrice(u) + '/ft</td></tr>';
+      total += u;
+    }
+    if (bw) {
+      const u = cl3PriceFor(pick(bw.galv, bw.black)) || 0;
+      rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom wire</td><td style="padding:2px 6px;text-align:right">' + cl3FmtPrice(u) + '/ft</td></tr>';
+      total += u;
+    }
+    if (tr) {
+      const u = cl3PriceFor(pick(tr.galv, tr.black)) || 0;
+      const perFt = trStickFt > 0 ? u / trStickFt : 0;
+      rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Top rail (÷ ' + trStickFt + "' stick)</td><td style=\"padding:2px 6px;text-align:right\">" + cl3FmtPrice(perFt) + '/ft</td></tr>';
+      total += perFt;
+    }
+    if (tie) {
+      const u = cl3PriceFor(pick(tie.galv, tie.black)) || 0;
+      const perFt = u * tiesPerFt;
+      rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Fence ties (×' + tiesPerFt + '/ft)</td><td style="padding:2px 6px;text-align:right">' + cl3FmtPrice(perFt) + '/ft</td></tr>';
+      total += perFt;
+    }
+    rows += '<tr style="border-top:1px solid var(--gray-200)"><td style="padding:4px 6px;font-weight:700;color:#3c8a1d">Total / ft (' + (color === 'black' ? 'Black' : 'Galv') + ')</td><td style="padding:4px 6px;text-align:right;font-weight:700;color:#3c8a1d;font-size:12px">' + cl3FmtPrice(total || null) + '/ft</td></tr>';
+    return '<table style="width:100%;border-collapse:collapse;font-size:11px"><tbody>' + rows + '</tbody></table>';
+  }
+
+  return '<div style="margin-top:14px;padding:10px 12px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:6px">' +
+    '<div style="font-size:11px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Per-foot total (using each section\'s default pick)</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">' +
+    '<div>' + lineFor('galvanized') + '</div>' +
+    '<div>' + lineFor('black') + '</div>' +
+    '</div></div>';
 }
 function addCl3Pf(kind) {
   const r = _cl3CurRecipe(); if (!r) return;
@@ -6037,6 +6109,15 @@ function renderCl3Connections(recipe) {
   mains.forEach(mp => {
     const c = recipe.connections.perMainPost[mp.id] || (recipe.connections.perMainPost[mp.id] = blankCl3Connection());
     const lbl = mp.label || '(unlabeled main post)';
+    // Per-main-post hookup total — sum of (each hookup unit price × qty)
+    const totG = (cl3PriceFor(c.tensionBarGalv) || 0) * (c.tensionBarQty || 0)
+               + (cl3PriceFor(c.railEndGalv)    || 0) * (c.railEndQty    || 0)
+               + (cl3PriceFor(c.braceBandGalv)  || 0) * (c.braceBandQty  || 0)
+               + (cl3PriceFor(c.tensionBandGalv)|| 0) * (c.tensionBandQty|| 0);
+    const totB = (cl3PriceFor(c.tensionBarBlack)  || 0) * (c.tensionBarQty || 0)
+               + (cl3PriceFor(c.railEndBlack)     || 0) * (c.railEndQty    || 0)
+               + (cl3PriceFor(c.braceBandBlack)   || 0) * (c.braceBandQty  || 0)
+               + (cl3PriceFor(c.tensionBandBlack) || 0) * (c.tensionBandQty|| 0);
     blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:10px 12px;margin-top:10px">' +
       '<div style="font-weight:700;font-size:12px;color:var(--gray-600);margin-bottom:8px">When customer picks main post: <span style="color:var(--accent)">' + clEscHtml(lbl) + '</span></div>' +
       '<div style="overflow:auto"><table style="width:100%;min-width:900px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
@@ -6046,7 +6127,11 @@ function renderCl3Connections(recipe) {
       _cl3ConnRow(mp.id, 'railEnd', 'Rail End', 'Rail End', c) +
       _cl3ConnRow(mp.id, 'braceBand', 'Brace Band', 'Brace Band', c) +
       _cl3ConnRow(mp.id, 'tensionBand', 'Tension Band', 'Tension Band', c) +
-      '</tbody></table></div></div>';
+      '</tbody></table></div>' +
+      '<div style="margin-top:8px;padding:6px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px">' +
+      '<span style="color:var(--gray-600);font-weight:600">Total hookup cost per main post:</span>' +
+      '<span style="font-weight:700;color:#3c8a1d">G: ' + cl3FmtPrice(totG || null) + '  ·  <span style="color:#444">B: ' + cl3FmtPrice(totB || null) + '</span></span>' +
+      '</div></div>';
   });
   return '<div class="card">' +
     '<div class="card-title">Connections <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— hookup hardware per main post option</span></div>' +
@@ -6075,9 +6160,15 @@ function renderCl3Gates(recipe) {
         '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, () => true, 'galvanized', "updCl3GateHw('" + g.id + "','" + hw.id + "','galv',?)", 'Galv gate hardware — ' + (hw.label || '(unlabeled)') + ' for ' + (g.label || 'gate')) + '</td>' +
         '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, () => true, 'black', "updCl3GateHw('" + g.id + "','" + hw.id + "','black',?)", 'Black gate hardware — ' + (hw.label || '(unlabeled)') + ' for ' + (g.label || 'gate')) + '</td>' +
         '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (hw.qty || 0) + '" oninput="updCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\',\'qty\',+this.value)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+        '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap" title="Subtotal for this hardware row (qty × unit)"><div>G: ' + cl3FmtPrice((cl3PriceFor(hw.galv) || 0) * (hw.qty || 0) || null) + '</div><div>B: ' + cl3FmtPrice((cl3PriceFor(hw.black) || 0) * (hw.qty || 0) || null) + '</div></td>' +
         '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3GateHw(\'' + g.id + '\',\'' + hw.id + '\')">×</button></td>' +
         '</tr>';
     });
+    // Per-gate total: frame + sum(hardware × qty)
+    const hwTotG = (g.hardware || []).reduce((s, h) => s + (cl3PriceFor(h.galv) || 0) * (h.qty || 0), 0);
+    const hwTotB = (g.hardware || []).reduce((s, h) => s + (cl3PriceFor(h.black) || 0) * (h.qty || 0), 0);
+    const gTotG = (cl3PriceFor(g.gateGalv) || 0) + hwTotG;
+    const gTotB = (cl3PriceFor(g.gateBlack) || 0) + hwTotB;
     blocks += '<div style="border:1px solid var(--gray-200);border-radius:6px;padding:12px;margin-top:10px">' +
       '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">' +
       '<input type="text" value="' + clEscAttr(g.label) + '" placeholder="Gate label (e.g. 3.5\'W single)" oninput="updCl3Gate(\'' + g.id + '\',\'label\',this.value)" style="flex:1;min-width:160px;padding:5px 10px;font-size:12px;font-weight:600;border:1.5px solid var(--gray-200);border-radius:6px">' +
@@ -6085,14 +6176,18 @@ function renderCl3Gates(recipe) {
       '<label style="font-size:11px;color:var(--gray-500);display:flex;align-items:center;gap:4px">Height (in)<input type="number" step="6" min="0" value="' + (g.heightInches || 0) + '" oninput="updCl3Gate(\'' + g.id + '\',\'heightInches\',+this.value)" style="width:60px;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></label>' +
       '<button class="btn btn-sm" onclick="removeCl3Gate(\'' + g.id + '\')">Delete gate</button>' +
       '</div>' +
+      '<div style="margin-bottom:10px;padding:6px 10px;background:#f6fbf3;border:1px solid #d6ecc7;border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:11px" title="Total cost per single gate: frame/leaf + Σ(hardware × qty)">' +
+      '<span style="color:var(--gray-600);font-weight:600">Total per gate (frame + all hardware):</span>' +
+      '<span style="font-weight:700;color:#3c8a1d">G: ' + cl3FmtPrice(gTotG || null) + '  ·  <span style="color:#444">B: ' + cl3FmtPrice(gTotB || null) + '</span></span>' +
+      '</div>' +
       '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
       '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Galv gate frame/leaf</div>' + cl3PickerHtml(g.gateGalv, /Gate$|Gate Frame$/, 'galvanized', "updCl3Gate('" + g.id + "','gateGalv',?)", 'Galv gate frame/leaf — ' + (g.label || '(unlabeled)')) + '</div>' +
       '<div style="flex:1;min-width:280px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:3px">Black gate frame/leaf</div>' + cl3PickerHtml(g.gateBlack, /Gate$|Gate Frame$/, 'black', "updCl3Gate('" + g.id + "','gateBlack',?)", 'Black gate frame/leaf — ' + (g.label || '(unlabeled)')) + '</div>' +
       '</div>' +
       '<div style="margin-top:10px"><div style="font-size:11px;color:var(--gray-500);margin-bottom:4px;font-weight:600">Hardware list (hinges, latches, drop bolts, etc.)</div>' +
-      '<div style="overflow:auto"><table style="width:100%;min-width:700px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
-      '<colgroup><col style="width:140px"><col><col><col style="width:60px"><col style="width:40px"></colgroup>' +
-      '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Qty</th><th></th></tr></thead><tbody>' + hwRows + '</tbody></table></div>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:780px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+      '<colgroup><col style="width:140px"><col><col><col style="width:54px"><col style="width:80px"><col style="width:40px"></colgroup>' +
+      '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:right" title="Subtotal = qty × unit price">Subtotal</th><th></th></tr></thead><tbody>' + hwRows + '</tbody></table></div>' +
       '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">' +
         '<button class="btn btn-sm" onclick="addCl3GateHw(\'' + g.id + '\')">+ Add hardware row</button>' +
         '<button class="btn btn-sm" onclick="openCl3HwMultiPicker(\'' + g.id + '\', this)" title="Pick multiple master pricelist items at once">+ Add multiple from pricelist…</button>' +
