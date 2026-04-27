@@ -5354,15 +5354,32 @@ function renderClRecipesV3() {
 // is always one click away no matter which height the admin is on.
 function renderCl3QuickActions() {
   const m = ensureClMaster();
+  const cl3 = ensureCl3();
+  const tier = cl3._uiTier;
   const ready = m.items.length > 0;
+  const tierHeights = Object.keys(cl3[tier] || {}).length;
+  const greenStyle = ';background:#3c8a1d;color:#fff;border-color:#3c8a1d';
+  const disabledStyle = ready ? '' : ';opacity:0.4;pointer-events:none';
+  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
   return '<div class="card" style="border-left:3px solid #3c8a1d">' +
     '<div class="card-title">Quick Actions</div>' +
-    '<div class="card-desc">Auto-seed this recipe from the master pricelist (cheapest sensible pick per slot, paired galv + black, sized to the fence height) — then tweak anything you want.</div>' +
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-    '<button class="btn btn-sm" style="background:#3c8a1d;color:#fff;border-color:#3c8a1d' + (ready ? '' : ';opacity:0.4;pointer-events:none') + '" onclick="seedCl3Recipe()" title="' + (ready ? 'Pick sensible defaults from the pricelist for this height' : 'Import the pricelist first') + '">⚡ Seed defaults from pricelist</button>' +
-    '<button class="btn btn-sm" onclick="resetCl3Recipe()" title="Wipe this recipe back to empty">↺ Reset to empty</button>' +
-    (ready ? '' : '<span style="font-size:11px;color:#b42c2c;align-self:center">→ Import the pricelist (Chainlink Pricing section) before seeding</span>') +
-    '</div></div>';
+    '<div class="card-desc">Auto-seed from the master pricelist — cheapest sensible pick per slot, paired galv + black, sized to fence height. Then tweak anything you want.</div>' +
+    '<div style="margin-top:8px"><div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">This recipe (' + tier + ' / ' + cl3._uiHeight + ')</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    '<button class="btn btn-sm" style="' + greenStyle + disabledStyle + '" onclick="seedCl3Recipe()" title="' + (ready ? 'Pick sensible defaults for ' + cl3._uiHeight : 'Import the pricelist first') + '">⚡ Seed ' + cl3._uiHeight + '</button>' +
+    '<button class="btn btn-sm" onclick="resetCl3Recipe()" title="Wipe this recipe back to empty">↺ Reset ' + cl3._uiHeight + '</button>' +
+    '</div></div>' +
+    '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--gray-200)"><div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">All ' + tierLabel + ' (' + tierHeights + ' heights)</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    '<button class="btn btn-sm" style="' + greenStyle + disabledStyle + '" onclick="seedCl3AllInTier(\'' + tier + '\')" title="Auto-seed every height in ' + tier + '">⚡ Seed all ' + tier + ' heights</button>' +
+    '<button class="btn btn-sm" onclick="resetCl3AllInTier(\'' + tier + '\')" title="Wipe every ' + tier + ' recipe to empty">↺ Reset all ' + tier + '</button>' +
+    '</div></div>' +
+    '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--gray-200)"><div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Both tiers</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+    '<button class="btn btn-sm" style="' + greenStyle + disabledStyle + '" onclick="seedCl3Everything()" title="One-click bootstrap: seed every height in both residential AND commercial">⚡ Seed everything</button>' +
+    '</div></div>' +
+    (ready ? '' : '<div style="margin-top:10px;padding:8px 10px;background:#fff5f5;border:1px solid #fecaca;border-radius:4px;font-size:11px;color:#b42c2c">→ Import the pricelist (<a href="#" onclick="event.preventDefault();showSection(\'chainlinkPricing\')" style="color:#b42c2c;font-weight:700;text-decoration:underline">Chainlink Pricing section</a>) before seeding.</div>') +
+    '</div>';
 }
 function setCl3Tier(t) {
   const cl3 = ensureCl3();
@@ -5921,21 +5938,30 @@ function updCl3GateHw(gateId, hwId, field, value) { const r = _cl3CurRecipe(); i
 // have to manually pick from 444 items × every slot. Strategy per slot:
 // pick the cheapest galv item AND the cheapest black item that match the
 // material classification + size constraints derived from the fence height.
-function seedCl3Recipe() {
+function seedCl3Recipe(tierArg, heightArg, opts) {
+  opts = opts || {};
   const cl3 = ensureCl3();
-  const tier = cl3._uiTier;
-  const heightLabel = cl3._uiHeight;
+  const tier = tierArg || cl3._uiTier;
+  const heightLabel = heightArg || cl3._uiHeight;
   const heightFt = parseFloat(heightLabel) || 6;
   const heightInches = Math.round(heightFt * 12);
-  const recipe = cl3[tier][heightLabel];
-  if (!recipe) { toast('No recipe selected', 'error'); return; }
+  const recipe = cl3[tier] && cl3[tier][heightLabel];
+  if (!recipe) {
+    if (!opts.silent) toast('No recipe at ' + tier + '/' + heightLabel, 'error');
+    return false;
+  }
 
-  if (recipe.mainAssembly.postOptions.length > 0 || recipe.linePostAssembly.postOptions.length > 0 || recipe.gates.length > 0) {
-    if (!confirm('This recipe already has options. Seed will ADD new options without removing existing ones. Continue?')) return;
+  // For interactive (single-recipe) seeds, prompt before stacking onto existing data.
+  // Macros use opts.skipConfirm to bypass and just stack across all heights.
+  if (!opts.skipConfirm && (recipe.mainAssembly.postOptions.length > 0 || recipe.linePostAssembly.postOptions.length > 0 || recipe.gates.length > 0)) {
+    if (!confirm('This recipe already has options. Seed will ADD new options without removing existing ones. Continue?')) return false;
   }
 
   const m = ensureClMaster();
-  if (m.items.length === 0) { toast('Import the pricelist first', 'error'); return; }
+  if (m.items.length === 0) {
+    if (!opts.silent) toast('Import the pricelist first', 'error');
+    return false;
+  }
   const items = m.items.filter(it => it.showToCustomer !== false);
 
   // Resolve assignment once per item — saves 444 reparses per pick lookup
@@ -6122,8 +6148,71 @@ function seedCl3Recipe() {
   }
 
   markDirty();
+  if (!opts.silent) {
+    renderClRecipesV3();
+    toast('Seeded ' + tier + ' ' + heightLabel + ' from pricelist — review and tweak as needed', 'success');
+  }
+  return true;
+}
+
+// Macro: seed every height in the active tier (or both tiers).
+// Wipes blank recipes only and stacks defaults onto already-blank ones,
+// without prompting for each height. Single user confirm at the start.
+function seedCl3AllInTier(tierArg) {
+  const cl3 = ensureCl3();
+  const tier = tierArg || cl3._uiTier;
+  const heights = Object.keys(cl3[tier] || {});
+  if (heights.length === 0) { toast('No heights defined for ' + tier, 'error'); return; }
+  const m = ensureClMaster();
+  if (m.items.length === 0) { toast('Import the pricelist first', 'error'); return; }
+  // Count any heights that already have data — warn before potentially stacking
+  const dirtyHeights = heights.filter(h => {
+    const r = cl3[tier][h];
+    return r && (r.mainAssembly.postOptions.length || r.linePostAssembly.postOptions.length || r.gates.length);
+  });
+  if (dirtyHeights.length > 0) {
+    if (!confirm('Seed all ' + heights.length + ' heights in ' + tier + '?\n\n' + dirtyHeights.length + ' height(s) already have data — seed will ADD new options on top of existing ones. Continue?')) return;
+  } else {
+    if (!confirm('Seed all ' + heights.length + ' heights in ' + tier + ' from the pricelist?')) return;
+  }
+  let ok = 0;
+  heights.forEach(h => {
+    if (seedCl3Recipe(tier, h, { silent: true, skipConfirm: true })) ok++;
+  });
   renderClRecipesV3();
-  toast('Seeded ' + tier + ' ' + heightLabel + ' from pricelist — review and tweak as needed', 'success');
+  toast('Seeded ' + ok + ' / ' + heights.length + ' ' + tier + ' heights from pricelist', 'success');
+}
+
+function seedCl3Everything() {
+  const cl3 = ensureCl3();
+  const m = ensureClMaster();
+  if (m.items.length === 0) { toast('Import the pricelist first', 'error'); return; }
+  const allHeights = ['residential', 'commercial'].flatMap(t => Object.keys(cl3[t] || {}).map(h => ({ t, h })));
+  const dirtyCount = allHeights.filter(({ t, h }) => {
+    const r = cl3[t][h];
+    return r && (r.mainAssembly.postOptions.length || r.linePostAssembly.postOptions.length || r.gates.length);
+  }).length;
+  const msg = dirtyCount > 0
+    ? 'Seed every height in BOTH tiers (' + allHeights.length + ' recipes)?\n\n' + dirtyCount + ' recipe(s) already have data — seed will ADD options on top. Continue?'
+    : 'Seed every height in BOTH tiers (' + allHeights.length + ' recipes)?';
+  if (!confirm(msg)) return;
+  let ok = 0;
+  allHeights.forEach(({ t, h }) => {
+    if (seedCl3Recipe(t, h, { silent: true, skipConfirm: true })) ok++;
+  });
+  renderClRecipesV3();
+  toast('Seeded ' + ok + ' / ' + allHeights.length + ' recipes across all tiers', 'success');
+}
+
+function resetCl3AllInTier(tierArg) {
+  const cl3 = ensureCl3();
+  const tier = tierArg || cl3._uiTier;
+  const heights = Object.keys(cl3[tier] || {});
+  if (!confirm('Reset ALL ' + heights.length + ' ' + tier + ' recipes to empty? This cannot be undone.')) return;
+  heights.forEach(h => { cl3[tier][h] = blankCl3Recipe(); });
+  markDirty();
+  renderClRecipesV3();
+  toast('Reset all ' + tier + ' recipes', 'info');
 }
 
 function resetCl3Recipe() {
