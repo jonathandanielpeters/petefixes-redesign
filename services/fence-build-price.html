@@ -1180,6 +1180,10 @@
                     <div class="config-pill" data-clpostsize="1-7/8">1 7/8"</div>
                 </div>
             </div>
+            <!-- Dynamic V3 material option pickers — populated by renderCl3MaterialOptions()
+                 from the active recipe's option lists. Only categories with >1 option appear here;
+                 single-option categories are silently applied. Hidden when no V3 recipe exists. -->
+            <div class="config-section" data-show-for="chainlink" id="chainlinkMaterialOptions" style="display:none"></div>
             <div class="config-section" data-show-for="wood" id="woodTypeSection">
                 <label class="config-label">Wood Type</label>
                 <div class="config-pills" id="woodTypePills">
@@ -4129,6 +4133,14 @@
                     if (!avail.includes(g.gateType)) g.gateType = avail[0] || 'single-swing';
                 }
             });
+            // V3 chainlink — re-render the dynamic Material Options pills + apply
+            // colorsAvailable filter on the color picker. Cheap; fires on any
+            // pill/tile click that changes config.
+            try {
+                const s = activeStyle();
+                if (typeof renderCl3MaterialOptions === 'function') renderCl3MaterialOptions(s);
+                if (typeof applyCl3ColorAvailability === 'function') applyCl3ColorAvailability(s);
+            } catch (e) { console.warn('[cl3 sync]', e); }
             updatePricing(); renderSidebar(); drawCanvas(); renderStyleSwitcher();
         }
         updateConditionalSections();
@@ -4224,6 +4236,11 @@
             // Chainlink
             document.querySelectorAll('#chainlinkColorPills [data-color]').forEach(p => p.classList.toggle('active', p.dataset.color === s.chainlinkColor));
             document.querySelectorAll('#chainlinkPostSizePills [data-clpostsize]').forEach(p => p.classList.toggle('active', p.dataset.clpostsize === (s.chainlinkPostSize || '2-3/8')));
+            // V3 material options — repopulate the dynamic section based on the active recipe.
+            // Categories with only 1 option don't appear (silent default); colorsAvailable filters
+            // the color pills above.
+            try { renderCl3MaterialOptions(s); } catch (e) { console.warn('[cl3 options]', e); }
+            try { applyCl3ColorAvailability(s); } catch (e) { console.warn('[cl3 colors]', e); }
             // Wood options
             document.querySelectorAll('#woodTypePills [data-wood]').forEach(p => p.classList.toggle('active', p.dataset.wood === s.woodType));
             document.querySelectorAll('#boardSizePills [data-board]').forEach(p => p.classList.toggle('active', p.dataset.board === s.boardSize));
@@ -6184,6 +6201,129 @@
         // customer's color choice picks one. Markup is applied at the project
         // level via the existing length-based markup tiers.
         // ═══════════════════════════════════════════════════════════════════
+
+        // Find the active V3 recipe for a given style (or null if not configured).
+        function _cl3RecipeFor(style) {
+            const cl3 = PCFG.chainlinkRecipesV3;
+            if (!cl3) return null;
+            const tier = state.mode === 'commercial' ? 'commercial' : 'residential';
+            const heightKey = style.height + 'ft';
+            return (cl3[tier] && cl3[tier][heightKey]) || null;
+        }
+        function _cl3ColorsFor(recipe) {
+            if (!recipe) return ['galvanized', 'black'];
+            const arr = Array.isArray(recipe.colorsAvailable) ? recipe.colorsAvailable.filter(Boolean) : null;
+            return (arr && arr.length > 0) ? arr : ['galvanized', 'black'];
+        }
+        // Resolve the per-style picks: if cl3Picks for an option is set AND that option
+        // still exists, use it; otherwise fall back to the recipe's isDefault pick.
+        function _cl3PickFor(style, listKey, recipe) {
+            // listKey examples: 'mainAssembly.postOptions', 'perFoot.fabricOptions'
+            const list = listKey.split('.').reduce((o, k) => (o ? o[k] : null), recipe);
+            if (!list || list.length === 0) return null;
+            const stored = (style.cl3Picks || {})[listKey];
+            if (stored) {
+                const found = list.find(o => o.id === stored);
+                if (found) return found;
+            }
+            return list.find(o => o.isDefault) || list[0];
+        }
+        // Look up the live priceAfterTax for an itemCode from the master pricelist.
+        function _cl3PriceFor(code) {
+            const items = (PCFG.chainlinkMaster && PCFG.chainlinkMaster.items) || [];
+            const it = items.find(x => x.itemCode === code);
+            return it ? (it.priceAfterTax || 0) : 0;
+        }
+
+        // Render the Material Options pills for the active style. Only categories with
+        // 2+ options appear — single-option lists silently apply the only entry. Color
+        // currently selected (galv vs black) is used for the price preview on each pill.
+        function renderCl3MaterialOptions(style) {
+            const host = document.getElementById('chainlinkMaterialOptions');
+            if (!host) return;
+            if (style.fenceType !== 'chainlink') { host.style.display = 'none'; host.innerHTML = ''; return; }
+            const recipe = _cl3RecipeFor(style);
+            if (!recipe) { host.style.display = 'none'; host.innerHTML = ''; return; }
+            const color = style.chainlinkColor || 'galvanized';
+            const pickColor = (g, b) => color === 'black' ? b : g;
+            const picks = style.cl3Picks || (style.cl3Picks = {});
+
+            const sections = [
+                { key: 'mainAssembly.postOptions', label: 'End / Corner Post', list: recipe.mainAssembly && recipe.mainAssembly.postOptions, withCap: true },
+                { key: 'linePostAssembly.postOptions', label: 'Line Post', list: recipe.linePostAssembly && recipe.linePostAssembly.postOptions, withCap: true },
+                { key: 'perFoot.fabricOptions', label: 'Fabric', list: recipe.perFoot && recipe.perFoot.fabricOptions },
+                { key: 'perFoot.bottomWireOptions', label: 'Bottom Wire', list: recipe.perFoot && recipe.perFoot.bottomWireOptions },
+                { key: 'perFoot.topRailOptions', label: 'Top Rail', list: recipe.perFoot && recipe.perFoot.topRailOptions, isPerStick: true },
+                { key: 'perFoot.fenceTieOptions', label: 'Fence Ties', list: recipe.perFoot && recipe.perFoot.fenceTieOptions }
+            ];
+
+            let html = '';
+            sections.forEach(sec => {
+                const list = sec.list || [];
+                if (list.length < 2) return;  // single/zero options never displayed
+                const current = _cl3PickFor(style, sec.key, recipe);
+                const pills = list.map(o => {
+                    const code = pickColor(o.galv, o.black);
+                    const u = _cl3PriceFor(code);
+                    let priceLabel = '';
+                    if (u > 0) {
+                        if (sec.isPerStick) {
+                            const stickFt = (o.stickLengthFt > 0 ? o.stickLengthFt : 21);
+                            priceLabel = ' <small style="opacity:0.75">$' + (u / stickFt).toFixed(2) + '/ft</small>';
+                        } else if (sec.withCap) {
+                            const capCode = pickColor(o.capGalv, o.capBlack);
+                            const total = u + _cl3PriceFor(capCode);
+                            priceLabel = ' <small style="opacity:0.75">$' + total.toFixed(2) + '</small>';
+                        } else {
+                            priceLabel = ' <small style="opacity:0.75">$' + u.toFixed(2) + '</small>';
+                        }
+                    }
+                    const active = current && current.id === o.id;
+                    return '<div class="config-pill' + (active ? ' active' : '') + '" data-cl3pick="' + sec.key + '" data-cl3id="' + o.id + '" onclick="setCl3Pick(\'' + sec.key + '\',\'' + o.id + '\')">' + (o.label || '(unlabeled)') + priceLabel + '</div>';
+                }).join('');
+                html += '<label class="config-label" style="margin-top:8px">' + sec.label + '</label>' +
+                    '<div class="config-pills">' + pills + '</div>';
+            });
+
+            if (!html) { host.style.display = 'none'; host.innerHTML = ''; return; }
+            host.style.display = '';
+            host.innerHTML = html;
+        }
+
+        // Apply colorsAvailable: disable color pills the active recipe doesn't offer.
+        function applyCl3ColorAvailability(style) {
+            const recipe = _cl3RecipeFor(style);
+            const colors = _cl3ColorsFor(recipe);
+            const pills = document.querySelectorAll('#chainlinkColorPills [data-color]');
+            let hadToSwitch = false;
+            pills.forEach(p => {
+                const c = p.dataset.color;
+                const ok = colors.indexOf(c) !== -1;
+                p.style.opacity = ok ? '' : '0.4';
+                p.style.pointerEvents = ok ? '' : 'none';
+                p.title = ok ? '' : 'Not offered for ' + style.height + 'ft fences';
+            });
+            // If current selection is no longer offered, force-switch to the first available
+            if (style.chainlinkColor && colors.indexOf(style.chainlinkColor) === -1) {
+                style.chainlinkColor = colors[0];
+                document.querySelectorAll('#chainlinkColorPills [data-color]').forEach(p => p.classList.toggle('active', p.dataset.color === style.chainlinkColor));
+                hadToSwitch = true;
+            }
+            if (hadToSwitch && typeof updatePricing === 'function') updatePricing();
+        }
+
+        // Update the active style's cl3Picks and re-price + re-render
+        function setCl3Pick(listKey, optId) {
+            const s = activeStyle();
+            if (!s.cl3Picks) s.cl3Picks = {};
+            s.cl3Picks[listKey] = optId;
+            // Reflect in the pills
+            document.querySelectorAll('[data-cl3pick="' + listKey + '"]').forEach(p => {
+                p.classList.toggle('active', p.dataset.cl3id === optId);
+            });
+            if (typeof updatePricing === 'function') updatePricing();
+        }
+
         function calculateV3Project() {
             const isCommercial = state.mode === 'commercial';
             const tier = isCommercial ? 'commercial' : 'residential';
@@ -6207,12 +6347,22 @@
             const priceOf = (code) => (code && itemByCode[code]) ? (itemByCode[code].priceAfterTax || 0) : 0;
             const pickColor = (galvCode, blackCode, color) => color === 'black' ? blackCode : galvCode;
 
-            // Group lines by height so each group uses the right recipe
+            // Group lines by height + style so each group uses the right recipe
+            // and inherits its style's cl3Picks (per-line option overrides).
             const linesByHeight = {};
             clLines.forEach(l => {
                 const s = getStyleForLine(l);
                 const heightKey = s.height + 'ft';
-                if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color: s.chainlinkColor || 'galvanized' };
+                // Resolve color, respecting recipe.colorsAvailable: if a customer's
+                // color is no longer offered for this height, fall back to the
+                // first available color from the recipe.
+                let color = s.chainlinkColor || 'galvanized';
+                const recipe = cl3[tier] && cl3[tier][heightKey];
+                if (recipe) {
+                    const avail = Array.isArray(recipe.colorsAvailable) ? recipe.colorsAvailable.filter(Boolean) : ['galvanized', 'black'];
+                    if (avail.length > 0 && avail.indexOf(color) === -1) color = avail[0];
+                }
+                if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color, style: s };
                 linesByHeight[heightKey].lines.push(l);
             });
 
@@ -6254,17 +6404,30 @@
                 totalCornerPosts += cornerCount;
                 totalLinePosts += linePostCount;
 
-                // Default-pick helper
-                const def = (list) => (list || []).find(o => o.isDefault) || (list || [])[0];
+                // Pick resolver: prefer the style's stored cl3Picks override (set by
+                // the customer via the Material Options pills); fall back to the
+                // recipe's isDefault / first option. Lookup key matches the dotted
+                // path used by setCl3Pick (e.g. 'perFoot.fabricOptions').
+                const styleObj = group.style || {};
+                const picks = styleObj.cl3Picks || {};
+                const def = (list, listKey) => {
+                    const arr = list || [];
+                    if (arr.length === 0) return null;
+                    if (listKey && picks[listKey]) {
+                        const found = arr.find(o => o.id === picks[listKey]);
+                        if (found) return found;
+                    }
+                    return arr.find(o => o.isDefault) || arr[0];
+                };
 
                 // Main posts (end + corner) + caps
-                const mainOpt = def(recipe.mainAssembly && recipe.mainAssembly.postOptions);
+                const mainOpt = def(recipe.mainAssembly && recipe.mainAssembly.postOptions, 'mainAssembly.postOptions');
                 if (mainOpt && mainCount > 0) {
                     materialCost += priceOf(pickColor(mainOpt.galv, mainOpt.black, color)) * mainCount;
                     materialCost += priceOf(pickColor(mainOpt.capGalv, mainOpt.capBlack, color)) * mainCount;
                 }
                 // Line posts + caps + ties
-                const lineOpt = def(recipe.linePostAssembly && recipe.linePostAssembly.postOptions);
+                const lineOpt = def(recipe.linePostAssembly && recipe.linePostAssembly.postOptions, 'linePostAssembly.postOptions');
                 if (lineOpt && linePostCount > 0) {
                     materialCost += priceOf(pickColor(lineOpt.galv, lineOpt.black, color)) * linePostCount;
                     materialCost += priceOf(pickColor(lineOpt.capGalv, lineOpt.capBlack, color)) * linePostCount;
@@ -6277,15 +6440,15 @@
                 // Per-foot: fabric + bottom wire (if defaulted), top rail (price ÷ stick × ft),
                 // and fence ties (qty per ft × total ft × picked tie's unit price)
                 const pf = recipe.perFoot || {};
-                const fab = def(pf.fabricOptions);
+                const fab = def(pf.fabricOptions, 'perFoot.fabricOptions');
                 if (fab && groupFt > 0) {
                     materialCost += priceOf(pickColor(fab.galv, fab.black, color)) * groupFt;
                 }
-                const bw = def(pf.bottomWireOptions);
+                const bw = def(pf.bottomWireOptions, 'perFoot.bottomWireOptions');
                 if (bw && groupFt > 0) {
                     materialCost += priceOf(pickColor(bw.galv, bw.black, color)) * groupFt;
                 }
-                const tr = def(pf.topRailOptions);
+                const tr = def(pf.topRailOptions, 'perFoot.topRailOptions');
                 if (tr && groupFt > 0) {
                     const code = pickColor(tr.galv, tr.black, color);
                     const trItem = itemByCode[code];
@@ -6298,7 +6461,7 @@
                         materialCost += perFtPrice * groupFt;
                     }
                 }
-                const tie = def(pf.fenceTieOptions);
+                const tie = def(pf.fenceTieOptions, 'perFoot.fenceTieOptions');
                 if (tie && groupFt > 0) {
                     const code = pickColor(tie.galv, tie.black, color);
                     const tiesPerFt = (recipe.perFoot.tiesPerFoot || 0);

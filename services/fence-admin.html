@@ -5103,8 +5103,23 @@ function blankCl3Recipe() {
       tiesPerFoot: 1
     },
     connections: { perMainPost: {} },
-    gates: []
+    gates: [],
+    // Which finish colors this fence height is offered in. Customer's color
+    // picker greys out anything missing here; if a saved line ends up at a
+    // height that no longer offers its color, the engine falls back to the
+    // first available color in this list. Always at least one entry.
+    colorsAvailable: ['galvanized', 'black']
   };
+}
+// Helper: read a recipe's available colors with backwards-compat (older
+// configs may not have the field). Always returns an array of length ≥ 1.
+function _cl3RecipeColors(recipe) {
+  if (!recipe) return ['galvanized', 'black'];
+  const arr = Array.isArray(recipe.colorsAvailable) ? recipe.colorsAvailable.filter(Boolean) : null;
+  return (arr && arr.length > 0) ? arr : ['galvanized', 'black'];
+}
+function _cl3RecipeOffersColor(recipe, color) {
+  return _cl3RecipeColors(recipe).indexOf(color) !== -1;
 }
 function blankCl3PostOpt() {
   return { id: cl3NewId('post'), label: '', galv: '', black: '', capGalv: '', capBlack: '', isDefault: false };
@@ -5485,12 +5500,28 @@ function renderClRecipesV3() {
     return;
   }
   body.innerHTML = renderCl3QuickActions() +
+    renderCl3ColorBanner(recipe) +
     renderCl3MainAssembly(recipe) +
     renderCl3LinePostAssembly(recipe, cl3._uiTier) +
     renderCl3PerFoot(recipe) +
     renderCl3Connections(recipe) +
     renderCl3Gates(recipe) +
     renderCl3Summary();
+}
+
+// Banner that surfaces which colors are/aren't offered for this height —
+// admin still sees the disabled-color columns (so they can prep prices in
+// advance), but the banner makes it obvious customers won't see them.
+function renderCl3ColorBanner(recipe) {
+  const colors = _cl3RecipeColors(recipe);
+  if (colors.length === 2) return '';  // both active → no banner needed
+  const offered = colors[0] === 'galvanized' ? 'galvanized' : 'black';
+  const hidden = colors[0] === 'galvanized' ? 'black' : 'galvanized';
+  const bg = '#fff7e6', border = '#ffd591', fg = '#a8650f';
+  return '<div style="margin:10px 0;padding:8px 12px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;font-size:11px;color:' + fg + ';display:flex;gap:8px;align-items:center">' +
+    '<span style="font-size:14px">⚠</span>' +
+    '<span><b>Customers will only see ' + offered + '</b> for this fence height — ' + hidden + ' is hidden. The ' + hidden + ' columns below still save data (so you can flip the toggle later) but won\'t be shown on the Build &amp; Price tool.</span>' +
+    '</div>';
 }
 
 // Quick Actions card — sits at the top of the recipe body so the seeder
@@ -5504,6 +5535,11 @@ function renderCl3QuickActions() {
   const greenStyle = ';background:#3c8a1d;color:#fff;border-color:#3c8a1d';
   const disabledStyle = ready ? '' : ';opacity:0.4;pointer-events:none';
   const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  // Color-availability state for the active recipe
+  const recipe = cl3[tier] && cl3[tier][cl3._uiHeight];
+  const colors = _cl3RecipeColors(recipe);
+  const galvOn = colors.indexOf('galvanized') !== -1;
+  const blackOn = colors.indexOf('black') !== -1;
   return '<div class="card" style="border-left:3px solid #3c8a1d">' +
     '<div class="card-title">Quick Actions</div>' +
     '<div class="card-desc">Auto-seed from the master pricelist — cheapest sensible pick per slot, paired galv + black, sized to fence height. Then tweak anything you want.</div>' +
@@ -5511,6 +5547,18 @@ function renderCl3QuickActions() {
     '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
     '<button class="btn btn-sm" style="' + greenStyle + disabledStyle + '" onclick="seedCl3Recipe()" title="' + (ready ? 'Pick sensible defaults for ' + cl3._uiHeight : 'Import the pricelist first') + '">⚡ Seed ' + cl3._uiHeight + '</button>' +
     '<button class="btn btn-sm" onclick="resetCl3Recipe()" title="Wipe this recipe back to empty">↺ Reset ' + cl3._uiHeight + '</button>' +
+    '</div></div>' +
+    // ── Colors offered for THIS height ─────────────────────────────────
+    '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--gray-200)">' +
+    '<div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Colors offered for ' + cl3._uiHeight + '</div>' +
+    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12px">' +
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer">' +
+    '<input type="checkbox" ' + (galvOn ? 'checked' : '') + ' onchange="toggleCl3RecipeColor(\'galvanized\', this.checked)" style="width:16px;height:16px;cursor:pointer">' +
+    '<span>Galvanized</span></label>' +
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer">' +
+    '<input type="checkbox" ' + (blackOn ? 'checked' : '') + ' onchange="toggleCl3RecipeColor(\'black\', this.checked)" style="width:16px;height:16px;cursor:pointer">' +
+    '<span>Black</span></label>' +
+    '<span style="font-size:11px;color:var(--gray-400);flex:1;min-width:200px">Untick to hide that finish on the customer side for this fence height. The other color\'s pricing still works.</span>' +
     '</div></div>' +
     '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--gray-200)"><div style="font-size:10px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">All ' + tierLabel + ' (' + tierHeights + ' heights)</div>' +
     '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
@@ -5523,6 +5571,34 @@ function renderCl3QuickActions() {
     '</div></div>' +
     (ready ? '' : '<div style="margin-top:10px;padding:8px 10px;background:#fff5f5;border:1px solid #fecaca;border-radius:4px;font-size:11px;color:#b42c2c">→ Import the pricelist (<a href="#" onclick="event.preventDefault();showSection(\'chainlinkPricing\')" style="color:#b42c2c;font-weight:700;text-decoration:underline">Chainlink Pricing section</a>) before seeding.</div>') +
     '</div>';
+}
+
+// Toggle a finish color on/off for the active recipe. Always keeps at least
+// one color enabled (rejects the un-tick that would leave colorsAvailable empty).
+function toggleCl3RecipeColor(color, enabled) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const current = _cl3RecipeColors(r);
+  let next;
+  if (enabled) {
+    next = current.indexOf(color) === -1 ? current.concat([color]) : current;
+  } else {
+    next = current.filter(c => c !== color);
+    if (next.length === 0) {
+      toast('At least one color must remain enabled.', 'error');
+      // Re-render so the un-tick reverts visually
+      renderClRecipesV3();
+      return;
+    }
+  }
+  // Normalize order: galvanized first, then black, then anything else
+  const order = ['galvanized', 'black'];
+  next.sort((a, b) => {
+    const ai = order.indexOf(a), bi = order.indexOf(b);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+  r.colorsAvailable = next;
+  markDirty();
+  renderClRecipesV3();
 }
 function setCl3Tier(t) {
   const cl3 = ensureCl3();
