@@ -1323,10 +1323,14 @@ a{color:var(--accent);text-decoration:none}
     <div class="preview-detail" id="lab2-preview-detail">Fill in task times to calculate.</div>
   </div>
 
-  <!-- Sample Fence Price — interactive, live preview using current settings -->
+  <!-- Sample Fence Price — embeds the customer Build & Price tool via iframe
+       so the preview ALWAYS uses the same engine the customer hits.  No more
+       drift between admin's V2-derived sample preview and the V3 numbers
+       customers actually see.  Spec inputs below generate a sample drawing
+       that's pre-loaded into the iframe via the ?config= URL param. -->
   <div class="card" id="cl-sample-prices-card">
-    <div class="card-title">Sample Fence Price <span style="font-size:10px;font-weight:600;color:var(--gray-400);margin-left:8px">— full live quote</span></div>
-    <div class="card-desc">Live quote preview. Every change to materials, recipes, labour, or these sample dimensions re-prices instantly. Uses 6ft galvanized with 2-3/8" posts and 8ft post spacing for chain link.</div>
+    <div class="card-title">Sample Fence Price <span style="font-size:10px;font-weight:600;color:var(--accent);margin-left:8px">— LIVE customer engine</span></div>
+    <div class="card-desc">Embedded customer Build &amp; Price tool with your <em>current admin config</em> pre-loaded. The iframe uses the exact engine customers see, so any number it shows is what they'll be quoted. Spec below pre-draws a sample fence; adjust + click <strong>Reload sample</strong> to regenerate. To match other fence types (wood / ornamental / etc.), pick the type inside the iframe.</div>
 
     <div id="cl-sample-controls" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:12px;background:var(--gray-50);border-radius:6px;margin-bottom:10px">
       <div class="field">
@@ -1335,29 +1339,30 @@ a{color:var(--accent);text-decoration:none}
       </div>
       <div class="field">
         <label>Corners</label>
-        <input type="number" id="sample-corners" min="0" step="1" value="0" oninput="onSampleSpecChange()">
+        <input type="number" id="sample-corners" min="0" max="3" step="1" value="0" oninput="onSampleSpecChange()" title="0–3 corners. 0 = straight line. 1 = L-shape. 2 = U-shape. 3 = rectangle (4 sides).">
       </div>
       <div class="field">
         <label>Gates</label>
-        <input type="number" id="sample-gates" min="0" step="1" value="0" oninput="onSampleSpecChange()">
+        <input type="number" id="sample-gates" min="0" max="2" step="1" value="0" oninput="onSampleSpecChange()" title="0–2 gates spaced along the first segment.">
       </div>
       <div class="field">
         <label>Gate type</label>
         <select id="sample-gateType" onchange="onSampleSpecChange()">
           <option value="single-swing">Single swing</option>
           <option value="double-swing">Double swing</option>
-          <option value="slide">Slide / cantilever</option>
-          <option value="pedestrian">Pedestrian</option>
+          <option value="overhead-track-slide">Overhead track sliding</option>
+          <option value="cantilever-slide">Cantilever sliding</option>
         </select>
       </div>
-      <div class="field">
-        <label>Line segments</label>
-        <input type="number" id="sample-lines" min="1" step="1" value="1" oninput="onSampleSpecChange()" title="How many straight runs the fence breaks into (e.g. a 3-sided yard = 3).">
+      <div class="field" style="display:flex;align-items:end">
+        <button class="btn btn-sm btn-accent" onclick="reloadSampleIframe()" title="Save admin config + regenerate the sample drawing in the iframe below">↻ Reload sample</button>
       </div>
     </div>
 
-    <div id="cl-sample-prices"></div>
-    <button class="btn btn-sm" style="margin-top:10px" onclick="refreshSamplePrices()">↻ Refresh</button>
+    <div style="position:relative;border:1px solid var(--gray-200);border-radius:8px;overflow:hidden;background:var(--gray-50)">
+      <iframe id="cl-sample-iframe" src="about:blank" style="width:100%;height:680px;border:0;display:block" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-storage-access-by-user-activation" title="Sample Fence Price (live customer engine preview)"></iframe>
+    </div>
+    <div style="font-size:10px;color:var(--gray-400);margin-top:6px">Tip: the iframe shows what a real customer would see right now. Bottom totals bar, save-estimate dialog, and the email all use the same numbers.</div>
   </div>
 </div>
 
@@ -8880,8 +8885,13 @@ function updateLabourPreview() {
   }
 }
 
-// ── Sample Fence Price Calculator ──
-// Compute full job quote (materials + labour) for a given fence spec.
+// ── Sample Fence Price Calculator (legacy V2-derived preview) ──
+// NOTE: This function is no longer used by the Sample Fence Price card —
+// that card now embeds the customer Build & Price tool via iframe so
+// the preview always uses the live customer engine (V3 → V2 → legacy
+// in priority order, exactly what the customer sees).  Kept here as
+// dead code for now so unrelated callers don't blow up; the iframe
+// path is `reloadSampleIframe()` below.
 function computeFenceSample(spec) {
   const cl2 = ensureCl2();
   const ctx = {
@@ -9054,42 +9064,213 @@ function renderSamplePriceCard(title, spec) {
   </div>`;
 }
 
+// ── Sample Fence Price (iframe path) ─────────────────────────────────
+// The Sample Fence Price card now embeds the customer Build & Price tool
+// via iframe.  We pre-load it with two URL params:
+//   • ?pc=<base64>     — admin's CURRENT (uncommitted) config object,
+//                         so the iframe shows live what-if pricing
+//                         without needing Save Config first.
+//   • ?config=<base64> — a synthetic drawing built from the spec inputs
+//                         (length / corners / gates / gateType).
+// Any number the iframe shows (sidebar, totals bar, save-estimate dialog,
+// email) is what a real customer would see — the engine is identical.
+// ─────────────────────────────────────────────────────────────────────
+
 // Read the interactive sample spec from the dimension inputs.  Falls back to
 // sensible defaults when fields haven't rendered yet (first paint).
 function readSampleSpec() {
   const gn = (id, d) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : NaN; return isFinite(v) ? v : d; };
   const gs = (id, d) => { const el = document.getElementById(id); return el ? el.value : d; };
   return {
-    lengthFt: Math.max(1, gn('sample-lengthFt', 200)),
-    corners:  Math.max(0, gn('sample-corners',  0)),
-    gates:    Math.max(0, gn('sample-gates',    0)),
-    gateType: gs('sample-gateType', 'single-swing'),
-    lines:    Math.max(1, gn('sample-lines',    1))
+    lengthFt: Math.max(1, Math.min(2000, gn('sample-lengthFt', 200))),
+    corners:  Math.max(0, Math.min(3, gn('sample-corners', 0))),
+    gates:    Math.max(0, Math.min(2, gn('sample-gates', 0))),
+    gateType: gs('sample-gateType', 'single-swing')
   };
 }
 
-// Build a short title describing the current sample spec — "200ft, 2 corners,
-// 1 single-swing gate, 3 lines".
-function sampleSpecTitle(spec) {
-  const parts = [spec.lengthFt + ' ft'];
-  if (spec.corners > 0) parts.push(spec.corners + ' corner' + (spec.corners === 1 ? '' : 's'));
-  if (spec.gates > 0)   parts.push(spec.gates + '× ' + spec.gateType.replace('-', ' '));
-  if (spec.lines > 1)   parts.push(spec.lines + ' line segments');
-  return parts.join(' · ');
+// Build a synthetic drawing-config the customer page can deserialize.
+// Output shape MUST match fence-build-price.html → serializeConfig():
+//   { styles, points, lines, gates, houses, activeStyleIdx, mode }
+// then base64(encodeURIComponent(JSON.stringify(...))).
+function buildSampleDrawingConfig(spec) {
+  // Pixel-per-foot anchor.  The customer page treats line lengths in
+  // pixel space and converts via its own scale ratio — using a stable
+  // ratio here just means the drawing fits sensibly in view.
+  const PX_PER_FT = 6;
+  const len = Math.max(1, spec.lengthFt) * PX_PER_FT;
+
+  const points = [];
+  let pid = 0;
+  function addPoint(x, y) { const p = { id: ++pid, x: x, y: y }; points.push(p); return p; }
+
+  // Lay out the path's corner points, then we'll wire segments + insert
+  // gate-sized gaps along the first segment.
+  const path = [];
+  if (spec.corners <= 0) {
+    // Straight horizontal line, full length
+    path.push(addPoint(0, 0));
+    path.push(addPoint(len, 0));
+  } else if (spec.corners === 1) {
+    // L-shape: half horizontal + half vertical
+    const seg = len / 2;
+    path.push(addPoint(0, 0));
+    path.push(addPoint(seg, 0));
+    path.push(addPoint(seg, seg));
+  } else if (spec.corners === 2) {
+    // U-shape: 3 sides of len/3
+    const seg = len / 3;
+    path.push(addPoint(0, 0));
+    path.push(addPoint(seg, 0));
+    path.push(addPoint(seg, seg));
+    path.push(addPoint(0, seg));
+  } else {
+    // 3 corners → rectangle (4 sides), perimeter = total length
+    const side = len / 4;
+    const a = addPoint(0, 0);
+    const b = addPoint(side, 0);
+    const c = addPoint(side, side);
+    const d = addPoint(0, side);
+    path.push(a, b, c, d, a);
+  }
+
+  // Walk consecutive path points → fence lines.  First segment hosts gates.
+  const lines = [];
+  const gates = [];
+  const GATE_WIDTH_PX = 4 * PX_PER_FT;  // 4ft gates by default
+
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    if (i === 0 && spec.gates > 0) {
+      // Subdivide the first segment so each gate sits between its own
+      // pair of endpoints.  Layout: [section][gate][section][gate][section]…
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const segLen = Math.sqrt(dx * dx + dy * dy);
+      const totalGateLen = GATE_WIDTH_PX * spec.gates;
+      const fenceLen = Math.max(0, segLen - totalGateLen);
+      const sectionLen = fenceLen / (spec.gates + 1);
+      const ux = dx / segLen;  // unit vector along segment
+      const uy = dy / segLen;
+      let cx = a.x;
+      let cy = a.y;
+      let cursor = a;
+      for (let g = 0; g < spec.gates; g++) {
+        // fence section before this gate
+        cx += ux * sectionLen; cy += uy * sectionLen;
+        const fenceEnd = addPoint(cx, cy);
+        lines.push({ p1: cursor.id, p2: fenceEnd.id, styleIdx: 0, mode: 'residential' });
+        // gate itself — gateType comes from the spec selector
+        cx += ux * GATE_WIDTH_PX; cy += uy * GATE_WIDTH_PX;
+        const gateEnd = addPoint(cx, cy);
+        gates.push({
+          p1: fenceEnd.id, p2: gateEnd.id,
+          gateType: spec.gateType || 'single-swing',
+          styleIdx: 0,
+          hingePost: 'p1', swingDir: 'inward', slideDir: 'auto',
+          mode: 'residential'
+        });
+        cursor = gateEnd;
+      }
+      // final fence section out to b
+      lines.push({ p1: cursor.id, p2: b.id, styleIdx: 0, mode: 'residential' });
+    } else {
+      lines.push({ p1: a.id, p2: b.id, styleIdx: 0, mode: 'residential' });
+    }
+  }
+
+  // Default style — chain link 6ft galvanized 2-3/8.  Customer can change
+  // inside the iframe to test other types.  Field set mirrors the customer
+  // page's createDefaultStyle() so deserializeConfig finds everything it
+  // expects.
+  const style = {
+    fenceType: 'chainlink', height: 6, chainlinkColor: 'galvanized', chainlinkPostSize: '2-3/8',
+    woodBuildType: 'full', postSpacing: 8,
+    woodType: 'pressure-treated', boardSize: '1x6', orientation: 'vertical', boardSpan: '8',
+    ornamentalColor: 'black', weldedWireColor: 'galvanized', vinylColor: 'white',
+    woodRails: '2', woodTopCap: '2x4', woodPostType: 'postmaster',
+    railTopSize: '2x6', railBottomSize: '2x4',
+    hzDoubleCover: false, postDepth: null,
+    privacyInserts: false, privacyInstall: true, privacyColor: 'grey',
+    railCount: 3, railTopDimension: null, railMiddleDimension: null, railBottomDimension: null,
+    trimTopEnabled: false, trimBottomEnabled: false,
+    trimTopDimension: null, trimBottomDimension: null,
+    topCapEnabled: true, topCapDimension: null,
+    designerCutId: null,
+    frameAttachment: null, frameSpan: null,
+    infillStyle: null, picketGapSpacing: null,
+    hzDesignOption: null, hzGapSpacing: null, hzMixedConfigId: null,
+    hzBoardDimension: null,
+    hzStaggerJoints: null, hzSpanSections: null,
+    bundleId: null,
+    postInstallMethod: 'directDriven', mudRemoval: false
+  };
+
+  const data = {
+    styles: [style], points: points, lines: lines, gates: gates, houses: [],
+    activeStyleIdx: 0, mode: 'residential'
+  };
+
+  // Match customer-page serializeConfig: btoa(encodeURIComponent(JSON))
+  return btoa(encodeURIComponent(JSON.stringify(data)));
 }
 
-function onSampleSpecChange() {
-  refreshSamplePrices();
+// Encode the admin's *current* (possibly uncommitted) config object as the
+// ?pc= URL param.  Pulls latest DOM state via collectAll() first so the
+// iframe sees what the user has typed even before they hit Save Config.
+function encodeAdminConfigForIframe() {
+  try { if (typeof collectAll === 'function') collectAll(); } catch (e) { console.warn('[encodeAdminConfigForIframe.collectAll]', e); }
+  try {
+    const cfg = JSON.parse(JSON.stringify(config));
+    return btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+  } catch (e) {
+    console.warn('[encodeAdminConfigForIframe]', e);
+    return '';
+  }
 }
 
-function refreshSamplePrices() {
-  const container = document.getElementById('cl-sample-prices');
-  if (!container) return;
-  // Pull the latest labour values out of the DOM before we render — this is
-  // what makes the preview respond live to edits in the labour inputs above.
-  try { collectLabourUI(); } catch (e) { /* fields may not be rendered yet */ }
+// Build the iframe URL: customer page + ?pc=<config> + ?config=<drawing>.
+// `_t` cache-buster guarantees the iframe always re-runs the page even
+// when the URL string is otherwise identical.
+function buildSampleIframeUrl() {
   const spec = readSampleSpec();
-  container.innerHTML = renderSamplePriceCard(sampleSpecTitle(spec), spec);
+  const pc  = encodeAdminConfigForIframe();
+  const cfg = buildSampleDrawingConfig(spec);
+  const base = 'fence-build-price.html';
+  return base + '?pc=' + encodeURIComponent(pc) + '&config=' + encodeURIComponent(cfg) + '&_t=' + Date.now();
+}
+
+// Public: regenerate the iframe URL and load it.  Wired to the "↻ Reload
+// sample" button + initial mount + debounced spec/labour input changes.
+function reloadSampleIframe() {
+  const iframe = document.getElementById('cl-sample-iframe');
+  if (!iframe) return;
+  try {
+    const url = buildSampleIframeUrl();
+    iframe.src = url;
+  } catch (e) {
+    console.warn('[reloadSampleIframe]', e);
+  }
+}
+
+// Spec-input changes: short debounce so the iframe reloads quickly
+// once the user finishes typing length/corners/gates.
+let _sampleSpecDebounceTimer = null;
+function onSampleSpecChange() {
+  clearTimeout(_sampleSpecDebounceTimer);
+  _sampleSpecDebounceTimer = setTimeout(reloadSampleIframe, 350);
+}
+
+// Legacy callers (labour input handlers, save flow, etc.) call
+// refreshSamplePrices() expecting the old V2-derived sample card to
+// re-render.  Now it just queues an iframe reload — but with a longer
+// debounce so typing into labour fields doesn't reload the iframe on
+// every keystroke.
+let _sampleLabourDebounceTimer = null;
+function refreshSamplePrices() {
+  clearTimeout(_sampleLabourDebounceTimer);
+  _sampleLabourDebounceTimer = setTimeout(reloadSampleIframe, 1500);
 }
 
 // Hook load/save pipeline — showSection wrap already exists; also fire on direct load
@@ -9116,7 +9297,9 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     try {
       if (document.getElementById('lab2-tasks-body')) loadLabourUI();
-      if (document.getElementById('cl-sample-prices')) refreshSamplePrices();
+      // Initial iframe load happens after the cloud config has had a chance
+      // to settle (next setTimeout) so the iframe sees the latest config,
+      // not a stale localStorage snapshot.
     } catch (e) { console.warn('[init]', e); }
   }, 300);
   // Pull the latest config from the cloud so multiple browsers / devices stay
@@ -9124,6 +9307,12 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     try { if (typeof loadConfigFromCloud === 'function') loadConfigFromCloud(); } catch (e) { console.warn('[cloud-load]', e); }
   }, 100);
+  // First iframe paint — wait long enough for cloud-load to finish so the
+  // ?pc= param contains the freshest config. If cloud-load fails, we still
+  // use whatever's currently in `config` (default → localStorage cache).
+  setTimeout(() => {
+    try { if (document.getElementById('cl-sample-iframe')) reloadSampleIframe(); } catch (e) { console.warn('[sample-iframe-init]', e); }
+  }, 800);
 });
 
 // ───── Warn on close with unsaved changes ─────
