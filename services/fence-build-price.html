@@ -3463,7 +3463,24 @@
             const profit = displayedPrice - Math.round(totalMaterial);
             const margin = displayedPrice > 0 ? Math.round((profit / displayedPrice) * 100) : 0;
 
-            return { items, totalMaterial: Math.round(totalMaterial), markup, markupBasis: PCFG.markupBasis || 'material', basisValue: Math.round(basis), displayedPrice, profit, margin };
+            // Per-type markup model: `basis` and `markupBasis` are no longer
+            // single global values. Report the dominant fence type's basis
+            // (the type with the most material cost) so the email's
+            // "Markup tier" line still has a sensible label.
+            let dominantBasis = 'material';
+            let dominantBasisValue = Math.round(totalMaterial);
+            if (pm && pm.types && pm.types.length > 0) {
+                let topType = null, topCost = 0;
+                pm.types.forEach(t => {
+                    const c = pm.byType[t].matCost || 0;
+                    if (c > topCost) { topCost = c; topType = t; }
+                });
+                if (topType) {
+                    dominantBasis = pm.byType[topType].basis || 'material';
+                    dominantBasisValue = Math.round(pm.byType[topType].basisVal || dominantBasisValue);
+                }
+            }
+            return { items, totalMaterial: Math.round(totalMaterial), markup, markupBasis: dominantBasis, basisValue: dominantBasisValue, displayedPrice, profit, margin };
         }
 
         // ============================================
@@ -9274,22 +9291,31 @@
             html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">📐 Pricing Worksheet — Full Calculation</h3>';
             html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Step-by-step math for how the estimate was built from admin settings.</p>';
 
-            // 3a. Markup Tiers — show all tiers, highlight the selected one
-            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
-            html += '<tr style="background:#555;color:#fff"><th style="text-align:left;padding:5px 8px" colspan="4">Markup Tiers (basis: ' + (matOrder.markupBasis === 'footage' ? 'total footage' : 'material cost') + ')</th></tr>';
-            html += '<tr style="background:#eee;font-weight:600"><td style="padding:4px 8px">Tier</td><td style="padding:4px 8px;text-align:right">Max Value</td><td style="padding:4px 8px;text-align:right">Multiplier</td><td style="padding:4px 8px;text-align:center">Selected</td></tr>';
-            tiers.forEach(function(t) {
-                var isSelected = t.multiplier === mk;
-                var bg = isSelected ? 'background:#f0ead6;font-weight:700' : '';
-                html += '<tr style="border-bottom:1px solid #e5e5e5;' + bg + '">';
-                html += '<td style="padding:4px 8px">' + (t.label || '—') + '</td>';
-                html += '<td style="padding:4px 8px;text-align:right">' + (t.maxValue !== null && t.maxValue !== undefined ? '$' + t.maxValue.toLocaleString() : '∞') + '</td>';
-                html += '<td style="padding:4px 8px;text-align:right">' + t.multiplier + '×</td>';
-                html += '<td style="padding:4px 8px;text-align:center">' + (isSelected ? '✔' : '') + '</td></tr>';
+            // 3a. Markup Tiers — per fence type now. For each type used in this
+            // project, show its own tier table with the matched tier highlighted.
+            // pmEarly (from earlier in this fn) carries per-type basis + markup.
+            var tierTypeLabels = { chainlink: 'Chain Link', wood: 'Wood', ornamental: 'Ornamental', weldedWire: 'Welded Wire', vinyl: 'Vinyl' };
+            var tierTypes = (pmEarly && pmEarly.types && pmEarly.types.length > 0) ? pmEarly.types : ['chainlink'];
+            tierTypes.forEach(function(tk) {
+                var tiers = (PCFG.markupTiersByType && PCFG.markupTiersByType[tk]) || PCFG.markupTiers || DEFAULT_PRICING_CONFIG.markupTiers || [];
+                var typeBasis = (PCFG.markupBasisByType && PCFG.markupBasisByType[tk]) || 'material';
+                var typeMk = (pmEarly && pmEarly.byType && pmEarly.byType[tk]) ? pmEarly.byType[tk].markup : null;
+                html += '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:11px">';
+                html += '<tr style="background:#555;color:#fff"><th style="text-align:left;padding:5px 8px" colspan="4">Markup Tiers — ' + escHtml(tierTypeLabels[tk] || tk) + ' (basis: ' + (typeBasis === 'footage' ? 'total footage' : 'material cost') + ')</th></tr>';
+                html += '<tr style="background:#eee;font-weight:600"><td style="padding:4px 8px">Tier</td><td style="padding:4px 8px;text-align:right">Max Value</td><td style="padding:4px 8px;text-align:right">Multiplier</td><td style="padding:4px 8px;text-align:center">Selected</td></tr>';
+                tiers.forEach(function(t) {
+                    var isSelected = typeMk != null && t.multiplier === typeMk;
+                    var bg = isSelected ? 'background:#f0ead6;font-weight:700' : '';
+                    html += '<tr style="border-bottom:1px solid #e5e5e5;' + bg + '">';
+                    html += '<td style="padding:4px 8px">' + (t.label || '—') + '</td>';
+                    html += '<td style="padding:4px 8px;text-align:right">' + (t.maxValue !== null && t.maxValue !== undefined ? '$' + t.maxValue.toLocaleString() : '∞') + '</td>';
+                    html += '<td style="padding:4px 8px;text-align:right">' + t.multiplier + '×</td>';
+                    html += '<td style="padding:4px 8px;text-align:center">' + (isSelected ? '✔' : '') + '</td></tr>';
+                });
+                html += '</table>';
             });
             var minCharge = PCFG.minimumJobCharge || DEFAULT_PRICING_CONFIG.minimumJobCharge || 0;
-            html += '<tr style="border-bottom:1px solid #e5e5e5"><td colspan="3" style="padding:4px 8px;color:#888">Minimum Job Charge</td><td style="padding:4px 8px;text-align:center;font-weight:600">' + (minCharge > 0 ? '$' + minCharge : 'None') + '</td></tr>';
-            html += '</table>';
+            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px"><tr style="border-bottom:1px solid #e5e5e5"><td colspan="3" style="padding:4px 8px;color:#888">Global Minimum Job Charge</td><td style="padding:4px 8px;text-align:center;font-weight:600">' + (minCharge > 0 ? '$' + minCharge : 'None') + '</td></tr></table>';
 
             // 3b. Labour & Add-On Settings
             var lab = cfgLabour();
