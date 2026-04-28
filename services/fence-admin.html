@@ -1299,6 +1299,7 @@ a{color:var(--accent);text-decoration:none}
     </div>
     <div class="btn-row" style="margin-top:8px">
       <button class="btn btn-sm btn-outline" onclick="addCustomLabourTask()">+ Add custom task</button>
+      <button class="btn btn-sm btn-outline" onclick="restoreDefaultLabourTasks()" title="Re-add any default tasks you removed and reset every default task back to factory values for this fence type. Custom tasks are kept.">↻ Restore defaults</button>
     </div>
   </div>
 
@@ -8284,8 +8285,8 @@ const LAB2_TASK_DEFS = [
   { key: 'tyingFence',        label: 'Tying the fence',                 unit: 'perFoot',   minutes: 0.5, employees: 1 },
   { key: 'touchUps',          label: 'Touch ups',                       unit: 'perJob',    minutes: 20,  employees: 1 }
 ];
-const LAB2_UNITS = ['perJob', 'perLine', 'perPost', 'perFoot', 'perHookup', 'perGate'];
-const LAB2_UNIT_LABEL = { perJob: 'per job', perLine: 'per line', perPost: 'per post', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
+const LAB2_UNITS = ['perJob', 'perDay', 'perLine', 'perPost', 'perSection', 'perFoot', 'perHookup', 'perGate'];
+const LAB2_UNIT_LABEL = { perJob: 'per job', perDay: 'per day', perLine: 'per line', perPost: 'per post', perSection: 'per section', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
 const LAB2_TYPES = [
   { key: 'chainlink',  label: 'Chain Link' },
   { key: 'wood',       label: 'Wood' },
@@ -8392,11 +8393,14 @@ function ensureLab2() {
     if (slot.loadUpMin == null) slot.loadUpMin = 30;
     if (!slot.tasks) slot.tasks = {};
     if (!slot.customTaskOrder) slot.customTaskOrder = [];
+    if (!slot.hiddenTasks) slot.hiddenTasks = [];
     if (slot.targetProfitPerDay == null) slot.targetProfitPerDay = 800;
     if (slot.enforceProfitTarget == null) slot.enforceProfitTarget = false;
     if (slot.minimumJobCharge == null) slot.minimumJobCharge = 0;
-    // Seed predefined task defaults if missing
+    // Seed predefined task defaults if missing — but skip tasks the admin
+    // explicitly hid (they get re-seeded only when "Restore defaults" runs)
     for (const def of LAB2_TASK_DEFS) {
+      if (slot.hiddenTasks.indexOf(def.key) !== -1) continue;
       if (!slot.tasks[def.key]) {
         slot.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
       }
@@ -8518,9 +8522,15 @@ function renderLabourTasks() {
   const body = document.getElementById('lab2-tasks-body');
   if (!body) return;
   const slot = lab2Slot();
+  const hidden = (slot.hiddenTasks || []);
+  const isHidden = key => hidden.indexOf(key) !== -1;
   let html = '';
-  // Predefined tasks first (fixed labels)
+  // Predefined tasks first (skip hidden — admin can hide any predefined task,
+  // and "Restore defaults" un-hides them all). Each row gets a × button to
+  // hide that task; the task definition stays in LAB2_TASK_DEFS so restoring
+  // brings it back with its original defaults.
   for (const def of LAB2_TASK_DEFS) {
+    if (isHidden(def.key)) continue;
     const t = slot.tasks[def.key] || {};
     const unitOpts = LAB2_UNITS.map(u => `<option value="${u}"${t.unit === u ? ' selected' : ''}>${LAB2_UNIT_LABEL[u]}</option>`).join('');
     html += `<tr>
@@ -8528,7 +8538,7 @@ function renderLabourTasks() {
       <td><input type="number" value="${t.minutes || 0}" step="0.1" min="0" oninput="updateLab2Task('${def.key}','minutes',this.value)" style="width:72px;text-align:right"></td>
       <td><input type="number" value="${t.employees || 1}" step="1" min="1" oninput="updateLab2Task('${def.key}','employees',this.value)" style="width:56px;text-align:right"></td>
       <td><select onchange="updateLab2Task('${def.key}','unit',this.value)" style="width:96px">${unitOpts}</select></td>
-      <td></td>
+      <td><button class="btn-icon-danger" onclick="hidePredefinedLabourTask('${def.key}')" title="Hide this task for ${clEscAttr(lab2TypeLabel())} (Restore defaults brings it back)">&times;</button></td>
     </tr>`;
   }
   // Custom tasks (editable label + delete button)
@@ -8546,6 +8556,45 @@ function renderLabourTasks() {
     </tr>`;
   }
   body.innerHTML = html;
+}
+
+// Friendly label of the active fence-type tab — used in tooltips.
+function lab2TypeLabel() {
+  const t = window._labActiveType || 'chainlink';
+  const found = (LAB2_TYPES || []).find(x => x.key === t);
+  return found ? found.label : t;
+}
+
+// Hide a predefined task for the active fence type. The task isn't deleted
+// from LAB2_TASK_DEFS — just added to slot.hiddenTasks so the renderer skips
+// it and the engine ignores it. Restore defaults un-hides everything.
+function hidePredefinedLabourTask(key) {
+  const slot = lab2Slot();
+  if (!slot.hiddenTasks) slot.hiddenTasks = [];
+  if (slot.hiddenTasks.indexOf(key) === -1) slot.hiddenTasks.push(key);
+  // Also clear the task data so it doesn't ghost in the engine
+  delete slot.tasks[key];
+  renderLabourTasks();
+  markDirty();
+  updateLabourPreview();
+  refreshSamplePrices();
+}
+
+// Restore all predefined tasks to their LAB2_TASK_DEFS defaults for the
+// active fence type. Un-hides everything, overwrites any user-modified
+// values back to the seed defaults. Custom tasks are left alone.
+function restoreDefaultLabourTasks() {
+  if (!confirm('Restore all default tasks for ' + lab2TypeLabel() + '?\n\nThis re-adds any tasks you removed and resets the time / employees / unit on every default task to factory values. Custom tasks you\'ve added are kept.')) return;
+  const slot = lab2Slot();
+  slot.hiddenTasks = [];
+  for (const def of LAB2_TASK_DEFS) {
+    slot.tasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
+  }
+  renderLabourTasks();
+  markDirty();
+  updateLabourPreview();
+  refreshSamplePrices();
+  toast('Default tasks restored for ' + lab2TypeLabel(), 'success');
 }
 
 function updateLab2Task(key, field, value) {
@@ -8630,30 +8679,47 @@ function computeLabour(ctx, type) {
   const lab = ensureLab2();
   const fenceType = type || ctx.fenceType || 'chainlink';
   const slot = lab.byType[fenceType] || lab.byType.chainlink;
+  // perSection = number of fence sections (gaps between posts) =
+  //   max(0, totalPosts - lines). Each line of N posts has N-1 sections.
+  // perDay = number of workdays the project spans — resolved AFTER we
+  // compute daysNeeded below, since perDay tasks contribute to total
+  // labour but we don't want them to drive daysNeeded recursively.
+  const sections = Math.max(0, (ctx.totalPosts || 0) - (ctx.lines || 0));
   const counts = {
     perJob:    1,
+    perDay:    1,  // placeholder; we re-evaluate after daysNeeded resolves
     perLine:   ctx.lines || 0,
     perPost:   ctx.totalPosts || 0,
+    perSection: sections,
     perFoot:   ctx.lengthFt || 0,
     perHookup: ctx.hookups || 0,
     perGate:   ctx.gates || 0
   };
   const breakdown = [];
 
-  // All task entries — predefined + custom (from active type's slot)
+  // Hidden task keys — predefined tasks the admin has chosen to hide for
+  // this fence type. Engine respects them so removed tasks don't compute.
+  const hidden = (slot.hiddenTasks || []);
+  const isHidden = key => hidden.indexOf(key) !== -1;
+
+  // All task entries — predefined (skip hidden) + custom (from active type's slot)
   const allTasks = [];
   for (const def of LAB2_TASK_DEFS) {
+    if (isHidden(def.key)) continue;
     const t = slot.tasks[def.key] || def;
-    allTasks.push({ key: def.key, label: def.label, task: t });
+    allTasks.push({ key: def.key, label: def.label, task: t, isPerDay: (t.unit || 'perJob') === 'perDay' });
   }
   for (const key of (slot.customTaskOrder || [])) {
     const t = slot.tasks[key];
     if (!t) continue;
-    allTasks.push({ key, label: t.label || 'Custom task', task: t });
+    allTasks.push({ key, label: t.label || 'Custom task', task: t, isPerDay: (t.unit || 'perJob') === 'perDay' });
   }
 
+  // First pass: compute work minutes EXCLUDING perDay tasks (we don't yet
+  // know daysNeeded). perDay tasks are added in a second pass below.
   let workMinutes = 0;
   for (const entry of allTasks) {
+    if (entry.isPerDay) continue;  // defer
     const t = entry.task;
     const units = counts[t.unit || 'perJob'] || 0;
     const m = (t.minutes || 0) * units * (t.employees || 1);
@@ -8686,8 +8752,33 @@ function computeLabour(ctx, type) {
   const otChargeMult = slot.otChargeMult || 1;
   const perPersonHrs = totalHours / crewSize;
 
-  const daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
-  const perPersonPerDay = perPersonHrs / daysNeeded;
+  let daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHoursPerDay));
+
+  // SECOND PASS: now that daysNeeded is known, evaluate perDay tasks.
+  // E.g. "daily site cleanup, 30 min × 1 employee, perDay" on a 3-day
+  // job = 90 person-minutes. Adds to workMinutes + bumps breaks/totals,
+  // but we don't recompute daysNeeded — perDay tasks are usually small
+  // enough that they don't push the project into another day, and
+  // letting them feed back would create circular logic.
+  let perDayWork = 0;
+  for (const entry of allTasks) {
+    if (!entry.isPerDay) continue;
+    const t = entry.task;
+    const m = (t.minutes || 0) * daysNeeded * (t.employees || 1);
+    if (m > 0) breakdown.push({ label: entry.label + ' (× ' + daysNeeded + ' day' + (daysNeeded !== 1 ? 's' : '') + ')', minutes: m, units: daysNeeded, employees: t.employees, unit: t.unit });
+    perDayWork += m;
+  }
+  // Re-derive totals + recompute breaks proportionally
+  const workMinutesFinal = workMinutes + perDayWork;
+  const breakMinutesFinal = (hoursPerDay > 0 && breakMinPerDay > 0)
+    ? (workMinutesFinal / (hoursPerDay * 60)) * breakMinPerDay
+    : 0;
+  const totalMinutesFinal = workMinutesFinal + breakMinutesFinal + travelMin + loadMin;
+  const totalHoursFinal = totalMinutesFinal / 60;
+  const perPersonHrsFinal = totalHoursFinal / crewSize;
+  // Recompute days in case perDay work pushed us over (rare but possible)
+  daysNeeded = Math.max(1, Math.ceil(perPersonHrsFinal / maxHoursPerDay));
+  const perPersonPerDay = perPersonHrsFinal / daysNeeded;
   const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
   const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
   const regHrs = regPerPersonPerDay * daysNeeded * crewSize;
@@ -8700,8 +8791,8 @@ function computeLabour(ctx, type) {
   if (otHrs > 0) breakdown.push({ label: 'OVERTIME — ' + otHrs.toFixed(1) + ' hrs × ' + otCostMult + 'x cost / ' + otChargeMult + 'x charge', minutes: otHrs * 60 });
 
   return {
-    minutes: totalMinutes, workMinutes, breakMinutes,
-    hours: totalHours, regHrs, otHrs, perPersonHrs,
+    minutes: totalMinutesFinal, workMinutes: workMinutesFinal, breakMinutes: breakMinutesFinal,
+    hours: totalHoursFinal, regHrs, otHrs, perPersonHrs: perPersonHrsFinal,
     daysNeeded, perPersonPerDay,
     cost, charge, withCushioning: charge, breakdown
   };
