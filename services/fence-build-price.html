@@ -9120,10 +9120,104 @@
             };
         }
 
-        function buildCustomerEmailHtml(name, breakdown, editUrl, address, notes, drawingDataUrl) {
+        // Build a human-readable title summarising the fence as drawn.
+        // Example: "65' of wood fence + one gate and 110' of black chain link fence"
+        // Aggregates by (fenceType, color) so distinct colour runs stay separate
+        // (a black + galvanised chainlink job lists each).  Each group's gates
+        // attach to that group's segment so the title reads naturally.
+        function generateEstimateTitle() {
+            const TITLE_TYPE_LABELS = {
+                chainlink:  'chain link',
+                wood:       'wood',
+                ornamental: 'ornamental',
+                weldedWire: 'welded wire',
+                vinyl:      'vinyl'
+            };
+            // Per-type colour key — pulled from the matching style attribute.
+            // Wood doesn't get a colour descriptor (cedar vs PT vs wood-look
+            // would bloat the title); customers/operators recognise wood
+            // without further qualification.
+            function descriptor(style) {
+                if (!style) return '';
+                const t = style.fenceType || 'chainlink';
+                if (t === 'chainlink')  return style.chainlinkColor  || '';
+                if (t === 'ornamental') return style.ornamentalColor || '';
+                if (t === 'weldedWire') return style.weldedWireColor || '';
+                if (t === 'vinyl')      return style.vinylColor      || '';
+                return '';  // wood + anything unknown
+            }
+            // Number-to-word for small gate counts — reads more naturally
+            // than digits in the title ("one gate" not "1 gate").  Falls
+            // back to digits at 5+.
+            function numWord(n) {
+                const map = { 1: 'one', 2: 'two', 3: 'three', 4: 'four' };
+                return map[n] || String(n);
+            }
+
+            const groups = {};  // key = "type|descriptor"
+            function ensureGroup(type, desc) {
+                const key = type + '|' + desc;
+                if (!groups[key]) {
+                    groups[key] = { type: type, descriptor: desc, lengthFt: 0, gates: 0, _firstSeen: Object.keys(groups).length };
+                }
+                return groups[key];
+            }
+
+            (state.lines || []).forEach(line => {
+                if (!isLineEnabled(line)) return;
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                const len = getLineLengthFt(p1, p2);
+                if (!isFinite(len) || len <= 0) return;
+                const style = getStyleForLine(line);
+                const t = (style && style.fenceType) || 'chainlink';
+                ensureGroup(t, descriptor(style)).lengthFt += len;
+            });
+            (state.gates || []).forEach(g => {
+                if (!isGateEnabled(g)) return;
+                const style = getStyleForLine(g);
+                const t = (style && style.fenceType) || 'chainlink';
+                ensureGroup(t, descriptor(style)).gates += 1;
+            });
+
+            // Render groups in the order they were first encountered so the
+            // title matches the user's drawing order (style 1 first, etc.)
+            const ordered = Object.values(groups).sort((a, b) => a._firstSeen - b._firstSeen);
+            const parts = [];
+            ordered.forEach(g => {
+                const len = Math.round(g.lengthFt);
+                const desc = g.descriptor ? g.descriptor + ' ' : '';
+                const typeLabel = TITLE_TYPE_LABELS[g.type] || g.type;
+                let segment = '';
+                if (len > 0) {
+                    segment = len + "' of " + desc + typeLabel + ' fence';
+                    if (g.gates > 0) {
+                        segment += ' + ' + numWord(g.gates) + ' gate' + (g.gates === 1 ? '' : 's');
+                    }
+                } else if (g.gates > 0) {
+                    // Gate-only group (rare — gate placed but no fence line of
+                    // that type yet).  Spell out the type so the title still
+                    // reads as a fence component.
+                    segment = numWord(g.gates) + ' ' + desc + typeLabel + ' gate' + (g.gates === 1 ? '' : 's');
+                }
+                if (segment) parts.push(segment);
+            });
+
+            if (parts.length === 0) return 'Custom fence';
+            if (parts.length === 1) return parts[0];
+            if (parts.length === 2) return parts[0] + ' and ' + parts[1];
+            // Oxford-comma join for 3+
+            return parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1];
+        }
+
+        function buildCustomerEmailHtml(name, breakdown, editUrl, address, notes, drawingDataUrl, estimateTitle) {
             let html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f4">';
             html += '<div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f4f4f4;color:#1d1d1f">';
-            html += '<div style="background:' + cfgAccent() + ';padding:20px 24px;border-radius:12px 12px 0 0"><h1 style="color:#fff;margin:0;font-size:22px">Your Fence Estimate</h1></div>';
+            html += '<div style="background:' + cfgAccent() + ';padding:20px 24px;border-radius:12px 12px 0 0">';
+            html += '<h1 style="color:#fff;margin:0;font-size:22px">Your Fence Estimate</h1>';
+            if (estimateTitle) html += '<p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;font-weight:500;line-height:1.4">' + escHtml(estimateTitle) + '</p>';
+            html += '</div>';
             html += '<div style="padding:24px;background:#f9f9f9;border:1px solid #e5e5e5;border-top:none">';
             html += '<p style="margin:0 0 16px;font-size:14px">Hi ' + escHtml(name) + ', here\'s your fence estimate from ' + escHtml(cfgBrand('businessName')) + '.</p>';
             if (address) { html += '<p style="margin:0 0 12px;font-size:13px;color:#666"><strong>Site:</strong> ' + escHtml(address) + '</p>'; }
@@ -9165,7 +9259,7 @@
             return html;
         }
 
-        function buildInternalEmailHtml(customerInfo, breakdown, editUrl, drawingDataUrl) {
+        function buildInternalEmailHtml(customerInfo, breakdown, editUrl, drawingDataUrl, estimateTitle) {
             const matOrder = generateMaterialOrder();
             const mk = matOrder.markup;
             let totalMaterial = 0;
@@ -9173,7 +9267,10 @@
 
             let html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f4">';
             html += '<div style="font-family:Inter,Arial,sans-serif;max-width:700px;margin:0 auto;padding:0;background:#f4f4f4;color:#1d1d1f">';
-            html += '<div style="background:#1d1d1f;padding:20px 24px;border-radius:12px 12px 0 0"><h1 style="color:' + cfgAccent() + ';margin:0;font-size:20px">New Estimate — P&L + Material Order</h1></div>';
+            html += '<div style="background:#1d1d1f;padding:20px 24px;border-radius:12px 12px 0 0">';
+            html += '<h1 style="color:' + cfgAccent() + ';margin:0;font-size:20px">New Estimate — P&L + Material Order</h1>';
+            if (estimateTitle) html += '<p style="color:#ddd;margin:6px 0 0;font-size:13px;font-weight:500;line-height:1.4">' + escHtml(estimateTitle) + '</p>';
+            html += '</div>';
             html += '<div style="padding:24px;background:#f9f9f9;border:1px solid #e5e5e5;border-top:none">';
 
             // Customer info
@@ -9692,7 +9789,11 @@
         function populateEstimateSummary() {
             const breakdown = buildEstimateBreakdown();
             const container = document.getElementById('saveEstimateSummary');
+            // Auto-title preview at the top so the customer sees how their
+            // estimate is being labelled before they submit.
+            const title = generateEstimateTitle();
             let html = '';
+            html += '<div class="save-estimate-summary-row" style="font-weight:600;align-items:flex-start;line-height:1.4;border-bottom:1px solid var(--gray-100);padding-bottom:8px;margin-bottom:8px"><span style="flex:1">' + escHtml(title) + '</span></div>';
             breakdown.rows.forEach(r => {
                 html += '<div class="save-estimate-summary-row"><span>' + r.label + ' — ' + r.desc + '</span><span>$' + r.cost.toLocaleString() + '</span></div>';
             });
@@ -9848,15 +9949,18 @@
                 // Snapshot the drawing so both emails can show the full fence
                 // — fits-to-view + grid mode + clean selection state.
                 const drawingDataUrl = captureDrawingPreview(720);
+                // Auto-generated estimate title summarising the fence as drawn.
+                // Used in subject lines + email body headers + modal preview.
+                const estimateTitle = generateEstimateTitle();
 
-                const customerHtml = buildCustomerEmailHtml(fullName, breakdown, editUrl, address, notes, drawingDataUrl);
+                const customerHtml = buildCustomerEmailHtml(fullName, breakdown, editUrl, address, notes, drawingDataUrl, estimateTitle);
                 const internalHtml = buildInternalEmailHtml(
                     { name: fullName, email: email, phone: phone, address: address, notes: notes, marketing: marketing },
-                    breakdown, editUrl, drawingDataUrl
+                    breakdown, editUrl, drawingDataUrl, estimateTitle
                 );
 
-                var custSubject = 'Your Fence Estimate from ' + cfgBrand('businessName') + ' — $' + breakdown.total.toLocaleString();
-                var intSubject = 'New Estimate: ' + fullName + (address ? ' @ ' + address : '') + ' — $' + breakdown.total.toLocaleString() + ' (Profit: $' + (breakdown.total - breakdown.rows.reduce(function(s,r){ return s + (r.material || 0); }, 0)).toLocaleString() + ')';
+                var custSubject = 'Your Fence Estimate — ' + estimateTitle + ' — $' + breakdown.total.toLocaleString();
+                var intSubject = 'New Estimate: ' + fullName + (address ? ' @ ' + address : '') + ' — ' + estimateTitle + ' — $' + breakdown.total.toLocaleString() + ' (Profit: $' + (breakdown.total - breakdown.rows.reduce(function(s,r){ return s + (r.material || 0); }, 0)).toLocaleString() + ')';
 
                 await sendEstimateEmails(email, fullName, custSubject, customerHtml, intSubject, internalHtml);
 
