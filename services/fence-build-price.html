@@ -4943,6 +4943,98 @@
         }
         function snapWorldToGrid(wx, wy) { return { x: Math.round(wx), y: Math.round(wy) }; }
 
+        // Capture the current drawing as a PNG data URL suitable for embedding
+        // in email HTML.  Returns null if the drawing is empty.
+        // Behaviour notes:
+        //   • Forces grid mode for the capture so map tiles (CORS-tainted)
+        //     don't trigger a SecurityError on canvas.toDataURL().
+        //   • Auto-fits the drawing into view so the email shows the WHOLE
+        //     fence regardless of where the customer was zoomed/panned.
+        //   • Scales the captured PNG down to <= maxWidth for email layouts
+        //     (default 720px) so the data URL stays under ~120 KB.
+        //   • Restores the user's zoom/pan/mode after capture; the user
+        //     never sees the canvas flicker because we redraw before the
+        //     next paint via requestAnimationFrame.
+        function captureDrawingPreview(maxWidth) {
+            maxWidth = maxWidth || 720;
+            if (state.lines.length === 0 && state.gates.length === 0) return null;
+            if (typeof canvas === 'undefined' || !canvas || !canvasW || !canvasH) return null;
+
+            // Save current view + mode so we can restore after capture
+            const saved = {
+                zoom: state.zoom,
+                panX: state.panX,
+                panY: state.panY,
+                mode: canvasMode,
+                selectedLineIdx: state.selectedLineIdx,
+                selectedGateIdx: state.selectedGateIdx,
+                selectedHouseIdx: state.selectedHouseIdx,
+                selectedPointId: state.selectedPointId,
+                pendingPoint: state.pendingPoint
+            };
+            try {
+                // Force grid mode and clear any selection highlights so the
+                // capture is a clean overview, not a screenshot of the
+                // current edit state.
+                canvasMode = 'grid';
+                state.selectedLineIdx = -1;
+                state.selectedGateIdx = -1;
+                state.selectedHouseIdx = -1;
+                state.selectedPointId = null;
+                state.pendingPoint = null;
+                fitDrawingToView(40);
+                drawCanvas();
+
+                // canvas.width is in DEVICE pixels (DPR-scaled), but we want
+                // CSS-pixel sizing for email so the image isn't double-sized.
+                const srcW = canvas.width;
+                const srcH = canvas.height;
+                const cssW = canvasW;
+                const cssH = canvasH;
+                let dataUrl;
+                if (cssW <= maxWidth) {
+                    // Source canvas already at email-friendly width — scale
+                    // down to CSS-pixel size to drop the DPR-overhead.
+                    const off = document.createElement('canvas');
+                    off.width = Math.round(cssW);
+                    off.height = Math.round(cssH);
+                    const offCtx = off.getContext('2d');
+                    offCtx.fillStyle = '#ffffff';
+                    offCtx.fillRect(0, 0, off.width, off.height);
+                    offCtx.drawImage(canvas, 0, 0, srcW, srcH, 0, 0, off.width, off.height);
+                    dataUrl = off.toDataURL('image/png');
+                } else {
+                    // Scale proportionally to maxWidth
+                    const scale = maxWidth / cssW;
+                    const off = document.createElement('canvas');
+                    off.width = Math.round(maxWidth);
+                    off.height = Math.round(cssH * scale);
+                    const offCtx = off.getContext('2d');
+                    offCtx.fillStyle = '#ffffff';
+                    offCtx.fillRect(0, 0, off.width, off.height);
+                    offCtx.drawImage(canvas, 0, 0, srcW, srcH, 0, 0, off.width, off.height);
+                    dataUrl = off.toDataURL('image/png');
+                }
+                return dataUrl;
+            } catch (e) {
+                console.warn('[captureDrawingPreview]', e);
+                return null;
+            } finally {
+                // Restore user's view + selection so the canvas they see
+                // after the email modal closes matches what they had before.
+                canvasMode = saved.mode;
+                state.zoom = saved.zoom;
+                state.panX = saved.panX;
+                state.panY = saved.panY;
+                state.selectedLineIdx = saved.selectedLineIdx;
+                state.selectedGateIdx = saved.selectedGateIdx;
+                state.selectedHouseIdx = saved.selectedHouseIdx;
+                state.selectedPointId = saved.selectedPointId;
+                state.pendingPoint = saved.pendingPoint;
+                drawCanvas();
+            }
+        }
+
         // ============================================
         // HOUSE HELPERS
         // ============================================
@@ -9028,7 +9120,7 @@
             };
         }
 
-        function buildCustomerEmailHtml(name, breakdown, editUrl, address, notes) {
+        function buildCustomerEmailHtml(name, breakdown, editUrl, address, notes, drawingDataUrl) {
             let html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;background:#f4f4f4">';
             html += '<div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;padding:0;background:#f4f4f4;color:#1d1d1f">';
             html += '<div style="background:' + cfgAccent() + ';padding:20px 24px;border-radius:12px 12px 0 0"><h1 style="color:#fff;margin:0;font-size:22px">Your Fence Estimate</h1></div>';
@@ -9036,6 +9128,16 @@
             html += '<p style="margin:0 0 16px;font-size:14px">Hi ' + escHtml(name) + ', here\'s your fence estimate from ' + escHtml(cfgBrand('businessName')) + '.</p>';
             if (address) { html += '<p style="margin:0 0 12px;font-size:13px;color:#666"><strong>Site:</strong> ' + escHtml(address) + '</p>'; }
             if (notes) { html += '<p style="margin:0 0 12px;font-size:13px;color:#666;background:#f0ead6;padding:10px 12px;border-radius:8px"><strong>Your notes:</strong> ' + escHtml(notes) + '</p>'; }
+
+            // Fence drawing preview — embed inline so the customer sees the
+            // exact layout we priced, fitted to view + grid background.
+            if (drawingDataUrl) {
+                html += '<div style="margin:0 0 18px">';
+                html += '<p style="margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#888">Your Fence Layout</p>';
+                html += '<img src="' + drawingDataUrl + '" alt="Your fence layout drawing" style="display:block;width:100%;max-width:100%;height:auto;border:1px solid #e5e5e5;border-radius:8px;background:#fff" />';
+                html += '<p style="margin:6px 0 0;font-size:10px;color:#aaa">Total layout: ' + breakdown.totalLength + ' ft · ' + breakdown.totalGates + ' gates · ' + breakdown.totalPosts + ' posts</p>';
+                html += '</div>';
+            }
 
             // Summary
             html += '<table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:13px">';
@@ -9063,7 +9165,7 @@
             return html;
         }
 
-        function buildInternalEmailHtml(customerInfo, breakdown, editUrl) {
+        function buildInternalEmailHtml(customerInfo, breakdown, editUrl, drawingDataUrl) {
             const matOrder = generateMaterialOrder();
             const mk = matOrder.markup;
             let totalMaterial = 0;
@@ -9084,6 +9186,117 @@
             if (customerInfo.notes) { html += '<tr><td style="padding:3px 12px 3px 0;color:#888">Special Request:</td><td style="padding:3px 0">' + escHtml(customerInfo.notes) + '</td></tr>'; }
             html += '<tr><td style="padding:3px 12px 3px 0;color:#888">Marketing:</td><td style="padding:3px 0">' + (customerInfo.marketing ? 'Yes' : 'No') + '</td></tr>';
             html += '</table>';
+
+            // Fence drawing preview — full layout fitted to view, grid bg
+            if (drawingDataUrl) {
+                html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">🗺️ Fence Drawing</h3>';
+                html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Auto-fitted overview of the fence as drawn by the customer. ' + breakdown.totalLength + ' ft · ' + breakdown.totalGates + ' gates · ' + breakdown.totalPosts + ' posts.</p>';
+                html += '<img src="' + drawingDataUrl + '" alt="Fence layout drawing" style="display:block;width:100%;max-width:100%;height:auto;border:1px solid #e5e5e5;border-radius:8px;background:#fff;margin-bottom:16px" />';
+            }
+
+            // ── P&L SNAPSHOT — mirrors admin Sample Fence Price preview ──
+            // Quick at-a-glance numbers so the operator can spot mistakes
+            // before any of the deep tables render.  Same layout as the
+            // admin's Sample Fence Price card (Material | Labour columns
+            // + Profit/Margin summary row).
+            try {
+                var pnlMat = breakdown.projectMaterial || (typeof calculateProjectMaterial === 'function' ? calculateProjectMaterial() : null);
+                var pnlLab = breakdown.projectLabour || (typeof calculateProjectLabour === 'function' ? calculateProjectLabour() : null);
+                var moneyFmt = function(n) { return '$' + Math.round(n || 0).toLocaleString(); };
+                var matCost  = pnlMat ? (pnlMat.totalMatCost || 0) : (matOrder.totalMaterial || 0);
+                var matSell  = pnlMat ? (pnlMat.totalMatSell || 0) : (matOrder.totalMaterial * (mk || 1));
+                var matMkPnl = matSell - matCost;
+                var labCost  = pnlLab ? (pnlLab.totalCost || 0) : 0;
+                var labCharg = pnlLab ? (pnlLab.totalCharge || 0) : (breakdown.labourTotal || 0);
+                var labMar   = labCharg - labCost;
+                var addons   = breakdown.addonTotal || 0;
+                var totCost  = matCost + labCost; // raw cost (excludes add-ons since add-ons are charge-side)
+                var totCharg = breakdown.total || 0; // customer-facing final
+                var profit   = totCharg - totCost;
+                var marginPct = totCharg > 0 ? (profit / totCharg) * 100 : 0;
+                var markupPct = totCost  > 0 ? (profit / totCost ) * 100 : 0;
+                // Aggregate hours / days across types (same as admin preview detail line)
+                var totHrs = 0, totOtHrs = 0, maxDays = 0;
+                if (pnlLab && pnlLab.byType) {
+                    Object.keys(pnlLab.byType).forEach(function(t) {
+                        var b = pnlLab.byType[t] || {};
+                        totHrs   += (b.hours || 0);
+                        totOtHrs += (b.otHrs || 0);
+                        if ((b.daysNeeded || 0) > maxDays) maxDays = (b.daysNeeded || 0);
+                    });
+                }
+
+                html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">📊 P&amp;L Snapshot <span style="font-size:10px;font-weight:600;color:#aaa;margin-left:6px">— mirrors admin preview pane</span></h3>';
+                html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Quick check on the math.  Same numbers the admin Sample Fence Price card shows — use this to spot calc mistakes at a glance.</p>';
+                html += '<div style="padding:10px;background:#fafafa;border:1px solid #e5e5e5;border-radius:8px;margin-bottom:16px;font-size:12px">';
+
+                // Top bar — total + customer-facing summary
+                html += '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px">';
+                html += '<div><div style="font-size:12px;font-weight:700;color:#1d1d1f">' + breakdown.totalLength + ' ft · ' + breakdown.totalPosts + ' posts · ' + breakdown.totalGates + ' gate' + (breakdown.totalGates === 1 ? '' : 's') + (maxDays > 1 ? ' · <strong style="color:#d2691e">' + maxDays + ' days</strong>' : '') + '</div></div>';
+                html += '<div style="text-align:right"><div style="font-size:18px;font-weight:700;color:' + cfgAccent() + ';letter-spacing:-0.02em">' + moneyFmt(totCharg) + '</div><div style="font-size:10px;color:#888">customer total</div></div>';
+                html += '</div>';
+
+                // Material + Labour columns side-by-side
+                html += '<table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin-bottom:8px"><tr>';
+                // Material column
+                html += '<td style="vertical-align:top;width:50%;padding:7px 9px;background:#fff;border:1px solid #eee;border-radius:5px">';
+                html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#888;font-weight:700;margin-bottom:4px">Material</div>';
+                html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">Cost</span><span style="font-weight:600">' + moneyFmt(matCost) + '</span></div>';
+                html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">Markup</span><span style="font-weight:600;color:#27ae60">+' + moneyFmt(matMkPnl) + '</span></div>';
+                html += '<div style="display:flex;justify-content:space-between;border-top:1px solid #eee;margin-top:3px;padding-top:3px"><span style="font-weight:700">Sell</span><span style="font-weight:700">' + moneyFmt(matSell) + '</span></div>';
+                html += '</td>';
+                // Labour column
+                html += '<td style="vertical-align:top;width:50%;padding:7px 9px;background:#fff;border:1px solid #eee;border-radius:5px">';
+                html += '<div style="font-size:9px;text-transform:uppercase;letter-spacing:0.06em;color:#888;font-weight:700;margin-bottom:4px">Labour · ' + totHrs.toFixed(1) + ' hrs</div>';
+                if (totOtHrs > 0) {
+                    html += '<div style="display:flex;justify-content:space-between;font-size:10px;color:#d2691e;font-weight:600"><span>Overtime</span><span>' + totOtHrs.toFixed(1) + ' hrs</span></div>';
+                }
+                html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">Cost</span><span style="font-weight:600">' + moneyFmt(labCost) + '</span></div>';
+                html += '<div style="display:flex;justify-content:space-between"><span style="color:#888">Margin</span><span style="font-weight:600;color:#27ae60">+' + moneyFmt(labMar) + '</span></div>';
+                html += '<div style="display:flex;justify-content:space-between;border-top:1px solid #eee;margin-top:3px;padding-top:3px"><span style="font-weight:700">Charge</span><span style="font-weight:700">' + moneyFmt(labCharg) + '</span></div>';
+                html += '</td>';
+                html += '</tr></table>';
+
+                if (addons > 0) {
+                    html += '<div style="display:flex;justify-content:space-between;font-size:11px;padding:5px 9px;background:#fff;border:1px solid #eee;border-radius:5px;margin-bottom:6px"><span style="color:#888">+ Add-ons</span><span style="font-weight:600">' + moneyFmt(addons) + '</span></div>';
+                }
+
+                // Profit / margin summary row
+                html += '<table style="width:100%;border-collapse:separate;border-spacing:6px 0;font-size:11px;padding-top:6px;border-top:1px solid #eee;margin-top:4px"><tr>';
+                html += '<td style="width:25%"><div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Total cost</div><div style="font-weight:600">' + moneyFmt(totCost) + '</div></td>';
+                html += '<td style="width:25%"><div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Total charge</div><div style="font-weight:600">' + moneyFmt(totCharg) + '</div></td>';
+                html += '<td style="width:25%"><div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Profit</div><div style="font-weight:700;color:' + (profit >= 0 ? '#27ae60' : '#c44') + '">' + moneyFmt(profit) + '</div></td>';
+                html += '<td style="width:25%"><div style="color:#888;font-size:9px;text-transform:uppercase;letter-spacing:0.05em">Margin / Markup</div><div style="font-weight:700;color:' + (profit >= 0 ? '#27ae60' : '#c44') + '">' + marginPct.toFixed(0) + '% / ' + markupPct.toFixed(0) + '%</div></td>';
+                html += '</tr></table>';
+
+                // Per-fence-type sub-breakdown — short row per type so you can
+                // see how each type contributes (chainlink vs wood vs etc.)
+                if (pnlMat && pnlMat.types && pnlMat.types.length > 0) {
+                    var typeLabelsSn = { chainlink: 'Chain Link', wood: 'Wood', ornamental: 'Ornamental', weldedWire: 'Welded Wire', vinyl: 'Vinyl' };
+                    html += '<table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:10px">';
+                    html += '<tr style="background:#444;color:#fff"><th style="text-align:left;padding:4px 6px">Type</th><th style="text-align:right;padding:4px 6px">Mat $</th><th style="text-align:right;padding:4px 6px">×</th><th style="text-align:right;padding:4px 6px">Mat sell</th><th style="text-align:right;padding:4px 6px">Lab $</th><th style="text-align:right;padding:4px 6px">Lab chrg</th><th style="text-align:right;padding:4px 6px">Profit</th></tr>';
+                    pnlMat.types.forEach(function(tk) {
+                        var m = pnlMat.byType[tk] || {};
+                        var l = (pnlLab && pnlLab.byType) ? (pnlLab.byType[tk] || {}) : {};
+                        var typeProfit = (m.matSell || 0) + (l.charge || 0) - (m.matCost || 0) - (l.cost || 0);
+                        html += '<tr style="border-bottom:1px solid #eee">';
+                        html += '<td style="padding:4px 6px;font-weight:600">' + escHtml(typeLabelsSn[tk] || tk) + '</td>';
+                        html += '<td style="padding:4px 6px;text-align:right">' + moneyFmt(m.matCost || 0) + '</td>';
+                        html += '<td style="padding:4px 6px;text-align:right">' + (m.markup || 1).toFixed(2) + '</td>';
+                        html += '<td style="padding:4px 6px;text-align:right">' + moneyFmt(m.matSell || 0) + '</td>';
+                        html += '<td style="padding:4px 6px;text-align:right;color:#888">' + moneyFmt(l.cost || 0) + '</td>';
+                        html += '<td style="padding:4px 6px;text-align:right">' + moneyFmt(l.charge || 0) + '</td>';
+                        html += '<td style="padding:4px 6px;text-align:right;color:#27ae60;font-weight:600">' + moneyFmt(typeProfit) + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</table>';
+                }
+
+                html += '</div>';  // /P&L card
+            } catch (e) {
+                console.warn('[pnl-snapshot]', e);
+                html += '<p style="font-size:11px;color:#c44;margin:0 0 16px"><em>P&amp;L snapshot unavailable: ' + escHtml(e.message || String(e)) + '</em></p>';
+            }
 
             // ── SECTION 1: Material Order (Shopping List) ──
             html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">📋 Material Order</h3>';
@@ -9632,11 +9845,14 @@
             try {
                 const breakdown = buildEstimateBreakdown();
                 const editUrl = getEditUrl();
+                // Snapshot the drawing so both emails can show the full fence
+                // — fits-to-view + grid mode + clean selection state.
+                const drawingDataUrl = captureDrawingPreview(720);
 
-                const customerHtml = buildCustomerEmailHtml(fullName, breakdown, editUrl, address, notes);
+                const customerHtml = buildCustomerEmailHtml(fullName, breakdown, editUrl, address, notes, drawingDataUrl);
                 const internalHtml = buildInternalEmailHtml(
                     { name: fullName, email: email, phone: phone, address: address, notes: notes, marketing: marketing },
-                    breakdown, editUrl
+                    breakdown, editUrl, drawingDataUrl
                 );
 
                 var custSubject = 'Your Fence Estimate from ' + cfgBrand('businessName') + ' — $' + breakdown.total.toLocaleString();
