@@ -6268,6 +6268,121 @@
         // EVERYTHING reads from config.labour2.byType[fenceType] — hourly
         // rates, OT rules, breaks, travel, load-up, tasks. Each fence
         // type owns its own complete labour settings.
+        // Task label registry — mirrors admin's LAB2_TASK_DEFS so the email
+        // and any UI surfaces can show human names instead of opaque keys.
+        // If a key isn't here (custom task added in admin) we humanize the
+        // key as a fallback.
+        const LAB2_TASK_LABELS = {
+            setupDiscussion:   'Set up / discussing job',
+            markingPosts:      'Marking posts',
+            stringLines:       'Running string lines',
+            materialHandling:  'Material handling',
+            postInstallation:  'Post installation',
+            heightsAndCutting: 'Setting heights & cutting',
+            cappingPosts:      'Capping posts',
+            stretchingMesh:    'Stretching mesh',
+            hookupTime:        'Hookup (end/corner posts)',
+            installGate:       'Installing a gate',
+            tyingFence:        'Tying the fence',
+            touchUps:          'Touch ups'
+        };
+        const LAB2_UNIT_LABELS = {
+            perJob:    'per job',
+            perDay:    'per day',
+            perLine:   'per line',
+            perPost:   'per post',
+            perSection:'per section',
+            perFoot:   'per foot',
+            perHookup: 'per hookup',
+            perGate:   'per gate'
+        };
+        function humanizeTaskKey(k) {
+            if (LAB2_TASK_LABELS[k]) return LAB2_TASK_LABELS[k];
+            // Camel/Pascal → "Set Up Foo": split before uppercase letters,
+            // capitalise the first.
+            return String(k || '').replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
+        }
+
+        // Per-task labour breakdown for a single fence type, mirroring the
+        // math in calculateTaskLabour() but returning a row per active task
+        // so the email can show where every minute of labour came from.
+        // Returns null if labour2 isn't configured. Cost/charge are
+        // ALLOCATED by minutes-share so the per-task numbers sum exactly to
+        // calculateTaskLabour's totalCost/totalCharge for this slot.
+        function calculateTaskLabourBreakdown(fenceType, ctx) {
+            const lab = PCFG.labour2;
+            if (!lab || !lab.byType) return null;
+            const slot = lab.byType[fenceType] || lab.byType.chainlink;
+            if (!slot || !slot.tasks) return null;
+            // Reuse the rolled-up calc to get totals + daysNeeded so per-day
+            // tasks scale identically and per-task allocation is consistent.
+            const summary = calculateTaskLabour(fenceType, ctx);
+            if (!summary) return null;
+            const sections = Math.max(0, (ctx.totalPosts || 0) - (ctx.lines || 0));
+            const counts = {
+                perJob:    1,
+                perDay:    summary.daysNeeded || 1,
+                perLine:   ctx.lines || 0,
+                perPost:   ctx.totalPosts || 0,
+                perSection: sections,
+                perFoot:   ctx.lengthFt || 0,
+                perHookup: ctx.hookups || 0,
+                perGate:   ctx.gates || 0
+            };
+            const hidden = (slot.hiddenTasks || []);
+            const rows = [];
+            let totalActiveMinutes = 0;
+            for (const [k, t] of Object.entries(slot.tasks)) {
+                if (hidden.indexOf(k) !== -1) continue;
+                const unit  = t.unit || 'perJob';
+                const units = counts[unit] || 0;
+                const employees = t.employees || 1;
+                const minutes = (t.minutes || 0) * units * employees;
+                if (minutes <= 0) continue;  // skip zero-time tasks (clean signal)
+                rows.push({
+                    key: k,
+                    label: humanizeTaskKey(k),
+                    unit: unit,
+                    unitLabel: LAB2_UNIT_LABELS[unit] || unit,
+                    minutesPerUnit: t.minutes || 0,
+                    units: units,
+                    employees: employees,
+                    totalMinutes: minutes,
+                    hours: minutes / 60
+                });
+                totalActiveMinutes += minutes;
+            }
+            // Allocate cost/charge to each task by its share of work minutes.
+            // Note: the slot-level totals (summary.cost / summary.charge)
+            // include OT premium + breaks + travel/load already, so each
+            // task's allocated $ is a CONTRIBUTION number, not the literal
+            // taskMinutes × rate. This matches how the admin preview pane
+            // attributes profit back to tasks.
+            rows.forEach(r => {
+                const share = totalActiveMinutes > 0 ? (r.totalMinutes / totalActiveMinutes) : 0;
+                r.costShare   = share * (summary.cost   || 0);
+                r.chargeShare = share * (summary.charge || 0);
+                r.minuteShare = share;
+            });
+            // Order tasks by minutes descending so the biggest line items
+            // appear first (matches what an operator scans for).
+            rows.sort((a, b) => b.totalMinutes - a.totalMinutes);
+            return {
+                tasks: rows,
+                totalActiveMinutes: totalActiveMinutes,
+                slot: {
+                    crew: (slot.tasks.setupDiscussion && slot.tasks.setupDiscussion.employees) || 2,
+                    travelMinOneWay: slot.travelMinOneWay || 0,
+                    loadUpMin: slot.loadUpMin || 0,
+                    hoursPerDay: slot.hoursPerDay || 8,
+                    breakMinPerDay: slot.breakMinPerDay || 0,
+                    costPerHour: slot.costPerHour || 0,
+                    chargePerHour: slot.chargePerHour || 0
+                },
+                summary: summary
+            };
+        }
+
         function calculateTaskLabour(fenceType, ctx) {
             const lab = PCFG.labour2;
             if (!lab || !lab.byType) return null;
@@ -9579,6 +9694,94 @@
                         html += '</tr>';
                     });
                     html += '</table>';
+
+                    // ── Per-task breakdown (one table per fence type used) ──
+                    // Shows where every minute of labour came from: which
+                    // task, the unit it scales by, the per-unit minutes, the
+                    // employee count, total minutes, hours, and an allocated
+                    // share of cost / charge so per-task numbers sum to the
+                    // type's task-labour total.
+                    pl.types.forEach(function(tk) {
+                        var tlb = (typeof calculateTaskLabourBreakdown === 'function')
+                            ? calculateTaskLabourBreakdown(tk, pl.byType[tk] || {})
+                            : null;
+                        if (!tlb || !tlb.tasks || tlb.tasks.length === 0) return;
+                        html += '<h4 style="margin:14px 0 4px;font-size:12px;color:#555">🛠️ Per-Task Labour — ' + escHtml(typeLabels[tk] || tk) + '</h4>';
+                        html += '<p style="font-size:10px;color:#888;margin:0 0 6px">Each row is one task slot from the admin Labour Calculator. Cost / charge are allocated by minutes-share so the column sums match this type\'s task-labour total above.</p>';
+                        html += '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:10px">';
+                        html += '<tr style="background:#666;color:#fff">';
+                        html += '<th style="text-align:left;padding:5px 8px">Task</th>';
+                        html += '<th style="text-align:center;padding:5px 8px">Unit</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Min/unit</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">× Units</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">× Crew</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Mins</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Hrs</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">% job</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Cost share</th>';
+                        html += '<th style="text-align:right;padding:5px 8px">Charge share</th>';
+                        html += '</tr>';
+                        var sumMins = 0, sumHrs = 0, sumCost = 0, sumChrg = 0;
+                        tlb.tasks.forEach(function(row) {
+                            sumMins += row.totalMinutes; sumHrs += row.hours;
+                            sumCost += row.costShare; sumChrg += row.chargeShare;
+                            html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                            html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(row.label) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:center;color:#888">' + escHtml(row.unitLabel) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right">' + row.minutesPerUnit + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right">' + (row.units % 1 === 0 ? row.units : row.units.toFixed(1)) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#888">' + row.employees + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + Math.round(row.totalMinutes) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right">' + row.hours.toFixed(1) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#888">' + (row.minuteShare * 100).toFixed(0) + '%</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + Math.round(row.costShare).toLocaleString() + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + Math.round(row.chargeShare).toLocaleString() + '</td>';
+                            html += '</tr>';
+                        });
+                        // Footer: work-only subtotal + the overhead pieces
+                        // (breaks, travel/load) that the slot-level total
+                        // ALSO includes.  Spelling these out as their own
+                        // rows makes "where the rest of the hours went"
+                        // obvious so the operator can spot a misconfigured
+                        // travel time / break setting at a glance.
+                        var ss = tlb.summary;
+                        var brkMins = Math.max(0, (ss.totalMinutes || 0) - (ss.workMinutes || 0) - (((tlb.slot.travelMinOneWay || 0) * 2 + (tlb.slot.loadUpMin || 0)) * (tlb.slot.crew || 1)));
+                        var travelMins = (tlb.slot.travelMinOneWay || 0) * 2 * (tlb.slot.crew || 1);
+                        var loadMins = (tlb.slot.loadUpMin || 0) * (tlb.slot.crew || 1);
+                        html += '<tr style="background:#f5f5f5">';
+                        html += '<td colspan="5" style="padding:5px 8px;text-align:right;color:#666">Work subtotal</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + Math.round(sumMins) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right">' + sumHrs.toFixed(1) + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#888">100%</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + Math.round(sumCost).toLocaleString() + '</td>';
+                        html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + Math.round(sumChrg).toLocaleString() + '</td>';
+                        html += '</tr>';
+                        if (brkMins > 0) {
+                            html += '<tr style="background:#fafafa">';
+                            html += '<td colspan="5" style="padding:5px 8px;text-align:right;color:#999">+ Breaks (prorated from ' + tlb.slot.breakMinPerDay + ' min/' + tlb.slot.hoursPerDay + 'hr day)</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#666">' + Math.round(brkMins) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#666">' + (brkMins / 60).toFixed(1) + '</td>';
+                            html += '<td colspan="3" style="padding:5px 8px"></td>';
+                            html += '</tr>';
+                        }
+                        if (travelMins + loadMins > 0) {
+                            html += '<tr style="background:#fafafa">';
+                            html += '<td colspan="5" style="padding:5px 8px;text-align:right;color:#999">+ Travel ' + (tlb.slot.travelMinOneWay || 0) + '×2 min · Load-up ' + (tlb.slot.loadUpMin || 0) + ' min · ×' + tlb.slot.crew + ' crew</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#666">' + Math.round(travelMins + loadMins) + '</td>';
+                            html += '<td style="padding:5px 8px;text-align:right;color:#666">' + ((travelMins + loadMins) / 60).toFixed(1) + '</td>';
+                            html += '<td colspan="3" style="padding:5px 8px"></td>';
+                            html += '</tr>';
+                        }
+                        html += '<tr style="background:#f0ead6;font-weight:700">';
+                        html += '<td colspan="5" style="padding:6px 8px;text-align:right">Total · ' + (ss.daysNeeded || 1) + ' day' + ((ss.daysNeeded || 1) === 1 ? '' : 's') + ' · ' + (tlb.slot.crew || 1) + '-person crew</td>';
+                        html += '<td style="padding:6px 8px;text-align:right">' + Math.round(ss.totalMinutes || 0) + '</td>';
+                        html += '<td style="padding:6px 8px;text-align:right">' + (ss.hours || 0).toFixed(1) + '</td>';
+                        html += '<td style="padding:6px 8px"></td>';
+                        html += '<td style="padding:6px 8px;text-align:right">$' + Math.round(ss.cost || 0).toLocaleString() + '</td>';
+                        html += '<td style="padding:6px 8px;text-align:right">$' + Math.round(ss.charge || 0).toLocaleString() + '</td>';
+                        html += '</tr>';
+                        html += '</table>';
+                    });
 
                     // Re-open the pricing math table so subsequent rows still flow
                     html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">';
