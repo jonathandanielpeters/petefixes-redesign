@@ -4484,9 +4484,20 @@ function collectThemeUI() {
 function validateConfig() {
   const errors = [];
   if (!config.deploymentId || config.deploymentId.trim() === '') errors.push('Deployment ID is required');
-  if (!config.branding.businessName) errors.push('Business name is required');
-  if (config.markupTiers.length === 0) errors.push('At least one markup tier is required');
-  if (isNaN(config.minimumJobCharge)) errors.push('Minimum job charge must be a number');
+  if (!config.branding || !config.branding.businessName) errors.push('Business name is required');
+  // Markup is per fence type now (markupTiersByType[fenceType]). Validate that
+  // every fence type has at least one tier so the engine never hits an empty
+  // tier table at price time. Migration in ensureMarkupByType() seeds defaults
+  // so this should always pass on a fresh load.
+  const byType = config.markupTiersByType || {};
+  const types = ['chainlink','wood','ornamental','weldedWire','vinyl'];
+  const missing = types.filter(t => !Array.isArray(byType[t]) || byType[t].length === 0);
+  if (missing.length === types.length) {
+    errors.push('At least one markup tier is required for each fence type');
+  } else if (missing.length > 0) {
+    errors.push('Missing markup tiers for: ' + missing.join(', '));
+  }
+  if (config.minimumJobCharge != null && isNaN(config.minimumJobCharge)) errors.push('Minimum job charge must be a number');
   return errors;
 }
 
@@ -4705,9 +4716,11 @@ function updateWoodPreview() {
     tbody.innerHTML=html;
     document.getElementById('prev-material-total').textContent='$'+materialTotal.toFixed(2);
 
-    // Markup
+    // Markup — per-fence-type now. Use the chain-link tiers for the
+    // sample preview (which is hard-coded to a chain-link spec).
     var mult=1, tierLabel='None';
-    (config.markupTiers||[]).forEach(function(t){ if(mult===1&&(t.maxValue===null||materialTotal<=t.maxValue)){mult=t.multiplier||1;tierLabel=(t.label||'')+' ('+mult+'x)';} });
+    var sampleTiers = (config.markupTiersByType && config.markupTiersByType.chainlink) || config.markupTiers || [];
+    sampleTiers.forEach(function(t){ if(mult===1&&(t.maxValue===null||materialTotal<=t.maxValue)){mult=t.multiplier||1;tierLabel=(t.label||'')+' ('+mult+'x)';} });
     document.getElementById('prev-markup-tier').textContent=tierLabel;
     var afterMarkup=materialTotal*mult;
     document.getElementById('prev-after-markup').textContent='$'+afterMarkup.toFixed(2);
@@ -4754,8 +4767,10 @@ function updateAllPreviews() {
     const fenceLen = 50;
     const numPosts = Math.ceil(fenceLen / 8) + 1;
     const numSections = numPosts - 1;
+    // Per-type tiers — sample preview uses wood since the spec is wood
     let mult = 1;
-    for (const tier of config.markupTiers) {
+    const previewTiers = (config.markupTiersByType && config.markupTiersByType.wood) || config.markupTiers || [];
+    for (const tier of previewTiers) {
       if (tier.maxValue === null || matCost <= tier.maxValue) { mult = tier.multiplier; break; }
     }
     let labourTotal = 0;
