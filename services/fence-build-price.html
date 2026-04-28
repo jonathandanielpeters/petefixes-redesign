@@ -6296,12 +6296,25 @@
             perHookup: 'per hookup',
             perGate:   'per gate'
         };
-        function humanizeTaskKey(k) {
-            if (LAB2_TASK_LABELS[k]) return LAB2_TASK_LABELS[k];
-            // Camel/Pascal → "Set Up Foo": split before uppercase letters,
-            // capitalise the first.
-            return String(k || '').replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
+        // Resolve a human-friendly task label.  Order of preference:
+        //   1. The task's own `label` property — set by admin for CUSTOM
+        //      tasks ("Site cleanup", "Sticker labels per foot", etc.).
+        //      Custom keys look like "custom_abc123" so without this
+        //      fallback the email would show gibberish.
+        //   2. The predefined-task registry (LAB2_TASK_LABELS) for the
+        //      built-in 12 tasks.
+        //   3. Camel-case humanisation as a last resort.
+        function resolveTaskLabel(key, taskObj) {
+            if (taskObj && taskObj.label && String(taskObj.label).trim()) {
+                return String(taskObj.label).trim();
+            }
+            if (LAB2_TASK_LABELS[key]) return LAB2_TASK_LABELS[key];
+            return String(key || '').replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()).trim();
         }
+        // Back-compat: humanizeTaskKey was the previous helper that took
+        // only a key.  Keep it as a thin wrapper so any other code path
+        // referencing it still resolves.
+        function humanizeTaskKey(k) { return resolveTaskLabel(k, null); }
 
         // Per-task labour breakdown for a single fence type, mirroring the
         // math in calculateTaskLabour() but returning a row per active task
@@ -6309,14 +6322,18 @@
         // Returns null if labour2 isn't configured. Cost/charge are
         // ALLOCATED by minutes-share so the per-task numbers sum exactly to
         // calculateTaskLabour's totalCost/totalCharge for this slot.
-        function calculateTaskLabourBreakdown(fenceType, ctx) {
+        function calculateTaskLabourBreakdown(fenceType, ctx, opts) {
+            opts = opts || {};
+            const excludeKeys = (opts.excludeKeys instanceof Set) ? opts.excludeKeys : null;
             const lab = PCFG.labour2;
             if (!lab || !lab.byType) return null;
             const slot = lab.byType[fenceType] || lab.byType.chainlink;
             if (!slot || !slot.tasks) return null;
             // Reuse the rolled-up calc to get totals + daysNeeded so per-day
             // tasks scale identically and per-task allocation is consistent.
-            const summary = calculateTaskLabour(fenceType, ctx);
+            // Pass excludeKeys through so the breakdown matches what the
+            // engine actually applied (no double-counted overhead).
+            const summary = calculateTaskLabour(fenceType, ctx, opts);
             if (!summary) return null;
             const sections = Math.max(0, (ctx.totalPosts || 0) - (ctx.lines || 0));
             const counts = {
@@ -6334,6 +6351,7 @@
             let totalActiveMinutes = 0;
             for (const [k, t] of Object.entries(slot.tasks)) {
                 if (hidden.indexOf(k) !== -1) continue;
+                if (excludeKeys && excludeKeys.has(k)) continue;
                 const unit  = t.unit || 'perJob';
                 const units = counts[unit] || 0;
                 const employees = t.employees || 1;
@@ -6341,7 +6359,10 @@
                 if (minutes <= 0) continue;  // skip zero-time tasks (clean signal)
                 rows.push({
                     key: k,
-                    label: humanizeTaskKey(k),
+                    // Prefer admin-typed label for custom tasks; fall back
+                    // to the predefined registry / humanised key.
+                    label: resolveTaskLabel(k, t),
+                    isCustom: !!t.custom,
                     unit: unit,
                     unitLabel: LAB2_UNIT_LABELS[unit] || unit,
                     minutesPerUnit: t.minutes || 0,
@@ -6383,7 +6404,12 @@
             };
         }
 
-        function calculateTaskLabour(fenceType, ctx) {
+        function calculateTaskLabour(fenceType, ctx, opts) {
+            opts = opts || {};
+            // excludeKeys: Set of task keys to skip — used by mixed-type
+            // projects so shared overhead (perJob/perDay) only counts once
+            // (claimed by the primary fence type, skipped on secondaries).
+            const excludeKeys = (opts.excludeKeys instanceof Set) ? opts.excludeKeys : null;
             const lab = PCFG.labour2;
             if (!lab || !lab.byType) return null;
             const slot = lab.byType[fenceType] || lab.byType.chainlink;
@@ -6407,6 +6433,7 @@
             const perDayTasks = [];
             for (const [k, t] of Object.entries(slot.tasks)) {
                 if (hidden.indexOf(k) !== -1) continue;
+                if (excludeKeys && excludeKeys.has(k)) continue;
                 if ((t.unit || 'perJob') === 'perDay') { perDayTasks.push(t); continue; }
                 const units = counts[t.unit || 'perJob'] || 0;
                 workMinutes += (t.minutes || 0) * units * (t.employees || 1);
@@ -6458,6 +6485,15 @@
                 if (!counts[t]) counts[t] = { lengthFt: 0, totalPosts: 0, hookups: 0, gates: 0, lines: 0, _endIds: new Set(), _cornerIds: new Set(), _linePostCount: 0 };
                 return counts[t];
             };
+            // Dedupe shared posts across types: a corner where wood meets
+            // chainlink is ONE physical post — should count toward exactly
+            // one type's hookup/post tallies, not both.  We use a global
+            // seenPostIds Set so the FIRST type to claim a post owns it;
+            // subsequent encounters from the same OR a different type are
+            // skipped.  Without this, a 2-type job with a shared corner
+            // double-counts that corner's post + hookup time, inflating
+            // labour by 30+ minutes per overlap.
+            const seenPostIds = new Set();
             state.lines.forEach(line => {
                 if (!isLineEnabled(line)) return;
                 const p1 = state.points.find(p => p.id === line.p1);
@@ -6472,6 +6508,8 @@
                 c.lines += 1;
                 c._linePostCount += Math.max(0, posts.length - 2);
                 [p1, p2].forEach(p => {
+                    if (seenPostIds.has(p.id)) return;
+                    seenPostIds.add(p.id);
                     if (typeof isCornerPost === 'function' && isCornerPost(p.id)) c._cornerIds.add(p.id);
                     else c._endIds.add(p.id);
                 });
@@ -6490,39 +6528,86 @@
                 c.hookups = c._endIds.size + c._cornerIds.size;
                 delete c._endIds; delete c._cornerIds; delete c._linePostCount;
             });
-            // Run task-based labour for each type used
+            // Determine the PRIMARY fence type — the one with the most
+            // footage.  Project-shared overhead tasks (perJob like setup,
+            // material handling, touch-ups; perDay like daily walkthrough)
+            // are claimed by the primary type.  Secondary types skip the
+            // SAME-keyed perJob/perDay tasks so the crew isn't billed twice
+            // for "set up the job" just because the job spans 2 fence
+            // types.  Per-unit tasks (perPost, perFoot, perHookup, etc.)
+            // remain per-type since the units themselves are type-specific.
+            const types = Object.keys(counts);
+            let primaryType = null;
+            types.forEach(t => {
+                if (!primaryType || (counts[t].lengthFt || 0) > (counts[primaryType].lengthFt || 0)) {
+                    primaryType = t;
+                }
+            });
+            const sharedKeys = new Set();
+            if (primaryType && lab.byType[primaryType]) {
+                const primSlot = lab.byType[primaryType];
+                const primHidden = (primSlot.hiddenTasks || []);
+                Object.entries(primSlot.tasks || {}).forEach(([k, t]) => {
+                    if (primHidden.indexOf(k) !== -1) return;
+                    const u = t.unit || 'perJob';
+                    if (u === 'perJob' || u === 'perDay') sharedKeys.add(k);
+                });
+            }
+            // Run task-based labour for each type used.  Primary keeps all
+            // its tasks; secondaries skip any perJob/perDay key the primary
+            // already covers (but UNIQUE perJob/perDay keys on a secondary
+            // — e.g., a wood-only "stain panels" task — still run).
             const byType = {};
             let totalCost = 0, totalCharge = 0;
-            const types = Object.keys(counts);
             types.forEach(t => {
-                const r = calculateTaskLabour(t, counts[t]);
+                const opts = (t === primaryType) ? null : { excludeKeys: sharedKeys };
+                const r = calculateTaskLabour(t, counts[t], opts);
                 if (r) {
-                    byType[t] = { ...r, ...counts[t] };
+                    byType[t] = { ...r, ...counts[t], excludedSharedKeys: opts ? Array.from(sharedKeys) : [] };
                     totalCost += r.cost;
                     totalCharge += r.charge;
                 }
             });
-            return { byType, totalCost, totalCharge, hasMixedTypes: types.length > 1, types };
+            return { byType, totalCost, totalCharge, hasMixedTypes: types.length > 1, types, primaryType, sharedKeys: Array.from(sharedKeys) };
         }
 
-        // Compute the highest profit-target floor among all fence types in the
-        // project that have enforce=true. Each type's floor is computed from
-        // its own task-based labour day-share. Returns the max floor, or 0.
+        // Compute the project profit-target floor.
+        //
+        // Multi-type semantics (matches user intent: "minimum profit per day
+        // selects the higher of them and overlapping charges are shared"):
+        //   • Across ALL fence types that have enforceProfitTarget=true,
+        //     pick the HIGHEST $/day rate.  This becomes the binding rate
+        //     for the whole project — not a sum, not a per-type silo.
+        //   • Multiply that rate by the PROJECT-WIDE day-share (sum of
+        //     each type's day-share, since the project includes all types
+        //     of work, not just one).  This is the "how many person-day
+        //     equivalents of work are in this project" number.
+        //   • Floor = totMat + totLabCost + (maxRate × projectDayFraction).
+        //     Customer pays for ALL labour, ALL material, plus the binding
+        //     target — single number, no max-of-per-type silos.
+        // Returns 0 if no enforced types exist.
         function calculateProfitFloor(projectLabour, materialCost) {
             const lab = PCFG.labour2;
             if (!lab || !lab.byType || !projectLabour) return 0;
-            let floor = 0;
+            let maxRate = 0;
+            let projectDayFraction = 0;
+            let anyEnforced = false;
             Object.keys(projectLabour.byType).forEach(t => {
                 const slot = lab.byType[t];
-                if (!slot || !slot.enforceProfitTarget) return;
                 const typeLab = projectLabour.byType[t];
-                const hpd = slot.hoursPerDay || 8;  // per-type
+                const hpd = slot ? (slot.hoursPerDay || 8) : 8;
                 const dayFraction = hpd > 0 ? ((typeLab.perPersonPerDay || 0) / hpd) * (typeLab.daysNeeded || 1) : 0;
-                const targetProfit = dayFraction * (slot.targetProfitPerDay || 0);
-                const typeFloor = materialCost + typeLab.cost + targetProfit;
-                if (typeFloor > floor) floor = typeFloor;
+                projectDayFraction += dayFraction;
+                if (slot && slot.enforceProfitTarget) {
+                    anyEnforced = true;
+                    const rate = slot.targetProfitPerDay || 0;
+                    if (rate > maxRate) maxRate = rate;
+                }
             });
-            return floor;
+            if (!anyEnforced || maxRate <= 0) return 0;
+            const targetProfit = projectDayFraction * maxRate;
+            const totalLabCost = projectLabour.totalCost || 0;
+            return materialCost + totalLabCost + targetProfit;
         }
 
         // Compute the highest minimum-job charge among all fence types used.
