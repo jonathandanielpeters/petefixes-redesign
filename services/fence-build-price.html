@@ -6754,6 +6754,11 @@
         }
 
         function updatePricing() {
+            // Persist on every meaningful state change.  This is the single
+            // chokepoint that runs after add/remove/move line, gate, post,
+            // house, or style changes — so debounced autosave catches every
+            // real edit without thrashing localStorage during pan/zoom.
+            try { persistDrawingState(); } catch (e) { /* ignore */ }
             const price = calculatePrice();
             // V3 chainlink recipes (preferred): pulls priceAfterTax live from chainlinkMaster
             // and routes by tier (residential/commercial) × height. Falls back to V2 then
@@ -9090,8 +9095,62 @@
             setTimeout(() => { el.remove(); }, 12000);
         }
 
+        // --- Drawing autosave / restore (localStorage) ---
+        // Persists the drawing on every meaningful state change (debounced)
+        // so a page refresh keeps the customer's fence drawn.  PCFG (admin
+        // pricing config) is loaded fresh on every page load, so the
+        // numbers DO update — only the geometry persists.
+        // Skipped inside an iframe / when the page is being loaded as the
+        // admin's Sample Fence Price preview (?pc= URL param) so the
+        // synthetic drawing doesn't pollute the customer's saved state.
+        const DRAWING_STORAGE_KEY = 'fence-drawing-state-v1';
+        const _isPreviewMode = (function() {
+            try {
+                if (window.top !== window.self) return true;  // iframe
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('pc')) return true;  // admin sample preview (defensive)
+            } catch (e) {
+                // Cross-origin parent throws on top access — likely iframe
+                return true;
+            }
+            return false;
+        })();
+        let _drawingSaveTimer = null;
+        function persistDrawingState() {
+            if (_isPreviewMode) return;
+            clearTimeout(_drawingSaveTimer);
+            _drawingSaveTimer = setTimeout(() => {
+                try {
+                    const empty = state.lines.length === 0
+                        && state.gates.length === 0
+                        && state.houses.length === 0;
+                    if (empty) {
+                        // Empty canvas → clear the saved entry so a fresh
+                        // page load starts blank instead of restoring a
+                        // ghost (lines: [], gates: [], …) which would skip
+                        // the URL/onboarding flow.
+                        localStorage.removeItem(DRAWING_STORAGE_KEY);
+                        return;
+                    }
+                    const payload = { v: 1, ts: Date.now(), data: serializeConfig() };
+                    localStorage.setItem(DRAWING_STORAGE_KEY, JSON.stringify(payload));
+                } catch (e) {
+                    // localStorage can throw under quota or private-browsing.
+                    // Swallow — losing autosave is preferable to crashing.
+                    console.warn('[persistDrawingState]', e);
+                }
+            }, 400);
+        }
+
         // --- Config serialization / deserialization ---
         function serializeConfig() {
+            // Persist canvas mode + map state too — so a refresh, a saved
+            // estimate link from email, or a localStorage restore reopens
+            // the canvas in the SAME view the customer was using (grid or
+            // map at this address).  Tile cache is rebuilt on draw — only
+            // the address anchor (lat/lng + display fields) is persisted.
+            const wantMap = (typeof canvasMode !== 'undefined' && canvasMode === 'map')
+                && (typeof mapState !== 'undefined' && mapState.lat && mapState.lng);
             const data = {
                 styles: state.fenceStyles.map(s => ({...s})),  // spread includes cl3Picks
                 points: state.points.map(p => ({ id: p.id, x: p.x, y: p.y })),
@@ -9103,7 +9162,17 @@
                 // post-spacing default, and the V3 engine's tier routing. Without
                 // this, restored estimates loaded as residential even when the
                 // customer originally saved them in commercial mode (price mismatch).
-                mode: state.mode || 'residential'
+                mode: state.mode || 'residential',
+                canvasMode: (typeof canvasMode !== 'undefined') ? canvasMode : 'grid',
+                mapStyle:   (typeof mapStyle !== 'undefined')   ? mapStyle   : 'satellite',
+                mapState:   wantMap ? {
+                    lat: mapState.lat,
+                    lng: mapState.lng,
+                    address: mapState.address || '',
+                    primary: mapState.primary || '',
+                    houseNumber: mapState.houseNumber || '',
+                    street: mapState.street || ''
+                } : null
             };
             return btoa(encodeURIComponent(JSON.stringify(data)));
         }
@@ -9148,6 +9217,44 @@
                 } else {
                     state.mode = wantsCommercial ? 'commercial' : 'residential';
                 }
+                // Restore canvas mode + map address.  If the original save
+                // was on satellite/map view, we re-enter map mode at that
+                // address; if it was grid, we stay on grid.  Tiles fetch
+                // lazily once mode flips — so loading is fast even if the
+                // map session needs to be re-established.
+                const wantsMap = data.canvasMode === 'map'
+                    && data.mapState
+                    && data.mapState.lat
+                    && data.mapState.lng;
+                if (wantsMap && typeof mapState !== 'undefined') {
+                    mapState.lat         = data.mapState.lat;
+                    mapState.lng         = data.mapState.lng;
+                    mapState.address     = data.mapState.address || '';
+                    mapState.primary     = data.mapState.primary || '';
+                    mapState.houseNumber = data.mapState.houseNumber || '';
+                    mapState.street      = data.mapState.street   || '';
+                    if (data.mapStyle && typeof mapStyle !== 'undefined') mapStyle = data.mapStyle;
+                    canvasMode = 'map';
+                    // Update mode-toggle buttons + per-style toggle UI to
+                    // reflect map view (otherwise the toggle still shows
+                    // "grid" highlighted while the canvas paints tiles).
+                    document.querySelectorAll('.canvas-mode-btn[data-mode]').forEach(b => {
+                        b.classList.toggle('active', b.dataset.mode === 'map');
+                    });
+                    document.querySelectorAll('.canvas-mode-btn[data-style]').forEach(b => {
+                        b.classList.toggle('active', b.dataset.style === mapStyle);
+                    });
+                    try { if (typeof ensureGoogleSession === 'function') ensureGoogleSession(mapStyle).catch(e => console.warn('[deserialize.map]', e)); } catch (e) {}
+                    try { if (typeof updateMapUI === 'function') updateMapUI(); } catch (e) {}
+                } else {
+                    // Force grid mode on restore if no valid map state was
+                    // captured — protects against partial saves.
+                    canvasMode = 'grid';
+                    document.querySelectorAll('.canvas-mode-btn[data-mode]').forEach(b => {
+                        b.classList.toggle('active', b.dataset.mode === 'grid');
+                    });
+                    try { if (typeof updateMapUI === 'function') updateMapUI(); } catch (e) {}
+                }
                 // updatePricing + renderSidebar last so they pick up the restored mode
                 updatePricing();
                 renderSidebar();
@@ -9165,15 +9272,40 @@
             } catch (e) { console.warn('[deserialize]', e); return false; }
         }
 
-        // Load config from URL on page load
-        (function() {
+        // Load config from URL on page load — with localStorage fallback
+        // so a plain refresh (no URL params) also restores the customer's
+        // drawing.  Priority order:
+        //   1. ?config= URL param   — explicit (email link, share)
+        //   2. localStorage         — autosaved on every meaningful edit
+        //   3. nothing              — fresh empty canvas
+        // PCFG (admin pricing config) is loaded separately by the
+        // loadPricingConfig IIFE earlier in the file, so prices recompute
+        // from the LATEST admin settings even when the drawing was saved
+        // weeks ago.
+        (function loadDrawingFromStorageOrUrl() {
             const params = new URLSearchParams(window.location.search);
             const cfg = params.get('config');
             if (cfg) {
                 setTimeout(() => deserializeConfig(cfg), 100);
-                // Clean URL without reload
+                // Clean URL without reload — also keeps the next refresh
+                // hitting the localStorage path instead of the URL one.
                 window.history.replaceState({}, '', window.location.pathname);
+                return;
             }
+            // Don't restore inside iframe / admin sample preview — those
+            // contexts have their own ?pc= and ?config= URL params and
+            // shouldn't pollute the customer's saved drawing.
+            if (_isPreviewMode) return;
+            try {
+                const saved = localStorage.getItem(DRAWING_STORAGE_KEY);
+                if (!saved) return;
+                const payload = JSON.parse(saved);
+                if (!payload || !payload.data) return;
+                // 100ms delay matches the URL-config restore path so the
+                // PCFG loader has a chance to settle before deserializeConfig
+                // calls updatePricing.
+                setTimeout(() => deserializeConfig(payload.data), 100);
+            } catch (e) { console.warn('[loadDrawingFromStorage]', e); }
         })();
 
         function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
