@@ -8337,15 +8337,18 @@ function ensureLab2() {
 
   // Migrate legacy top-level fields into chain-link slot if it doesn't exist
   if (hasLegacy && !config.labour2.byType.chainlink) {
+    // Rate fields: 0 doesn't make business sense (you can't pay $0/hr or
+    // work 0 hrs/day) so treat 0 the same as missing and apply defaults.
+    // Other fields (travel, load-up, target, min) accept 0 as "off".
     config.labour2.byType.chainlink = {
-      costPerHour: legacy.costPerHour != null ? legacy.costPerHour : 25,
-      chargePerHour: legacy.chargePerHour != null ? legacy.chargePerHour : 85,
+      costPerHour: legacy.costPerHour > 0 ? legacy.costPerHour : 25,
+      chargePerHour: legacy.chargePerHour > 0 ? legacy.chargePerHour : 85,
       breakMinPerDay: legacy.breakMinPerDay != null ? legacy.breakMinPerDay : 60,
-      hoursPerDay: legacy.hoursPerDay != null ? legacy.hoursPerDay : 8,
-      overtimeAfterHours: legacy.overtimeAfterHours != null ? legacy.overtimeAfterHours : 8,
-      otCostMult: legacy.otCostMult != null ? legacy.otCostMult : 1.5,
-      otChargeMult: legacy.otChargeMult != null ? legacy.otChargeMult : 1.5,
-      maxHoursPerDay: legacy.maxHoursPerDay != null ? legacy.maxHoursPerDay : 12,
+      hoursPerDay: legacy.hoursPerDay > 0 ? legacy.hoursPerDay : 8,
+      overtimeAfterHours: legacy.overtimeAfterHours > 0 ? legacy.overtimeAfterHours : 8,
+      otCostMult: legacy.otCostMult >= 1 ? legacy.otCostMult : 1.5,
+      otChargeMult: legacy.otChargeMult >= 1 ? legacy.otChargeMult : 1.5,
+      maxHoursPerDay: legacy.maxHoursPerDay > 0 ? legacy.maxHoursPerDay : 12,
       travelMinOneWay: legacy.travelMinOneWay != null ? legacy.travelMinOneWay : 25,
       loadUpMin: legacy.loadUpMin != null ? legacy.loadUpMin : 30,
       tasks: legacy.tasks || {},
@@ -8374,15 +8377,17 @@ function ensureLab2() {
       };
     }
     const slot = config.labour2.byType[t.key];
-    // Backfill any missing fields on existing slots (older saves)
-    if (slot.costPerHour == null) slot.costPerHour = 25;
-    if (slot.chargePerHour == null) slot.chargePerHour = 85;
+    // Backfill any missing fields on existing slots (older saves). Rate
+    // fields treat 0 as "missing" since 0 isn't a valid value (can't have
+    // $0/hr cost or 0-hour workday). Travel/load/break can be 0.
+    if (!(slot.costPerHour > 0)) slot.costPerHour = 25;
+    if (!(slot.chargePerHour > 0)) slot.chargePerHour = 85;
     if (slot.breakMinPerDay == null) slot.breakMinPerDay = 60;
-    if (slot.hoursPerDay == null) slot.hoursPerDay = 8;
-    if (slot.overtimeAfterHours == null) slot.overtimeAfterHours = 8;
-    if (slot.otCostMult == null) slot.otCostMult = 1.5;
-    if (slot.otChargeMult == null) slot.otChargeMult = 1.5;
-    if (slot.maxHoursPerDay == null) slot.maxHoursPerDay = 12;
+    if (!(slot.hoursPerDay > 0)) slot.hoursPerDay = 8;
+    if (!(slot.overtimeAfterHours > 0)) slot.overtimeAfterHours = 8;
+    if (!(slot.otCostMult >= 1)) slot.otCostMult = 1.5;
+    if (!(slot.otChargeMult >= 1)) slot.otChargeMult = 1.5;
+    if (!(slot.maxHoursPerDay > 0)) slot.maxHoursPerDay = 12;
     if (slot.travelMinOneWay == null) slot.travelMinOneWay = 25;
     if (slot.loadUpMin == null) slot.loadUpMin = 30;
     if (!slot.tasks) slot.tasks = {};

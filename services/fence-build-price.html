@@ -8880,18 +8880,23 @@
                 gateDrafts.push({ idx, gate, w, gs, mat, legacyLabour, gpn1, gpn2, type: 'gate', label: 'Gate ' + (idx + 1) + ' (' + gpn1 + '\u2013' + gpn2 + ')' });
             });
 
-            // Pull project-level totals from calculatePrice (uses task-based
-            // labour when configured). Then back-allocate the labour to lines
-            // and gates proportional to their legacy share so per-line numbers
-            // still tell a story AND sum to the project total.
+            // Project total — V3 chainlink engine wins when applicable since it
+            // pulls live priceAfterTax from chainlinkMaster (different material
+            // cost than calculateLineMaterial). Falls back to V2, then legacy
+            // calculatePrice for non-chainlink / unconfigured projects. This
+            // mirrors updatePricing() so the bottom totals bar and the email
+            // / save dialog ALWAYS show the same number.
             const price = calculatePrice();
+            const v3 = (typeof calculateV3Project === 'function') ? calculateV3Project() : null;
+            const v2 = v3 ? null : ((typeof calculateV2Project === 'function') ? calculateV2Project() : null);
+            const projectTotal = v3 ? v3.total : v2 ? v2.total : price.total;
+            // Per-line cost still uses legacy line-by-line math for the email's
+            // line breakdown (so each row tells a coherent story). Then we
+            // SCALE every row's cost so the row totals sum to projectTotal.
             const taskTotal = price.labourTotal || 0;
             const legacyByLine = lineDrafts.map(d => d.legacyLabour);
             const legacyByGate = gateDrafts.map(d => d.legacyLabour);
             const sumLegacy = legacyByLine.reduce((a, b) => a + b, 0) + legacyByGate.reduce((a, b) => a + b, 0);
-            // If legacy labour is zero (config has no per-line rates), fall
-            // back to length-weighted distribution. Either way every line gets
-            // a labour share that sums to the project total.
             const totalFt = lineDrafts.reduce((a, d) => a + (d.len || 0), 0);
             function allocLine(d) {
                 if (sumLegacy > 0) return (d.legacyLabour / sumLegacy) * taskTotal;
@@ -8900,27 +8905,43 @@
             }
             function allocGate(d) {
                 if (sumLegacy > 0) return (d.legacyLabour / sumLegacy) * taskTotal;
-                return 0;  // no length to weight by
+                return 0;
             }
 
             lineDrafts.forEach(d => {
                 const labour = allocLine(d);
-                // Use this line's own type's markup (not project-level mk)
                 const lineMk = lineMarkup(d.s, d.len, d.mat);
                 const cost = Math.round(d.mat * lineMk + labour + d.addons);
                 rows.push({ type: 'line', label: d.label, desc: d.desc, length: d.len.toFixed(1) + ' ft', posts: d.posts.length, cost: cost, material: Math.round(d.mat), markup: lineMk, labour: Math.round(labour), addons: Math.round(d.addons) });
             });
             gateDrafts.forEach(d => {
                 const labour = allocGate(d);
-                // Gate inherits its parent style's fence type for markup
                 const gateMk = lineMarkup(d.gs, d.w, d.mat);
                 const cost = Math.round(d.mat * gateMk + labour);
                 rows.push({ type: 'gate', label: d.label, desc: (GATE_TYPE_LABELS[d.gate.gateType] || 'Gate') + ' ' + d.w.toFixed(1) + "'", cost: cost, material: Math.round(d.mat), markup: gateMk, labour: Math.round(labour), addons: 0 });
             });
 
+            // Scale per-row costs so they sum exactly to projectTotal. This
+            // keeps line items + estimated total in lock-step in the email.
+            const sumRows = rows.reduce((s, r) => s + (r.cost || 0), 0);
+            if (sumRows > 0 && Math.abs(sumRows - projectTotal) > 0.5) {
+                const scale = projectTotal / sumRows;
+                rows.forEach(r => {
+                    r.cost = Math.round((r.cost || 0) * scale);
+                    r.material = Math.round((r.material || 0) * scale);
+                    r.labour = Math.round((r.labour || 0) * scale);
+                    r.addons = Math.round((r.addons || 0) * scale);
+                });
+                // Fix any rounding drift on the last row so the rows sum exactly
+                const newSum = rows.reduce((s, r) => s + (r.cost || 0), 0);
+                if (rows.length > 0 && newSum !== projectTotal) {
+                    rows[rows.length - 1].cost += (projectTotal - newSum);
+                }
+            }
+
             return {
                 rows,
-                total: price.total,
+                total: projectTotal,
                 totalLength: price.totalLengthFt.toFixed(1),
                 totalGates: price.totalGates,
                 totalPosts: price.totalPosts,
