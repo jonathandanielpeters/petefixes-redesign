@@ -235,6 +235,14 @@
         .gate-type-select { width: 100%; padding: 5px 8px; font-size: 12px; font-weight: 500; font-family: inherit; color: var(--black); background: var(--white); border: 1.5px solid var(--gray-200); border-radius: 6px; cursor: pointer; margin-top: 4px; transition: border-color var(--transition); }
         .gate-type-select:focus { outline: none; border-color: #4a90d9; }
         .gate-post-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(74,144,217,0.1); color: #4a90d9; margin-left: 4px; }
+        /* Inline per-row style picker — appears next to the gate-post-badge
+           when 2+ fence styles exist, lets the customer reassign a drawn
+           line/gate to a different style without redrawing it. Sized to
+           sit alongside the badge without breaking the row layout. */
+        .fence-line-style-pick { display: inline-block; font-size: 10px; font-weight: 600; font-family: inherit; padding: 1px 18px 1px 6px; margin-left: 4px; border-radius: 4px; border: 1px solid var(--gray-200); background: var(--white) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 4px center; color: var(--gray-500); cursor: pointer; appearance: none; -webkit-appearance: none; transition: border-color var(--transition), color var(--transition); max-width: 200px; }
+        .fence-line-style-pick:hover { border-color: var(--accent); color: var(--black); }
+        .fence-line-style-pick:focus { outline: none; border-color: var(--accent); color: var(--black); }
+        .m-drawer-body .fence-line-style-pick { font-size: 9px; padding: 1px 16px 1px 5px; }
 
         /* Add buttons */
         .add-line-btn, .add-gate-btn { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; padding: 8px; font-size: 12px; font-weight: 500; border-radius: var(--radius-sm); cursor: pointer; transition: all var(--transition); font-family: inherit; }
@@ -7777,6 +7785,31 @@
         // ============================================
         // SIDEBAR LIST
         // ============================================
+        // Build the inline style-picker markup for a row.  When only one
+        // style exists, we show a plain badge (no picker — nothing to
+        // switch to).  When 2+ styles exist, we render a compact <select>
+        // styled to look like the badge so customers can reassign a line/
+        // gate to a different fence style without redrawing it.
+        // dataAttr: the attribute the change handler reads (different per
+        // line vs gate so we don't fire on the wrong row).
+        function renderStylePickerInline(currentStyleIdx, dataAttr, dataValue) {
+            const styles = state.fenceStyles;
+            // Per-style label: "S1 · Wood 6'"  (matches the style-switcher tabs)
+            function styleLabel(s, i) {
+                const fenceLabel = STYLE_NAMES[s.fenceType] || s.fenceType;
+                return 'S' + (i + 1) + ' · ' + fenceLabel + ' ' + s.height + "'";
+            }
+            if (styles.length <= 1) {
+                // Nothing to pick from — keep the legacy "S1" badge inline
+                // so the layout doesn't jump when a 2nd style is added.
+                return '';
+            }
+            const opts = styles.map((s, i) =>
+                '<option value="' + i + '"' + (i === currentStyleIdx ? ' selected' : '') + '>' + styleLabel(s, i) + '</option>'
+            ).join('');
+            return '<select class="fence-line-style-pick" ' + dataAttr + '="' + dataValue + '" data-no-select="1" title="Switch this to a different fence style">' + opts + '</select>';
+        }
+
         function renderSidebar() {
             const container = document.getElementById('fenceLinesList');
             if (state.lines.length === 0 && state.gates.length === 0) {
@@ -7801,14 +7834,20 @@
                 const lineColor = FENCE_TYPE_COLORS[lineFt] ? FENCE_TYPE_COLORS[lineFt].line : '#888888';
                 const typeLabel = FENCE_TYPE_COLORS[lineFt] ? FENCE_TYPE_COLORS[lineFt].label : '';
                 const heightLabel = ls.height + "'";
-                const styleNum = state.fenceStyles.length > 1 ? ' S' + ((line.styleIdx || 0) + 1) : '';
+                const styleIdx = line.styleIdx || 0;
+                const styleNumText = state.fenceStyles.length > 1 ? ' S' + (styleIdx + 1) : '';
+                const stylePicker = renderStylePickerInline(styleIdx, 'data-line-style-idx', idx);
                 const pn1 = pnMap[line.p1] || '?', pn2 = pnMap[line.p2] || '?';
                 const switchHtml = '<label class="fl-switch" title="Include in price" data-no-select="1">' +
                     '<input type="checkbox" data-toggle-line="' + idx + '"' + (enabled ? ' checked' : '') + '>' +
                     '<span class="fl-switch-track"></span><span class="fl-switch-thumb"></span></label>';
+                // When 2+ styles exist we hide the inline "S1" suffix on
+                // the badge (the picker replaces it).  When only 1 style,
+                // the badge stays informational with no picker.
+                const badgeStyleSuffix = state.fenceStyles.length > 1 ? '' : styleNumText;
                 html += '<div class="fence-line-item' + (sel ? ' selected' : '') + (enabled ? '' : ' disabled') + '" data-line-idx="' + idx + '">' +
                     switchHtml +
-                    '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + styleNum + '</span></div><div class="fence-line-meta">' + pn1 + ' \u2192 ' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
+                    '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + badgeStyleSuffix + '</span>' + stylePicker + '</div><div class="fence-line-meta">' + pn1 + ' \u2192 ' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
                     '<input class="fence-line-input" type="number" min="1" max="2000" step="0.1" value="' + dist.toFixed(1) + '" data-line-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-line="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
             });
@@ -7841,9 +7880,11 @@
                 const gSwitchHtml = '<label class="fl-switch" title="Include in price" data-no-select="1">' +
                     '<input type="checkbox" data-toggle-gate="' + idx + '"' + (gEnabled ? ' checked' : '') + '>' +
                     '<span class="fl-switch-track"></span><span class="fl-switch-thumb"></span></label>';
+                const gateStyleIdx = gate.styleIdx || 0;
+                const gateStylePicker = renderStylePickerInline(gateStyleIdx, 'data-gate-style-idx', idx);
                 html += '<div class="fence-line-item' + (sel ? ' selected' : '') + (gEnabled ? '' : ' disabled') + '" data-gate-idx="' + idx + '">' +
                     gSwitchHtml +
-                    '<div class="fence-line-color gate-color"></div><div class="fence-line-info"><div class="fence-line-name">Gate ' + (idx + 1) + ' <span class="gate-post-badge">' + gpn1 + '\u2013' + gpn2 + ' \u00b7 ' + postCtx.desc + '</span>' + dirBadge + '</div>' +
+                    '<div class="fence-line-color gate-color"></div><div class="fence-line-info"><div class="fence-line-name">Gate ' + (idx + 1) + ' <span class="gate-post-badge">' + gpn1 + '\u2013' + gpn2 + ' \u00b7 ' + postCtx.desc + '</span>' + dirBadge + gateStylePicker + '</div>' +
                     '<select class="gate-type-select" data-gate-type-idx="' + idx + '">' + typeOptions + '</select></div>' +
                     '<input class="fence-line-input" type="number" min="2" max="30" step="0.5" value="' + width.toFixed(1) + '" data-gate-width-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-gate="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
@@ -7875,21 +7916,70 @@
             });
             container.querySelectorAll('.fence-line-item[data-line-idx]').forEach(item => {
                 item.addEventListener('click', (e) => {
-                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.fl-switch')) return;
+                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.fl-switch') || e.target.closest('.fence-line-style-pick')) return;
                     const i = parseInt(item.dataset.lineIdx);
                     state.selectedLineIdx = state.selectedLineIdx === i ? -1 : i; state.selectedGateIdx = -1;
                     renderSidebar(); drawCanvas();
                 });
             });
 
+            // Style picker — line: reassign this line to a different style.
+            // Triggers full redraw + price recalc since fence type / height
+            // changes everything (post counts, materials, labour).
+            container.querySelectorAll('.fence-line-style-pick[data-line-style-idx]').forEach(sel => {
+                sel.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(e.target.dataset.lineStyleIdx);
+                    const newIdx = parseInt(e.target.value);
+                    if (state.lines[i] && newIdx >= 0 && newIdx < state.fenceStyles.length) {
+                        state.lines[i].styleIdx = newIdx;
+                        renderSidebar(); drawCanvas(); updatePricing();
+                    }
+                });
+                sel.addEventListener('click', (e) => e.stopPropagation());
+            });
+
             // Event listeners - gates
             container.querySelectorAll('[data-gate-idx]').forEach(item => {
                 item.addEventListener('click', (e) => {
-                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.gate-dir-badge') || e.target.closest('.fl-switch')) return;
+                    if (e.target.closest('.fence-line-input') || e.target.closest('.fence-line-delete') || e.target.closest('.gate-type-select') || e.target.closest('.gate-dir-badge') || e.target.closest('.fl-switch') || e.target.closest('.fence-line-style-pick')) return;
                     const i = parseInt(item.dataset.gateIdx);
                     state.selectedGateIdx = state.selectedGateIdx === i ? -1 : i; state.selectedLineIdx = -1;
                     renderSidebar(); drawCanvas();
                 });
+            });
+
+            // Style picker — gate: reassign this gate's style. Validates
+            // the gate type is still legal under the new style (e.g., a
+            // wood-only gate type has to fall back to a chainlink-legal
+            // option when the gate's style flips to chainlink).
+            container.querySelectorAll('.fence-line-style-pick[data-gate-style-idx]').forEach(sel => {
+                sel.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(e.target.dataset.gateStyleIdx);
+                    const newIdx = parseInt(e.target.value);
+                    if (state.gates[i] && newIdx >= 0 && newIdx < state.fenceStyles.length) {
+                        state.gates[i].styleIdx = newIdx;
+                        // Re-validate gate type under the new style — fall
+                        // back to the first available type if the current
+                        // type isn't allowed for this fence type/width.
+                        try {
+                            const g = state.gates[i];
+                            const p1 = state.points.find(p => p.id === g.p1);
+                            const p2 = state.points.find(p => p.id === g.p2);
+                            if (p1 && p2 && typeof getAvailableGateTypes === 'function') {
+                                const w = getLineLengthFt(p1, p2);
+                                const newStyle = state.fenceStyles[newIdx];
+                                const avail = getAvailableGateTypes(w, newStyle.fenceType);
+                                if (avail.length > 0 && avail.indexOf(g.gateType) === -1) {
+                                    g.gateType = avail[0];
+                                }
+                            }
+                        } catch (err) { /* keep existing gateType — engine will pick a default */ }
+                        renderSidebar(); drawCanvas(); updatePricing();
+                    }
+                });
+                sel.addEventListener('click', (e) => e.stopPropagation());
             });
 
             container.querySelectorAll('[data-gate-width-idx]').forEach(input => {
