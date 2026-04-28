@@ -4280,7 +4280,16 @@ async function performCloudAutosave() {
       });
       if (!res.ok) {
         const errBody = await res.text().catch(() => '');
-        firstErr = firstErr || ('Server ' + res.status + ' on ' + target + ': ' + errBody.slice(0, 200));
+        // 401 = session lost auth (browser cleared Basic Auth). Surface a
+        // friendly message so the admin knows what to do (most admins
+        // don't know what 401 means out of context).
+        if (res.status === 401) {
+          firstErr = firstErr || 'Auth expired — reload the page and re-enter your admin credentials. Your in-memory edits are still here; cloud save will resume after re-auth.';
+        } else if (res.status === 413) {
+          firstErr = firstErr || 'Config is too large (>5MB). Trim large lists before saving.';
+        } else {
+          firstErr = firstErr || ('Server ' + res.status + ' on ' + target + ': ' + errBody.slice(0, 200));
+        }
       }
     }
     if (firstErr) {

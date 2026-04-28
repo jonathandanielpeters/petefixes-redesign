@@ -9623,19 +9623,25 @@
             statusEl.style.display = '';
 
             const fullName = firstName + ' ' + lastName;
-            const breakdown = buildEstimateBreakdown();
-            const editUrl = getEditUrl();
 
-            const customerHtml = buildCustomerEmailHtml(fullName, breakdown, editUrl, address, notes);
-            const internalHtml = buildInternalEmailHtml(
-                { name: fullName, email: email, phone: phone, address: address, notes: notes, marketing: marketing },
-                breakdown, editUrl
-            );
-
-            var custSubject = 'Your Fence Estimate from ' + cfgBrand('businessName') + ' — $' + breakdown.total.toLocaleString();
-            var intSubject = 'New Estimate: ' + fullName + (address ? ' @ ' + address : '') + ' — $' + breakdown.total.toLocaleString() + ' (Profit: $' + (breakdown.total - breakdown.rows.reduce(function(s,r){ return s + (r.material || 0); }, 0)).toLocaleString() + ')';
-
+            // Wrap EVERYTHING in the try so a runtime error during breakdown /
+            // HTML construction surfaces to the user instead of leaving the
+            // form silently stuck on "Preparing your estimate…". (Hit by a
+            // recent regression where a missing variable in generateMaterialOrder
+            // hung the submit forever — outer try only covered the actual send.)
             try {
+                const breakdown = buildEstimateBreakdown();
+                const editUrl = getEditUrl();
+
+                const customerHtml = buildCustomerEmailHtml(fullName, breakdown, editUrl, address, notes);
+                const internalHtml = buildInternalEmailHtml(
+                    { name: fullName, email: email, phone: phone, address: address, notes: notes, marketing: marketing },
+                    breakdown, editUrl
+                );
+
+                var custSubject = 'Your Fence Estimate from ' + cfgBrand('businessName') + ' — $' + breakdown.total.toLocaleString();
+                var intSubject = 'New Estimate: ' + fullName + (address ? ' @ ' + address : '') + ' — $' + breakdown.total.toLocaleString() + ' (Profit: $' + (breakdown.total - breakdown.rows.reduce(function(s,r){ return s + (r.material || 0); }, 0)).toLocaleString() + ')';
+
                 await sendEstimateEmails(email, fullName, custSubject, customerHtml, intSubject, internalHtml);
 
                 statusEl.textContent = 'Estimate sent! Check your inbox.';
