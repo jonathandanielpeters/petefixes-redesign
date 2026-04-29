@@ -9145,6 +9145,18 @@
                     try { window.parent.postMessage({ type: 'admin:masterItems', items }, '*'); } catch (err) { /* ignore */ }
                     return;
                 }
+                if (msg.type === 'admin:getPartsList') {
+                    // "As built" parts list — what the engine pulled in
+                    // for the current drawing.  Includes the consolidated
+                    // material order (all fence types + gates + privacy
+                    // bags + etc.) plus the V3 chainlink itemized
+                    // breakdown by category for chainlink jobs.
+                    let order = null, v3Parts = null;
+                    try { order = (typeof generateMaterialOrder === 'function') ? generateMaterialOrder() : null; } catch (e) { order = null; }
+                    try { v3Parts = (typeof generateV3PartsList === 'function') ? generateV3PartsList() : null; } catch (e) { v3Parts = null; }
+                    try { window.parent.postMessage({ type: 'admin:partsList', materialOrder: order, v3Parts: v3Parts }, '*'); } catch (err) {}
+                    return;
+                }
                 if (msg.type === 'admin:getPostMeta') {
                     const id = msg.postId;
                     const point = state.points.find(p => p.id === id);

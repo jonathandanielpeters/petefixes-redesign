@@ -340,6 +340,7 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
             <button class="panel-tab active" data-tab="parts">Custom parts</button>
             <button class="panel-tab" data-tab="labour">Per-quote labour</button>
             <button class="panel-tab" data-tab="postparts">Per-post parts</button>
+            <button class="panel-tab" data-tab="aslist">Parts list (as built)</button>
             <button class="panel-tab" data-tab="notes">Admin notes</button>
         </div>
 
@@ -422,6 +423,13 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
                         <span>Cost on this post: <strong id="postPartsCostSum">$0</strong></span>
                         <span>Sell on this post: <strong id="postPartsSellSum">$0</strong></span>
                     </div>
+                </div>
+            </div>
+
+            <div class="tab-pane" data-pane="aslist">
+                <p style="font-size:11px;color:var(--gray-400);margin:0 0 8px">Live parts list as the engine has built it from the current drawing + admin config.  Includes the consolidated material order (all fence types) and the chainlink itemized SKU breakdown when applicable.  Auto-refreshes as you edit the drawing.  This is the same shopping list the operator sees in the internal estimate email.</p>
+                <div id="aslistContainer">
+                    <div style="font-size:12px;color:var(--gray-400);padding:14px 16px;background:var(--gray-50);border-radius:6px;text-align:center">Waiting for the builder…</div>
                 </div>
             </div>
 
@@ -896,7 +904,116 @@ window.addEventListener('message', (e) => {
         }
         return;
     }
+    if (msg.type === 'admin:partsList') {
+        state.materialOrder = msg.materialOrder || null;
+        state.v3Parts = msg.v3Parts || null;
+        renderPartsListPane();
+        return;
+    }
 });
+
+// ── Parts list (as built) — engine output + admin extras ──────────
+function renderPartsListPane() {
+    const host = $('aslistContainer');
+    if (!host) return;
+    const order = state.materialOrder;
+    const v3 = state.v3Parts;
+    const adminParts = state.adminExtras.customParts || [];
+    if (!order || !order.items || order.items.length === 0) {
+        host.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:14px 16px;background:var(--gray-50);border-radius:6px;text-align:center">Draw a fence to see the parts list.</div>';
+        return;
+    }
+    const fmt = n => '$' + Math.round((n || 0) * 100) / 100;
+    let html = '';
+
+    // ─ Consolidated material order ─────────────────────────────
+    html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 6px">📋 Material Order — consolidated</div>';
+    html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">All lumber + chainlink + gate parts the engine pulled in for this drawing.</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
+    html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Material</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Total</th></tr></thead><tbody>';
+    order.items.forEach(it => {
+        html += '<tr style="border-bottom:1px solid var(--gray-100)"><td style="padding:5px 8px">' + escHtml(it.label) + '</td>' +
+            '<td style="padding:5px 8px;text-align:right">' + (it.qty || 0) + '</td>' +
+            '<td style="padding:5px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
+            '<td style="padding:5px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td></tr>';
+    });
+    html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="3" style="padding:6px 8px">Material subtotal (cost)</td>' +
+        '<td style="padding:6px 8px;text-align:right">' + fmt(order.totalMaterial || 0) + '</td></tr>';
+    html += '</tbody></table>';
+
+    // ─ V3 chainlink breakdown (when applicable) ────────────────
+    if (v3 && v3.categories && v3.categories.length > 0) {
+        html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🔩 Chainlink SKUs — by category</div>';
+        html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Itemized chainlink parts from the active recipe.  Use this to pull stock or build a purchase order.</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
+        html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th></tr></thead><tbody>';
+        v3.categories.forEach(cat => {
+            html += '<tr style="background:var(--gray-100)"><td colspan="5" style="padding:5px 8px;font-weight:700;font-size:10px;color:var(--gray-500);letter-spacing:0.05em">' + escHtml(cat.category) + '</td></tr>';
+            (cat.items || []).forEach(it => {
+                html += '<tr style="border-bottom:1px solid var(--gray-100)">' +
+                    '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.code || '') + '</td>' +
+                    '<td style="padding:4px 8px">' + escHtml(it.description || '') + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td>' +
+                    '</tr>';
+            });
+            html += '<tr style="background:#fafafa;font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--gray-500)">' + escHtml(cat.category) + ' subtotal</td>' +
+                '<td style="padding:5px 8px;text-align:right">' + fmt(cat.subtotal || 0) + '</td></tr>';
+        });
+        html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Chainlink SKU grand total</td>' +
+            '<td style="padding:6px 8px;text-align:right">' + fmt(v3.grandTotal || 0) + '</td></tr>';
+        html += '</tbody></table>';
+    }
+
+    // ─ Admin additions (custom parts) ──────────────────────────
+    if (adminParts.length > 0) {
+        html += '<div style="font-size:11px;font-weight:700;color:var(--admin);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🔧 Admin additions (this quote)</div>';
+        html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Custom parts you added on top of the engine recipes.  These flow into the customer total.</div>';
+        html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px">';
+        html += '<thead><tr style="background:rgba(74,144,217,0.06)"><th style="text-align:left;padding:5px 8px;color:var(--admin);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--admin);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Post</th><th style="text-align:right;padding:5px 8px;color:var(--admin);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--admin);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Cost</th><th style="text-align:right;padding:5px 8px;color:var(--admin);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Markup</th><th style="text-align:right;padding:5px 8px;color:var(--admin);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Sell</th></tr></thead><tbody>';
+        let aCost = 0, aSell = 0;
+        adminParts.forEach(p => {
+            const cost = (Number(p.qty) || 0) * (Number(p.unitCost) || 0);
+            const sell = cost * (1 + (Number(p.markupPct) || 0) / 100);
+            aCost += cost; aSell += sell;
+            const postLabel = (p.attachedToPost != null) ? String(p.attachedToPost) : '—';
+            html += '<tr style="border-bottom:1px solid var(--gray-100)">' +
+                '<td style="padding:5px 8px">' + escHtml(p.description || '(unnamed)') + '</td>' +
+                '<td style="padding:5px 8px;text-align:right;color:var(--admin);font-size:10px;font-family:Menlo,monospace">' + escHtml(postLabel) + '</td>' +
+                '<td style="padding:5px 8px;text-align:right">' + (p.qty || 0) + '</td>' +
+                '<td style="padding:5px 8px;text-align:right;color:var(--gray-400)">' + fmt(cost) + '</td>' +
+                '<td style="padding:5px 8px;text-align:right;color:var(--gray-400)">' + (p.markupPct || 0) + '%</td>' +
+                '<td style="padding:5px 8px;text-align:right;font-weight:600">' + fmt(sell) + '</td>' +
+                '</tr>';
+        });
+        html += '<tr style="background:rgba(74,144,217,0.10);font-weight:700"><td colspan="3" style="padding:6px 8px">Admin additions subtotal</td>' +
+            '<td style="padding:6px 8px;text-align:right;color:var(--gray-500)">' + fmt(aCost) + '</td>' +
+            '<td></td>' +
+            '<td style="padding:6px 8px;text-align:right">' + fmt(aSell) + '</td></tr>';
+        html += '</tbody></table>';
+    }
+
+    // ─ Footer summary ──────────────────────────────────────────
+    const bd = state.breakdown || {};
+    html += '<div style="margin-top:14px;padding:10px 12px;background:var(--admin-light);border:1px solid rgba(74,144,217,0.2);border-radius:6px;display:flex;gap:18px;flex-wrap:wrap;font-size:12px;font-weight:600;color:var(--admin)">';
+    html += '<span>Engine total: <strong style="color:var(--black)">' + fmt(bd.total || state.engineTotal || 0) + '</strong></span>';
+    html += '<span>Material cost: <strong style="color:var(--black)">' + fmt(bd.matCost || 0) + '</strong></span>';
+    html += '<span>Material sell: <strong style="color:var(--black)">' + fmt(bd.matSell || 0) + '</strong></span>';
+    html += '<span>Labour cost: <strong style="color:var(--black)">' + fmt(bd.labCost || 0) + '</strong></span>';
+    html += '<span style="margin-left:auto">Quote total + admin: <strong style="color:var(--black);font-size:14px">' + fmt((bd.total || state.engineTotal || 0) + adminExtrasTotal()) + '</strong></span>';
+    html += '</div>';
+
+    host.innerHTML = html;
+}
+
+// Polled alongside breakdown so the parts list refreshes as drawing
+// + admin config change in the iframe.
+function pollPartsList() {
+    if (!iframeReady) return;
+    try { iframe.contentWindow.postMessage({ type: 'admin:getPartsList' }, '*'); } catch (e) {}
+}
+setInterval(pollPartsList, 1500);
 
 // Periodic breakdown poll — pulls cost/sell/labour split from the
 // iframe so the header strip + Profit number stay live as the engine
@@ -976,6 +1093,11 @@ document.querySelectorAll('.panel-tab').forEach(tab => {
         tab.classList.add('active');
         const pane = document.querySelector('.tab-pane[data-pane="' + tab.dataset.tab + '"]');
         if (pane) pane.classList.add('active');
+        // Refresh parts list immediately when the operator opens that
+        // tab — don't make them wait for the next poll cycle.
+        if (tab.dataset.tab === 'aslist' && typeof pollPartsList === 'function') {
+            try { pollPartsList(); } catch (e) {}
+        }
     });
 });
 
