@@ -309,6 +309,17 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
         <span class="badge">Admin</span>
         <span class="crumb">Editing quote <b id="quoteIdLabel">— new draft —</b></span>
         <span class="status" id="quoteMeta"></span>
+        <!-- Live engine breakdown — material cost, labour cost, profit,
+             and the customer-facing total.  All four numbers refresh
+             via polled postMessage to the iframe so they stay in sync
+             as the engine recomputes from drawing edits / overlay
+             extras. -->
+        <div class="bdwn" id="hdrBreakdown" style="display:flex;gap:14px;align-items:center;font-size:11px;font-weight:600;background:rgba(255,255,255,0.10);border:1px solid rgba(255,255,255,0.18);border-radius:6px;padding:4px 12px">
+            <span><span style="opacity:0.75;font-weight:500">Mat</span> <span id="hdrMatSell">—</span></span>
+            <span><span style="opacity:0.75;font-weight:500">Lab</span> <span id="hdrLabCharge">—</span></span>
+            <span><span style="opacity:0.75;font-weight:500">Profit</span> <span id="hdrProfit">—</span></span>
+            <span style="font-weight:700"><span style="opacity:0.85;font-weight:500">Total</span> <span id="hdrTotal">—</span></span>
+        </div>
         <div class="actions">
             <a href="fence-quotes.html">← Back to Quotes</a>
             <button id="reloadBtn" title="Reload the saved quote — discards unsaved overlay edits">↻ Reload</button>
@@ -449,10 +460,13 @@ const state = {
     loadedDrawing: null,    // serialized drawing from the loaded quote
     dirty: false,
     // Per-post overlay
-    selectedPostId: null,
-    selectedPostMeta: null,
-    masterItems: [],         // chainlink master parts catalog (from iframe)
-    masterFetched: false
+    selectedPostId: null,        // legacy single-select id (back-compat)
+    selectedPostMeta: null,      // legacy single meta
+    selectedPosts: [],           // multi-select: array of meta objects from iframe
+    masterItems: [],             // chainlink master parts catalog (from iframe)
+    masterFetched: false,
+    // Live engine breakdown (polled)
+    breakdown: { total: 0, matCost: 0, matSell: 0, labCost: 0, labCharge: 0, addonTotal: 0, privacyTotal: 0, removalTotal: 0 }
 };
 
 function escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -594,23 +608,38 @@ function updateSummary() {
     $('partsCostSum').textContent = fmtMoney(partsCost(state.adminExtras.customParts || []));
     $('partsSellSum').textContent = fmtMoney(partsSell(state.adminExtras.customParts || []));
     $('labourSum').textContent    = fmtMoney(labourTotal(state.adminExtras.customLabour || []));
-    // Per-post panel summary mirrors the filtered-to-this-post sub-list
-    const onPost = (state.adminExtras.customParts || []).filter(r => r.attachedToPost === state.selectedPostId);
-    if ($('postPartsCostSum')) $('postPartsCostSum').textContent = fmtMoney(partsCost(onPost));
-    if ($('postPartsSellSum')) $('postPartsSellSum').textContent = fmtMoney(partsSell(onPost));
-    const grand = (state.engineTotal || 0) + adminExtrasTotal();
+    // Per-post panel summary — covers the union of selected posts.
+    const selectedIds = (state.selectedPosts || []).map(p => p.postId);
+    const onPosts = (state.adminExtras.customParts || []).filter(r => selectedIds.indexOf(r.attachedToPost) !== -1);
+    if ($('postPartsCostSum')) $('postPartsCostSum').textContent = fmtMoney(partsCost(onPosts));
+    if ($('postPartsSellSum')) $('postPartsSellSum').textContent = fmtMoney(partsSell(onPosts));
+    const grand = (state.breakdown.total || state.engineTotal || 0) + adminExtrasTotal();
     $('grandTotal').textContent = fmtMoney(grand);
+    // Header live breakdown (engine totals — admin extras are separate).
+    const bd = state.breakdown || {};
+    if ($('hdrMatSell'))   $('hdrMatSell').textContent   = fmtMoney(bd.matSell || 0);
+    if ($('hdrLabCharge')) $('hdrLabCharge').textContent = fmtMoney(bd.labCharge || 0);
+    // Profit ≈ engine total − (mat cost + lab cost) + admin extras.  This
+    // is an OPERATOR view (true gross): customer pays grand total; we
+    // pay matCost + labCost.  Admin extras are pure margin minus their
+    // input cost, which is captured by partsSell − partsCost.
+    const partsMargin = partsSell(state.adminExtras.customParts || []) - partsCost(state.adminExtras.customParts || []);
+    const labMargin   = labourTotal(state.adminExtras.customLabour || []);  // labour line items are pure charge
+    const profit = (bd.total || 0) - (bd.matCost || 0) - (bd.labCost || 0) + partsMargin + labMargin;
+    if ($('hdrProfit')) $('hdrProfit').textContent = fmtMoney(profit);
+    if ($('hdrTotal'))  $('hdrTotal').textContent  = fmtMoney(grand);
 }
 
 // ── Per-post parts panel ───────────────────────────────────────────
-// Renders the post-info header + the list of custom parts attached to
-// the currently selected post.  Adding from the search results pushes
-// a new row into adminExtras.customParts tagged with attachedToPost.
+// Single OR multi-post selection.  Single tap = 1-element array;
+// drag-rectangle = N-element array.  Adding parts goes to every
+// selected post (one custom-part row per post).
 function renderPostPartsPanel() {
     const hint = $('postPartsHint');
     const body = $('postPartsBody');
     if (!hint || !body) return;
-    if (state.selectedPostId == null) {
+    const selected = state.selectedPosts || [];
+    if (selected.length === 0) {
         hint.style.display = '';
         body.style.display = 'none';
         return;
@@ -618,28 +647,46 @@ function renderPostPartsPanel() {
     hint.style.display = 'none';
     body.style.display = '';
 
-    const meta = state.selectedPostMeta || {};
-    const linesStr = (meta.linesAt && meta.linesAt.length > 0)
-        ? meta.linesAt.map(l => 'Line ' + (l.idx + 1) + ' → ' + l.otherEndLabel + ' (' + (l.fenceType || 'chainlink') + ' ' + l.height + "')").join(' · ')
-        : '(no connected lines)';
-    const gatesStr = (meta.gatesAt && meta.gatesAt.length > 0)
-        ? ' · ' + meta.gatesAt.map(g => 'Gate ' + (g.idx + 1) + ' (' + (g.gateType || '?') + ')').join(', ')
-        : '';
-    $('postPartsHeader').innerHTML = '<div style="display:flex;align-items:center;gap:10px">' +
-        '<div style="flex:1"><strong>📍 Post ' + escHtml(meta.label || '?') + '</strong>' +
+    let headerHtml;
+    if (selected.length === 1) {
+        const meta = selected[0];
+        const linesStr = (meta.linesAt && meta.linesAt.length > 0)
+            ? meta.linesAt.map(l => 'Line ' + (l.idx + 1) + ' → ' + l.otherEndLabel + ' (' + (l.fenceType || 'chainlink') + ' ' + l.height + "')").join(' · ')
+            : '(no connected lines)';
+        const gatesStr = (meta.gatesAt && meta.gatesAt.length > 0)
+            ? ' · ' + meta.gatesAt.map(g => 'Gate ' + (g.idx + 1) + ' (' + (g.gateType || '?') + ')').join(', ')
+            : '';
+        headerHtml = '<div style="flex:1"><strong>📍 Post ' + escHtml(meta.label || '?') + '</strong>' +
             ' <span style="opacity:0.7">· role: ' + escHtml(meta.role || '?') + '</span>' +
-            '<div style="font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:400">' + escHtml(linesStr + gatesStr) + '</div>' +
-        '</div>' +
-        '<button id="postRefreshBtn" title="Re-fetch this post\'s connected lines (use after redrawing)" style="background:transparent;border:1px solid rgba(74,144,217,0.4);color:var(--admin);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻</button>' +
-        '<button id="postDeselectBtn" title="Deselect this post" style="background:transparent;border:1px solid var(--gray-200);color:var(--gray-500);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✕ Deselect</button>' +
+            '<div style="font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:400">' + escHtml(linesStr + gatesStr) + '</div></div>';
+    } else {
+        // Multi-select header — show count, role mix, and labels list.
+        const labels = selected.map(s => s.label).join(', ');
+        const roleCounts = {};
+        selected.forEach(s => { roleCounts[s.role] = (roleCounts[s.role] || 0) + 1; });
+        const rolesStr = Object.entries(roleCounts).map(([r, n]) => n + ' ' + r).join(' · ');
+        headerHtml = '<div style="flex:1"><strong>📍 ' + selected.length + ' posts selected</strong>' +
+            ' <span style="opacity:0.7">· ' + escHtml(rolesStr) + '</span>' +
+            '<div style="font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:400;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + escHtml(labels) + '</div></div>';
+    }
+    $('postPartsHeader').innerHTML = '<div style="display:flex;align-items:center;gap:10px">' +
+        headerHtml +
+        '<button id="postRefreshBtn" title="Re-fetch connected lines (use after redrawing)" style="background:transparent;border:1px solid rgba(74,144,217,0.4);color:var(--admin);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻</button>' +
+        '<button id="postDeselectBtn" title="Deselect" style="background:transparent;border:1px solid var(--gray-200);color:var(--gray-500);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✕ Deselect</button>' +
     '</div>';
     const refreshBtn = document.getElementById('postRefreshBtn');
     if (refreshBtn) refreshBtn.addEventListener('click', () => {
-        if (state.selectedPostId == null) return;
-        try { iframe.contentWindow.postMessage({ type: 'admin:getPostMeta', postId: state.selectedPostId }, '*'); } catch (e) {}
+        // Re-request meta for each selected post (line-post meta is
+        // already inline; real-post meta refreshes connected lines).
+        selected.forEach(s => {
+            if (typeof s.postId === 'number') {
+                try { iframe.contentWindow.postMessage({ type: 'admin:getPostMeta', postId: s.postId }, '*'); } catch (e) {}
+            }
+        });
     });
     const deselBtn = document.getElementById('postDeselectBtn');
     if (deselBtn) deselBtn.addEventListener('click', () => {
+        state.selectedPosts = [];
         state.selectedPostId = null;
         state.selectedPostMeta = null;
         renderPostPartsPanel();
@@ -651,18 +698,29 @@ function renderPostPartsPanel() {
 
 function renderPostPartsTable() {
     const tbody = $('postPartsTable').querySelector('tbody');
+    const selectedIds = (state.selectedPosts || []).map(p => p.postId);
+    // Build a quick id → label map so multi-select rows can show which
+    // post each row is attached to.
+    const postLabel = {};
+    (state.selectedPosts || []).forEach(p => { postLabel[p.postId] = p.label; });
     const rows = (state.adminExtras.customParts || [])
         .map((r, i) => ({ r, i }))
-        .filter(({ r }) => r.attachedToPost === state.selectedPostId);
+        .filter(({ r }) => selectedIds.indexOf(r.attachedToPost) !== -1);
     if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No custom parts on this post yet. Search above to add a SKU, or use <b>+ Manual add</b> for an off-catalog item.</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No custom parts on the selected post(s) yet. Search above to add a SKU, or use <b>+ Manual add</b> for an off-catalog item.</div></td></tr>';
     } else {
         let html = '';
         rows.forEach(({ r, i }) => {
             const cost = (Number(r.qty) || 0) * (Number(r.unitCost) || 0);
             const sell = cost * (1 + (Number(r.markupPct) || 0) / 100);
+            // When viewing multi-select, prefix each row with the post
+            // label so it's clear which post the row is attached to.
+            const showPostBadge = selectedIds.length > 1 && r.attachedToPost != null;
+            const badge = showPostBadge
+                ? '<span style="display:inline-block;font-size:9px;font-weight:700;background:rgba(74,144,217,0.15);color:var(--admin);padding:1px 6px;border-radius:8px;margin-right:6px">📍 ' + escHtml(postLabel[r.attachedToPost] || '?') + '</span>'
+                : '';
             html += '<tr data-row-idx="' + i + '">' +
-                '<td><input data-field="description" value="' + escHtml(r.description) + '" placeholder="Part description" /></td>' +
+                '<td>' + badge + '<input data-field="description" value="' + escHtml(r.description) + '" placeholder="Part description" /></td>' +
                 '<td><input class="qty" data-field="qty" type="number" step="0.5" min="0" value="' + (r.qty || 0) + '" /></td>' +
                 '<td><input class="unit" data-field="unitCost" type="number" step="0.01" min="0" value="' + (r.unitCost || 0) + '" /></td>' +
                 '<td><input class="qty" data-field="markupPct" type="number" step="1" min="0" value="' + (r.markupPct || 0) + '" /></td>' +
@@ -758,15 +816,20 @@ function renderSearchResults() {
 }
 
 function addPartToPost(item) {
-    if (state.selectedPostId == null) return;
+    // Multi-select: push one row per selected post so the parts list
+    // groups cleanly per post.  Single select = single row (back-compat).
+    const selected = state.selectedPosts || [];
+    if (selected.length === 0) return;
     const cost = Number(item.priceAfterTax || item.price || item.cost || 0);
-    state.adminExtras.customParts.push({
-        description: (item.code ? item.code + ' — ' : '') + (item.description || 'Part'),
-        qty: 1,
-        unitCost: cost,
-        markupPct: 50,
-        attachedToPost: state.selectedPostId,
-        sourceCode: item.code || null
+    selected.forEach(p => {
+        state.adminExtras.customParts.push({
+            description: (item.code ? item.code + ' — ' : '') + (item.description || 'Part'),
+            qty: 1,
+            unitCost: cost,
+            markupPct: 50,
+            attachedToPost: p.postId,
+            sourceCode: item.code || null
+        });
     });
     renderPartsTable();
     renderPostPartsTable();
@@ -778,39 +841,72 @@ function addPartToPost(item) {
 }
 
 // ── Iframe ↔ admin postMessage ─────────────────────────────────────
+function _ensurePostPartsTabOpen() {
+    document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    const tab = document.querySelector('.panel-tab[data-tab="postparts"]');
+    const pane = document.querySelector('.tab-pane[data-pane="postparts"]');
+    if (tab) tab.classList.add('active');
+    if (pane) pane.classList.add('active');
+    if (!panelOpen) setPanel(true);
+}
+
 window.addEventListener('message', (e) => {
     const msg = (e && e.data) || {};
     if (!msg || typeof msg !== 'object') return;
-    if (msg.type === 'admin:postClicked') {
-        state.selectedPostId = msg.postId;
-        state.selectedPostMeta = null;
-        // Switch to the per-post tab so the panel is visible
-        document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-        const tab = document.querySelector('.panel-tab[data-tab="postparts"]');
-        const pane = document.querySelector('.tab-pane[data-pane="postparts"]');
-        if (tab) tab.classList.add('active');
-        if (pane) pane.classList.add('active');
-        if (!panelOpen) setPanel(true);
-        // Ask the iframe for full metadata so we can label the post
-        try { iframe.contentWindow.postMessage({ type: 'admin:getPostMeta', postId: msg.postId }, '*'); } catch (err) {}
+    // Multi-post selection (drag-rectangle OR single-tap with the
+    // Select tool active).  The iframe sends a ready-to-render array.
+    if (msg.type === 'admin:postsSelected') {
+        state.selectedPosts = Array.isArray(msg.posts) ? msg.posts : [];
+        // Back-compat single-select fields
+        state.selectedPostId = state.selectedPosts.length === 1 ? state.selectedPosts[0].postId : null;
+        state.selectedPostMeta = state.selectedPosts.length === 1 ? state.selectedPosts[0] : null;
+        if (state.selectedPosts.length > 0) _ensurePostPartsTabOpen();
         renderPostPartsPanel();
+        renderPartsTable();
+        updateSummary();
+        return;
+    }
+    // Legacy single-post message (kept for back-compat with the old
+    // click-mode path; both routes converge to the same panel).
+    if (msg.type === 'admin:postClicked') {
+        try { iframe.contentWindow.postMessage({ type: 'admin:getPostMeta', postId: msg.postId }, '*'); } catch (err) {}
         return;
     }
     if (msg.type === 'admin:postMeta') {
-        if (msg.postId === state.selectedPostId) {
-            state.selectedPostMeta = msg;
+        // Update an existing entry in selectedPosts that matches this id
+        const idx = (state.selectedPosts || []).findIndex(p => p.postId === msg.postId);
+        if (idx !== -1) {
+            state.selectedPosts[idx] = msg;
+            if (state.selectedPosts.length === 1) state.selectedPostMeta = msg;
             renderPostPartsPanel();
         }
         return;
     }
     if (msg.type === 'admin:masterItems') {
         state.masterItems = Array.isArray(msg.items) ? msg.items : [];
-        // Re-render search if there's a pending query
         if (($('postPartsSearch').value || '').trim().length >= 2) renderSearchResults();
         return;
     }
+    if (msg.type === 'admin:breakdown') {
+        if (msg.breakdown) {
+            state.breakdown = msg.breakdown;
+            state.engineTotal = msg.breakdown.total || state.engineTotal;
+            updateSummary();
+        }
+        return;
+    }
 });
+
+// Periodic breakdown poll — pulls cost/sell/labour split from the
+// iframe so the header strip + Profit number stay live as the engine
+// recomputes from drawing edits.  Lighter than the 250 ms totalPrice
+// DOM poll since each call goes through calculatePrice() in the iframe.
+function pollBreakdown() {
+    if (!iframeReady) return;
+    try { iframe.contentWindow.postMessage({ type: 'admin:getBreakdown' }, '*'); } catch (e) {}
+}
+setInterval(pollBreakdown, 800);
 
 // ── Add buttons ────────────────────────────────────────────────────
 document.querySelectorAll('button[data-add]').forEach(btn => {
@@ -822,11 +918,16 @@ document.querySelectorAll('button[data-add]').forEach(btn => {
             state.adminExtras.customLabour.push({ description: '', hours: 1, rate: 85 });
             renderLabourTable();
         } else if (btn.dataset.add === 'postpart') {
-            // Manual add (no SKU lookup) — same shape, tagged with postId
-            if (state.selectedPostId == null) return;
-            state.adminExtras.customParts.push({
-                description: '', qty: 1, unitCost: 0, markupPct: 50,
-                attachedToPost: state.selectedPostId
+            // Manual add (no SKU lookup) — pushes one empty row per
+            // selected post so multi-select stays consistent with the
+            // search-add path.
+            const selected = state.selectedPosts || [];
+            if (selected.length === 0) return;
+            selected.forEach(p => {
+                state.adminExtras.customParts.push({
+                    description: '', qty: 1, unitCost: 0, markupPct: 50,
+                    attachedToPost: p.postId
+                });
             });
             renderPartsTable();
             renderPostPartsTable();

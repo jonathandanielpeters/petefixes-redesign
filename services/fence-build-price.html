@@ -1522,6 +1522,13 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l-3 3 3 3"/><path d="M9 5l3-3 3 3"/><path d="M15 19l-3 3-3-3"/><path d="M19 9l3 3-3 3"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
                         Pan
                     </button>
+                    <!-- Admin select tool — only visible inside the admin builder iframe.
+                         Click or drag-rectangle to select posts (real + line posts) and
+                         manage their parts in the admin overlay. -->
+                    <button class="canvas-tool-btn" id="selectTool" data-tool="select-admin" style="display:none" title="Select posts to manage parts (admin only)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 14h-7l-2 5-5-19z"/></svg>
+                        Select
+                    </button>
                     <button class="canvas-tool-btn danger" id="clearBtn">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                         Clear
@@ -4377,6 +4384,7 @@
         const gateToolBtn = document.getElementById('gateTool');
         const houseToolBtn = document.getElementById('houseTool');
         const panToolBtn = document.getElementById('panTool');
+        const selectToolBtn = document.getElementById('selectTool');
 
         function setActiveTool(tool) {
             state.activeTool = tool;
@@ -4384,11 +4392,16 @@
             gateToolBtn.classList.remove('active', 'active-gate');
             houseToolBtn.classList.remove('active', 'active-gate');
             panToolBtn.classList.remove('active', 'active-gate');
+            if (selectToolBtn) selectToolBtn.classList.remove('active', 'active-gate');
             if (tool === 'draw') drawToolBtn.classList.add('active');
             else if (tool === 'gate') gateToolBtn.classList.add('active-gate');
             else if (tool === 'house') houseToolBtn.classList.add('active');
             else if (tool === 'pan') panToolBtn.classList.add('active');
-            canvas.style.cursor = tool === 'pan' ? 'grab' : (tool === 'house' ? 'copy' : 'crosshair');
+            else if (tool === 'select-admin' && selectToolBtn) selectToolBtn.classList.add('active-gate');
+            canvas.style.cursor = tool === 'pan' ? 'grab'
+                : tool === 'house' ? 'copy'
+                : tool === 'select-admin' ? 'crosshair'
+                : 'crosshair';
             // Cancel pending on tool switch
             if (state.pendingPoint !== null && tool !== state.activeTool) {
                 cancelPending();
@@ -4434,6 +4447,7 @@
         gateToolBtn.addEventListener('click', () => setActiveTool('gate'));
         houseToolBtn.addEventListener('click', () => setActiveTool('house'));
         panToolBtn.addEventListener('click', () => setActiveTool('pan'));
+        if (selectToolBtn) selectToolBtn.addEventListener('click', () => setActiveTool('select-admin'));
 
         // ═════ Mobile FAB + bottom sheet ═════
         (function setupMobileFab() {
@@ -4856,11 +4870,27 @@
         const DRAG_HOLD_MS = 150;
         const PAN_HOLD_MS = 180;
         const PAN_MOVE_THRESHOLD = 4;
+        // Admin select-tool drag state
+        let _adminDragging = false;
+        let _adminDragStartX = 0, _adminDragStartY = 0, _adminDragCurX = 0, _adminDragCurY = 0;
         canvas.addEventListener('mousedown', (e) => {
             mouseDownTime = Date.now(); mouseDownX = e.clientX; mouseDownY = e.clientY;
             // Always prepare for potential hold-to-pan
             panStartX = e.clientX; panStartY = e.clientY; panStartPanX = state.panX; panStartPanY = state.panY;
             holdPanning = false;
+            // ADMIN SELECT TOOL — only when activeTool === 'select-admin'.
+            // Mousedown starts a potential drag-rectangle; if no movement
+            // the click handler treats it as a single-tap select.
+            if (state.activeTool === 'select-admin' && _IS_ADMIN_FRAME && e.button === 0) {
+                const r = canvas.getBoundingClientRect();
+                _adminDragStartX = e.clientX - r.left;
+                _adminDragStartY = e.clientY - r.top;
+                _adminDragCurX = _adminDragStartX;
+                _adminDragCurY = _adminDragStartY;
+                _adminDragging = true;
+                e.preventDefault();
+                return;
+            }
             if (state.activeTool === 'pan' || spaceHeld || e.button === 1) {
                 isPanning = true; canvas.style.cursor = 'grabbing'; e.preventDefault();
                 return;
@@ -4892,6 +4922,14 @@
             }
         });
         window.addEventListener('mousemove', (e) => {
+            // Admin select-tool drag-rectangle update
+            if (_adminDragging) {
+                const r = canvas.getBoundingClientRect();
+                _adminDragCurX = e.clientX - r.left;
+                _adminDragCurY = e.clientY - r.top;
+                drawCanvas();
+                return;
+            }
             if (isPanning) { state.panX = panStartPanX + (e.clientX - panStartX); state.panY = panStartPanY + (e.clientY - panStartY); drawCanvas(); return; }
             // House resize
             if (isResizingHouse && resizeHouse) {
@@ -4940,6 +4978,44 @@
             if (isDraggingPoint) { pushUndo(); isDraggingPoint = false; dragPoint = null; canvas.style.cursor = 'crosshair'; }
             else { dragPoint = null; }
             if (isDraggingHouse || isResizingHouse) { pushUndo(); isDraggingHouse = false; isResizingHouse = false; dragHouse = null; resizeHouse = null; canvas.style.cursor = state.activeTool === 'house' ? 'copy' : 'crosshair'; }
+            // Admin drag-rectangle finalize: collect every post (real +
+            // line) inside the rectangle, build their meta payloads, and
+            // bubble up to the parent admin builder.
+            if (_adminDragging) {
+                _adminDragging = false;
+                const dx = _adminDragCurX - _adminDragStartX;
+                const dy = _adminDragCurY - _adminDragStartY;
+                const moved = Math.sqrt(dx * dx + dy * dy);
+                if (moved < 5) {
+                    // Treat as single tap — handled in click event.
+                } else {
+                    const minX = Math.min(_adminDragStartX, _adminDragCurX);
+                    const maxX = Math.max(_adminDragStartX, _adminDragCurX);
+                    const minY = Math.min(_adminDragStartY, _adminDragCurY);
+                    const maxY = Math.max(_adminDragStartY, _adminDragCurY);
+                    const inside = (sx, sy) => sx >= minX && sx <= maxX && sy >= minY && sy <= maxY;
+                    const hits = [];
+                    // Real points
+                    (state.points || []).forEach(pt => {
+                        const s = worldToScreen(pt.x, pt.y);
+                        if (inside(s.x, s.y)) hits.push({ kind: 'real', point: pt, id: pt.id });
+                    });
+                    // Line posts
+                    (state.lines || []).forEach(line => {
+                        if (!isLineEnabled(line)) return;
+                        _adminLinePostsFor(line).forEach(lp => {
+                            const s = worldToScreen(lp.x, lp.y);
+                            if (inside(s.x, s.y)) hits.push({ kind: 'line', lineP1: line.p1, lineP2: line.p2, n: lp.n, x: lp.x, y: lp.y, id: _adminLinePostId(line, lp.n) });
+                        });
+                    });
+                    _adminSelection.clear();
+                    hits.forEach(h => _adminSelection.add(h.id));
+                    drawCanvas();
+                    const posts = hits.map(h => _adminPostMeta(h)).filter(m => m);
+                    try { window.parent.postMessage({ type: 'admin:postsSelected', posts }, '*'); } catch (err) {}
+                }
+                drawCanvas();
+            }
             if (wasPanning) { dragMoved = true; } // suppress click event after any panning
             mouseDownTime = 0; holdPanning = false;
         });
@@ -5952,6 +6028,64 @@
             (canvasMode === 'map' ? drawMapTiles : drawGrid)();
             drawHouses();
             drawFenceLines();
+            // Admin selection highlight (rings around selected posts) +
+            // drag-rectangle.  Wrapped in try/catch because the admin
+            // globals (_IS_ADMIN_FRAME, _adminSelection, _adminDragging,
+            // _adminLinePostsFor) are declared later in the script so
+            // any drawCanvas call during initial parse would otherwise
+            // hit a TDZ ReferenceError.
+            try {
+            if (_IS_ADMIN_FRAME && _adminSelection && _adminSelection.size > 0) {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(74,144,217,0.95)';
+                ctx.lineWidth = 2.5;
+                ctx.fillStyle = 'rgba(74,144,217,0.18)';
+                _adminSelection.forEach(id => {
+                    let wx, wy;
+                    if (typeof id === 'number') {
+                        const pt = state.points.find(p => p.id === id);
+                        if (!pt) return;
+                        wx = pt.x; wy = pt.y;
+                    } else {
+                        // Synthetic line-post id: 'line-<p1>-<p2>-<n>'
+                        const m = String(id).match(/^line-(\d+)-(\d+)-(\d+)$/);
+                        if (!m) return;
+                        const p1Id = parseInt(m[1]), p2Id = parseInt(m[2]), n = parseInt(m[3]);
+                        const line = state.lines.find(l => l.p1 === p1Id && l.p2 === p2Id);
+                        if (!line) return;
+                        const lp = _adminLinePostsFor(line).find(x => x.n === n);
+                        if (!lp) return;
+                        wx = lp.x; wy = lp.y;
+                    }
+                    const s = worldToScreen(wx, wy);
+                    ctx.beginPath();
+                    ctx.arc(s.x, s.y, 11, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                });
+                ctx.restore();
+            }
+            } catch (e) { /* admin globals not initialized yet */ }
+            try {
+            // Admin drag-rectangle (rubber-band)
+            if (_adminDragging) {
+                const minX = Math.min(_adminDragStartX, _adminDragCurX);
+                const maxX = Math.max(_adminDragStartX, _adminDragCurX);
+                const minY = Math.min(_adminDragStartY, _adminDragCurY);
+                const maxY = Math.max(_adminDragStartY, _adminDragCurY);
+                ctx.save();
+                ctx.strokeStyle = 'rgba(74,144,217,0.85)';
+                ctx.fillStyle = 'rgba(74,144,217,0.10)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                ctx.rect(minX, minY, maxX - minX, maxY - minY);
+                ctx.fill();
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+            } catch (e) { /* admin globals not initialized yet */ }
         }
 
         function drawHouses() {
@@ -8878,6 +9012,97 @@
         })();
         let _adminClickMode = false;
 
+        // Admin selection state — populated by drag-rectangle / single-tap
+        // when activeTool === 'select-admin'.  Each entry is either a real
+        // post id (number) or a synthetic line-post id 'line-<p1>-<p2>-<n>'.
+        const _adminSelection = new Set();
+
+        // Compute the line-post positions along a line, EXCLUDING endpoints.
+        // Returns an array of { x, y, n } where n is 0-indexed offset from p1.
+        // Stable id for a line-post: 'line-<p1Id>-<p2Id>-<n>'.
+        function _adminLinePostsFor(line) {
+            try {
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return [];
+                const all = (typeof calculatePostsForLine === 'function') ? calculatePostsForLine(p1, p2, line) : [];
+                // calculatePostsForLine returns ALL posts along the line including endpoints
+                // — drop first + last so we only return intermediates.
+                if (all.length <= 2) return [];
+                return all.slice(1, -1).map((pt, i) => ({ x: pt.x, y: pt.y, n: i + 1 }));
+            } catch (e) { return []; }
+        }
+        function _adminLinePostId(line, n) { return 'line-' + line.p1 + '-' + line.p2 + '-' + n; }
+
+        // Hit-test: real points first, then line posts.  Returns either
+        // { kind: 'real', point } or { kind: 'line', x, y, lineP1, lineP2, n, id }.
+        function _adminHitTest(sx, sy) {
+            const real = (typeof findNearbyPoint === 'function') ? findNearbyPoint(sx, sy, 14) : null;
+            if (real) return { kind: 'real', point: real, id: real.id };
+            // Line-post hit
+            for (const line of (state.lines || [])) {
+                if (!isLineEnabled(line)) continue;
+                const intermediates = _adminLinePostsFor(line);
+                for (const lp of intermediates) {
+                    const screen = (typeof worldToScreen === 'function') ? worldToScreen(lp.x, lp.y) : null;
+                    if (!screen) continue;
+                    const dx = screen.x - sx, dy = screen.y - sy;
+                    if (dx * dx + dy * dy <= 14 * 14) {
+                        return { kind: 'line', lineP1: line.p1, lineP2: line.p2, n: lp.n, x: lp.x, y: lp.y, id: _adminLinePostId(line, lp.n) };
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Build the postMeta payload (used by both single-tap + multi-select)
+        function _adminPostMeta(hit) {
+            let labelMap = {};
+            try { labelMap = (typeof getPostNumberMap === 'function') ? getPostNumberMap() : {}; } catch (err) {}
+            if (hit.kind === 'real') {
+                const id = hit.id;
+                const point = state.points.find(p => p.id === id);
+                if (!point) return null;
+                const linesAt = state.lines
+                    .map((l, idx) => ({ l, idx }))
+                    .filter(({ l }) => l.p1 === id || l.p2 === id)
+                    .map(({ l, idx }) => ({
+                        idx,
+                        otherEndId: l.p1 === id ? l.p2 : l.p1,
+                        otherEndLabel: labelMap[l.p1 === id ? l.p2 : l.p1] || '?',
+                        styleIdx: l.styleIdx || 0,
+                        fenceType: ((state.fenceStyles[l.styleIdx || 0]) || {}).fenceType || 'chainlink',
+                        height: ((state.fenceStyles[l.styleIdx || 0]) || {}).height || 6
+                    }));
+                const gatesAt = state.gates
+                    .map((g, idx) => ({ g, idx }))
+                    .filter(({ g }) => g.p1 === id || g.p2 === id)
+                    .map(({ g, idx }) => ({ idx, gateType: g.gateType }));
+                const isCorner = (typeof isCornerPost === 'function') && isCornerPost(id);
+                const role = isCorner ? 'corner' : (linesAt.length === 0 && gatesAt.length === 0 ? 'orphan' : (linesAt.length + gatesAt.length === 1 ? 'end' : 'inline'));
+                return { postId: id, label: labelMap[id] || '?', role, linesAt, gatesAt };
+            }
+            // Line-post (synthetic)
+            const lineIdx = state.lines.findIndex(l => l.p1 === hit.lineP1 && l.p2 === hit.lineP2);
+            const labelP1 = labelMap[hit.lineP1] || '?';
+            const labelP2 = labelMap[hit.lineP2] || '?';
+            const style = (lineIdx >= 0) ? state.fenceStyles[state.lines[lineIdx].styleIdx || 0] : null;
+            return {
+                postId: hit.id,
+                label: labelP1 + '–' + labelP2 + ' #' + hit.n,
+                role: 'line',
+                linesAt: [{
+                    idx: lineIdx,
+                    otherEndId: null,
+                    otherEndLabel: labelP1 + '/' + labelP2,
+                    styleIdx: (lineIdx >= 0 ? state.lines[lineIdx].styleIdx || 0 : 0),
+                    fenceType: (style && style.fenceType) || 'chainlink',
+                    height: (style && style.height) || 6
+                }],
+                gatesAt: []
+            };
+        }
+
         if (_IS_ADMIN_FRAME) {
             window.addEventListener('message', (e) => {
                 const msg = (e && e.data) || {};
@@ -8885,6 +9110,34 @@
                 if (msg.type === 'admin:setClickMode') {
                     _adminClickMode = !!msg.enabled;
                     document.body.classList.toggle('admin-click-mode', _adminClickMode);
+                    // Reveal the Select tool button when admin click mode is on
+                    if (selectToolBtn) selectToolBtn.style.display = _adminClickMode ? '' : 'none';
+                    return;
+                }
+                if (msg.type === 'admin:getBreakdown') {
+                    // Reply with engine totals (material cost/sell, labour
+                    // cost/charge, addons, removal, privacy, project total).
+                    let bd = null;
+                    try {
+                        const price = (typeof calculatePrice === 'function') ? calculatePrice() : null;
+                        const v3 = (typeof calculateV3Project === 'function') ? calculateV3Project() : null;
+                        const v2 = !v3 && typeof calculateV2Project === 'function' ? calculateV2Project() : null;
+                        const surcharge = (price ? (price.privacyTotal || 0) + (price.removalTotal || 0) : 0);
+                        const total = (v3 ? v3.total : v2 ? v2.total : (price ? price.total : 0)) + surcharge;
+                        const projLab = (price && price.projectLabour) || null;
+                        const projMat = (price && price.projectMaterial) || null;
+                        bd = {
+                            total,
+                            matCost:    projMat ? Math.round(projMat.totalMatCost || 0) : (price ? Math.round(price.materialCost || 0) : 0),
+                            matSell:    projMat ? Math.round(projMat.totalMatSell || 0) : (price ? Math.round(price.materialSell || 0) : 0),
+                            labCost:    projLab ? Math.round(projLab.totalCost || 0) : 0,
+                            labCharge:  price ? Math.round(price.labourTotal || 0) : 0,
+                            addonTotal: price ? Math.round(price.addonTotal || 0) : 0,
+                            privacyTotal: price ? Math.round(price.privacyTotal || 0) : 0,
+                            removalTotal: price ? Math.round(price.removalTotal || 0) : 0
+                        };
+                    } catch (err) { bd = null; }
+                    try { window.parent.postMessage({ type: 'admin:breakdown', breakdown: bd }, '*'); } catch (err) {}
                     return;
                 }
                 if (msg.type === 'admin:getMasterItems') {
@@ -8933,22 +9186,30 @@
         }
 
         canvas.addEventListener('click', (e) => {
-            // ADMIN HOOK: in admin-frame mode, a click on an existing
-            // post bubbles up to the parent admin builder + suppresses
-            // the regular drawing-tool behaviour.  We let the regular
-            // drag/pan checks above the click handler still run so
-            // admin can still pan + zoom; this only intercepts a clean
-            // (non-drag) tap that lands on a post.
-            if (_IS_ADMIN_FRAME && _adminClickMode && !isPanning && !dragMoved) {
+            // ADMIN HOOK: when the Select tool is active, a click on a
+            // real post OR a line post selects it and bubbles up to the
+            // parent admin builder.  Single-post selection.  The click
+            // ALWAYS suppresses the regular drawing-tool behaviour while
+            // this tool is active.
+            if (_IS_ADMIN_FRAME && state.activeTool === 'select-admin' && !isPanning && !dragMoved) {
                 const r0 = canvas.getBoundingClientRect();
                 const sx0 = e.clientX - r0.left, sy0 = e.clientY - r0.top;
-                const adminHit = (typeof findNearbyPoint === 'function') ? findNearbyPoint(sx0, sy0) : null;
-                if (adminHit) {
-                    state.selectedPointId = adminHit.id;
+                const hit = _adminHitTest(sx0, sy0);
+                if (hit) {
+                    _adminSelection.clear();
+                    _adminSelection.add(hit.id);
+                    if (hit.kind === 'real') state.selectedPointId = hit.id;
                     drawCanvas();
-                    try { window.parent.postMessage({ type: 'admin:postClicked', postId: adminHit.id }, '*'); } catch (err) {}
-                    return;
+                    const meta = _adminPostMeta(hit);
+                    try {
+                        window.parent.postMessage({ type: 'admin:postsSelected', posts: meta ? [meta] : [] }, '*');
+                    } catch (err) {}
+                } else {
+                    _adminSelection.clear();
+                    drawCanvas();
+                    try { window.parent.postMessage({ type: 'admin:postsSelected', posts: [] }, '*'); } catch (err) {}
                 }
+                return;
             }
             if (state.activeTool === 'pan' || spaceHeld || isPanning) return;
             if (dragMoved) { dragMoved = false; return; }
