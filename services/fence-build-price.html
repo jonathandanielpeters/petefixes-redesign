@@ -242,6 +242,21 @@
         .fence-line-block { display: block; }
         .fence-line-removal { display: flex; align-items: center; gap: 8px; padding: 4px 8px 6px 30px; font-size: 11px; color: var(--gray-400); border-bottom: 1px solid var(--gray-100); }
         .fence-line-removal.active { color: #b87212; background: rgba(232, 145, 32, 0.05); }
+        /* Admin click mode (visible only inside the admin builder iframe).
+           Adds a subtle blue ring to the canvas + a top-bar hint banner so
+           the operator knows clicks on posts will open the parts panel
+           in the parent shell rather than start drawing. */
+        body.admin-click-mode #fenceCanvas { box-shadow: inset 0 0 0 2px rgba(74,144,217,0.45), 0 0 0 1px rgba(74,144,217,0.2); cursor: pointer; }
+        body.admin-click-mode #fenceCanvas:active { cursor: pointer; }
+        body.admin-click-mode .canvas-wrapper::before {
+            content: '🔧 Admin click mode — tap a post to manage its parts';
+            position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+            background: rgba(74,144,217,0.95); color: #fff;
+            font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+            padding: 4px 12px; border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.16);
+            z-index: 200; pointer-events: none;
+        }
         .fence-line-removal-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-weight: 500; }
         .fence-line-removal-toggle input[type="checkbox"] { width: 13px; height: 13px; accent-color: #e89120; cursor: pointer; margin: 0; }
         .fence-line-removal-type { font-size: 10px; font-weight: 600; padding: 1px 18px 1px 6px; border-radius: 4px; border: 1px solid var(--gray-200); background: var(--white) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 4px center; color: var(--gray-500); cursor: pointer; appearance: none; -webkit-appearance: none; transition: border-color var(--transition), color var(--transition); }

@@ -625,9 +625,26 @@ function renderPostPartsPanel() {
     const gatesStr = (meta.gatesAt && meta.gatesAt.length > 0)
         ? ' · ' + meta.gatesAt.map(g => 'Gate ' + (g.idx + 1) + ' (' + (g.gateType || '?') + ')').join(', ')
         : '';
-    $('postPartsHeader').innerHTML = '<strong>📍 Post ' + escHtml(meta.label || '?') + '</strong>' +
-        ' <span style="opacity:0.7">· role: ' + escHtml(meta.role || '?') + '</span>' +
-        '<div style="font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:400">' + escHtml(linesStr + gatesStr) + '</div>';
+    $('postPartsHeader').innerHTML = '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div style="flex:1"><strong>📍 Post ' + escHtml(meta.label || '?') + '</strong>' +
+            ' <span style="opacity:0.7">· role: ' + escHtml(meta.role || '?') + '</span>' +
+            '<div style="font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:400">' + escHtml(linesStr + gatesStr) + '</div>' +
+        '</div>' +
+        '<button id="postRefreshBtn" title="Re-fetch this post\'s connected lines (use after redrawing)" style="background:transparent;border:1px solid rgba(74,144,217,0.4);color:var(--admin);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">↻</button>' +
+        '<button id="postDeselectBtn" title="Deselect this post" style="background:transparent;border:1px solid var(--gray-200);color:var(--gray-500);padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">✕ Deselect</button>' +
+    '</div>';
+    const refreshBtn = document.getElementById('postRefreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => {
+        if (state.selectedPostId == null) return;
+        try { iframe.contentWindow.postMessage({ type: 'admin:getPostMeta', postId: state.selectedPostId }, '*'); } catch (e) {}
+    });
+    const deselBtn = document.getElementById('postDeselectBtn');
+    if (deselBtn) deselBtn.addEventListener('click', () => {
+        state.selectedPostId = null;
+        state.selectedPostMeta = null;
+        renderPostPartsPanel();
+        updateSummary();
+    });
 
     renderPostPartsTable();
 }
@@ -714,7 +731,7 @@ function renderSearchResults() {
     let html = '';
     hits.forEach((it, i) => {
         const price = Number(it.priceAfterTax || it.price || it.cost || 0);
-        html += '<div class="search-result" data-hit-idx="' + i + '" style="padding:7px 10px;border-bottom:1px solid var(--gray-100);cursor:pointer;display:flex;gap:10px;align-items:center;font-size:12px">' +
+        html += '<div class="search-result" data-hit-idx="' + i + '" style="padding:7px 10px;border-bottom:1px solid var(--gray-100);cursor:pointer;display:flex;gap:10px;align-items:center;font-size:12px;transition:background 0.12s">' +
             '<div style="flex:1;min-width:0">' +
                 '<div style="font-weight:600;color:var(--black);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(it.description || it.code || 'Part') + '</div>' +
                 '<div style="font-size:10px;color:var(--gray-400);font-family:Menlo,monospace">' + escHtml(it.code || '') + (it.category ? ' · ' + escHtml(it.category) : '') + '</div>' +
@@ -725,14 +742,19 @@ function renderSearchResults() {
     });
     host.style.display = '';
     host.innerHTML = html;
-    host.querySelectorAll('button[data-add-hit]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const idx = parseInt(btn.dataset.addHit);
-            const it = hits[idx];
-            if (!it) return;
-            addPartToPost(it);
+    // Whole-row click adds the part. The "+ Add" button is just the
+    // explicit affordance — the hover style already hints at it.
+    host.querySelectorAll('.search-result').forEach((row, idx) => {
+        row.addEventListener('mouseenter', () => row.style.background = 'rgba(74,144,217,0.07)');
+        row.addEventListener('mouseleave', () => row.style.background = '');
+        row.addEventListener('click', () => {
+            const hitIdx = parseInt(row.dataset.hitIdx);
+            const it = hits[hitIdx];
+            if (it) addPartToPost(it);
         });
     });
+    // Save the current hits array so the Enter-key handler can grab [0]
+    state._lastHits = hits;
 }
 
 function addPartToPost(item) {
@@ -827,6 +849,21 @@ if (_postSearchEl) {
             try { iframe.contentWindow.postMessage({ type: 'admin:getMasterItems' }, '*'); } catch (e) {}
             state.masterFetched = true;
         }
+    });
+    // Enter key adds the top hit — keeps the workflow keyboard-first.
+    _postSearchEl.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        const hits = state._lastHits || [];
+        if (hits.length === 0) return;
+        e.preventDefault();
+        addPartToPost(hits[0]);
+    });
+    // Escape clears the search box + closes the result dropdown.
+    _postSearchEl.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        _postSearchEl.value = '';
+        $('postPartsSearchResults').style.display = 'none';
+        $('postPartsSearchResults').innerHTML = '';
     });
 }
 
