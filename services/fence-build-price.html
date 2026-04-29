@@ -2503,9 +2503,9 @@
                 }
             }
 
-            if (addons.privacyInserts && addons.privacyInserts.enabled && style.privacyInserts) {
-                total += lengthFt * (addons.privacyInserts.perFoot || 0);
-            }
+            // Privacy inserts moved out of addOnCharges — see
+            // calculatePrivacyInserts() for the consolidated cost+markup+
+            // install path that uses the chainlink material config.
 
             return total;
         }
@@ -3047,18 +3047,12 @@
                 let perFt = (cl.base && cl.base[h]) || 14.44;
                 perFt += (cl.colorMod && cl.colorMod[color]) || 0;
                 fenceCost = lengthFt * perFt;
-                // Privacy inserts: sold in full bags
-                if (style.privacyInserts) {
-                    const pi = cl.privacyInserts;
-                    if (pi && pi.bagPrice) {
-                        const bagLen = pi.bagLength || 10;
-                        const bags = Math.ceil(lengthFt / bagLen);
-                        fenceCost += bags * (pi.bagCost || pi.bagPrice);
-                        if (style.privacyInstall !== false) fenceCost += lengthFt * (pi.installPerFt || 0);
-                    } else {
-                        fenceCost += lengthFt * (cl.privacyMod || 0);
-                    }
-                }
+                // Privacy inserts intentionally NOT included here — they
+                // have their own cost+markup config (height-keyed bag cost
+                // + separate markup rate + optional install/ft).  Handled
+                // project-wide via calculatePrivacyInserts() and added as
+                // a flat surcharge so the chainlink fence-tier markup
+                // doesn't double-mark-up the inserts.
                 // Top rail: 10' lengths (full boards only)
                 fenceCost += Math.ceil(lengthFt / 10) * ((cl.topRail && cl.topRail[color]) || 0);
                 // Hookup hardware — 1 per endpoint, 3 if endpoint is a house terminal
@@ -3230,18 +3224,22 @@
                     perFt += (cl.colorMod && cl.colorMod[color]) || 0;
                     addToOrder('cl-mesh-' + h + '-' + color, 'CL ' + h + "' mesh" + (color === 'black' ? ' (black)' : ''), 1, lengthFt * perFt);
 
-                    // 1b. Privacy inserts: sold in full bags
+                    // 1b. Privacy inserts: sold in full bags. Bag cost is
+                    // height-keyed; missing heights fall back to legacy
+                    // single bagCost.  Install/ft (when "Install for me")
+                    // gets its own line so the operator sees it.
                     if (s.privacyInserts) {
                         const pi = cl.privacyInserts;
-                        if (pi && pi.bagPrice) {
-                            const bagLen = pi.bagLength || 10;
+                        if (pi) {
+                            const bagLen = Number(pi.bagLength) || 10;
                             const bags = Math.ceil(lengthFt / bagLen);
-                            addToOrder('cl-privacy-bag-' + (s.privacyColor || 'grey'), "Privacy insert " + bagLen + "' bag (" + (s.privacyColor || 'grey') + ')', bags, pi.bagCost || pi.bagPrice);
-                            if (s.privacyInstall !== false && pi.installPerFt > 0) {
-                                addToOrder('cl-privacy-install', 'Privacy insert installation', 1, lengthFt * pi.installPerFt);
+                            const bagCost = (pi.bagCostByHeight && Number(pi.bagCostByHeight[h])) || Number(pi.bagCost) || 0;
+                            if (bagCost > 0) {
+                                addToOrder('cl-privacy-bag-' + h + '-' + (s.privacyColor || 'grey'), "Privacy insert " + h + "' " + bagLen + "' bag (" + (s.privacyColor || 'grey') + ')', bags, bagCost);
                             }
-                        } else {
-                            addToOrder('cl-privacy-legacy', 'Privacy inserts (per ft)', 1, lengthFt * (cl.privacyMod || 0));
+                            if (s.privacyInstall !== false && Number(pi.installPerFt) > 0) {
+                                addToOrder('cl-privacy-install', 'Privacy insert installation', 1, lengthFt * Number(pi.installPerFt));
+                            }
                         }
                     }
 
@@ -6247,18 +6245,9 @@
             if (style.privacyInserts && style.fenceType !== 'chainlink') perFt += cfgExtra('privacyInserts');
 
             let total = lengthFt * perFt + postCount * postCostEach;
-            // Privacy inserts for chainlink: bag-based in per-foot mode too
-            if (style.privacyInserts && style.fenceType === 'chainlink') {
-                const cl = cfgChainlink();
-                const pi = cl.privacyInserts;
-                if (pi && pi.bagPrice) {
-                    const bags = Math.ceil(lengthFt / (pi.bagLength || 10));
-                    total += bags * pi.bagPrice;
-                    if (style.privacyInstall !== false) total += lengthFt * (pi.installPerFt || 0);
-                } else {
-                    total += lengthFt * (pf.privacyInsertAddon || 4);
-                }
-            }
+            // Chainlink privacy inserts are computed PROJECT-wide via
+            // calculatePrivacyInserts() and added once to the total in
+            // calculatePrice().  Don't double-add per line here.
             return total;
         }
         function calculatePerFootGate(gateType, widthFt) {
@@ -6916,6 +6905,109 @@
             return { byType, totalMatCost, totalMatSell, types };
         }
 
+        // ── Privacy inserts (chainlink) ────────────────────────────────
+        // Bag-based pricing: bag cost varies by fence height (different
+        // slat lengths), bagLength is the linear coverage per bag.
+        // Markup is SEPARATE from the chainlink fence-tier markup so
+        // privacy inserts can have their own margin profile.  Optional
+        // install/ft when the customer ticks "Install for me".
+        // In-memory migration: backfills bagCostByHeight + markupMode/Pct
+        // from the legacy { bagCost, bagPrice } shape so old PCFGs keep
+        // pricing correctly until the admin saves the new schema.
+        function ensurePCFGPrivacyInsertsMigration() {
+            const cl = (PCFG && PCFG.materialPricing && PCFG.materialPricing.chainlink) || null;
+            if (!cl) return;
+            if (!cl.privacyInserts) cl.privacyInserts = {};
+            const pi = cl.privacyInserts;
+            if (pi.bagLength == null) pi.bagLength = 10;
+            if (!pi.bagCostByHeight) {
+                // Old shape: single bagCost / bagPrice.  Spread into a
+                // height map so all heights get the legacy value;
+                // admin can then override per height.
+                const legacyCost = (pi.bagCost > 0 ? pi.bagCost : 0)
+                    || (pi.bagPrice > 0 ? pi.bagPrice : 0);
+                pi.bagCostByHeight = { '4': legacyCost, '5': legacyCost, '6': legacyCost, '7': legacyCost, '8': legacyCost };
+            }
+            if (pi.markupMode == null) {
+                if (pi.bagCost > 0 && pi.bagPrice > 0 && pi.bagPrice > pi.bagCost) {
+                    pi.markupMode = 'percent';
+                    pi.markupPct = Math.round(((pi.bagPrice / pi.bagCost) - 1) * 100);
+                    pi.markupAmount = 0;
+                } else {
+                    pi.markupMode = 'percent';
+                    pi.markupPct = pi.markupPct || 0;
+                    pi.markupAmount = pi.markupAmount || 0;
+                }
+            }
+            if (pi.installPerFt == null) pi.installPerFt = 0;
+        }
+
+        function calculatePrivacyInserts() {
+            ensurePCFGPrivacyInsertsMigration();
+            const cl = (PCFG && PCFG.materialPricing && PCFG.materialPricing.chainlink) || null;
+            const pi = cl && cl.privacyInserts;
+            if (!pi) return null;
+            // Group by fence height + install setting (per-style.height,
+            // per-style.privacyInstall) so a mixed 4ft + 6ft chainlink
+            // job with privacy on both gets each height priced correctly.
+            const byHeight = {};
+            (state.lines || []).forEach(line => {
+                if (!isLineEnabled(line)) return;
+                const style = getStyleForLine(line);
+                if (!style || style.fenceType !== 'chainlink' || !style.privacyInserts) return;
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                const len = getLineLengthFt(p1, p2);
+                const h = String(style.height);
+                const installEnabled = style.privacyInstall !== false;
+                const key = h + '|' + (installEnabled ? '1' : '0');
+                if (!byHeight[key]) byHeight[key] = { height: h, ftMarked: 0, lineCount: 0, installEnabled };
+                byHeight[key].ftMarked += len;
+                byHeight[key].lineCount += 1;
+            });
+            const keys = Object.keys(byHeight);
+            if (keys.length === 0) return null;
+
+            const bagLength    = Number(pi.bagLength) || 10;
+            const markupMode   = pi.markupMode || 'percent';
+            const markupPct    = Number(pi.markupPct) || 0;
+            const markupAmount = Number(pi.markupAmount) || 0;
+            const installPerFt = Number(pi.installPerFt) || 0;
+
+            let totalCost = 0, totalSell = 0, totalInstall = 0, totalBags = 0, totalFt = 0;
+            keys.forEach(key => {
+                const data = byHeight[key];
+                const bagCost = (pi.bagCostByHeight && Number(pi.bagCostByHeight[data.height])) || 0;
+                const bagSell = markupMode === 'amount'
+                    ? (bagCost + markupAmount)
+                    : (bagCost * (1 + markupPct / 100));
+                const bags = Math.ceil(data.ftMarked / bagLength);
+                const cost = bags * bagCost;
+                const sell = bags * bagSell;
+                const install = data.installEnabled ? data.ftMarked * installPerFt : 0;
+                data.bagLength = bagLength;
+                data.bagCost   = bagCost;
+                data.bagSell   = bagSell;
+                data.bags      = bags;
+                data.cost      = cost;
+                data.sell      = sell;
+                data.install   = install;
+                totalCost    += cost;
+                totalSell    += sell;
+                totalInstall += install;
+                totalBags    += bags;
+                totalFt      += data.ftMarked;
+            });
+            return {
+                byHeight, keys,
+                totalCost, totalSell, totalInstall, totalBags, totalFt,
+                totalCharge: totalSell + totalInstall,
+                bagLength,
+                markupMode, markupPct, markupAmount, installPerFt
+            };
+        }
+
         // ── Fence removal pricing ───────────────────────────────────────
         // Customer marks lines as "remove existing fence" with a type
         // (chainlink, wood, etc.). For each removal type used, charge
@@ -6998,6 +7090,13 @@
                 addonTotal += calculateAddOnsForLine(line, len);
             });
 
+            // Privacy-insert surcharge — chainlink-only.  Has its own
+            // cost+markup config (height-keyed), so we add the SELL
+            // (bags × markedup price) + optional install rate as a flat
+            // surcharge.  Cost-side is exposed for the P&L breakdown.
+            const privacy = calculatePrivacyInserts();
+            const privacyTotal = privacy ? Math.round(privacy.totalCharge) : 0;
+
             // Fence-removal charge — flat addition on top of everything
             // else. Profit target floor + min-job apply BEFORE removal is
             // added (removal isn't service margin we want to bury under
@@ -7019,8 +7118,10 @@
                 : (getMinJobCharge() || 0);
             if (totalMaterial > 0 || labourTotal > 0 || addonTotal > 0) total = Math.max(total, minCharge);
 
-            // Add removal AFTER the floor / min-job so it always shows up
-            // on the customer side as a separate cost.
+            // Add privacy + removal AFTER the floor / min-job so they
+            // always show as separate line items, never buried under
+            // the profit-target floor.
+            total += privacyTotal;
             total += removalTotal;
 
             return {
@@ -7031,6 +7132,8 @@
                 markup: effectiveMarkup,
                 labourTotal: Math.round(labourTotal),
                 addonTotal: Math.round(addonTotal),
+                privacyTotal,
+                privacyInserts: privacy,
                 removalTotal,
                 fenceRemoval: removal,
                 projectLabour: useTaskLabour ? projectLabour : null,
@@ -7051,10 +7154,12 @@
             const v3 = calculateV3Project();
             const v2 = v3 ? null : calculateV2Project();
             // V3 / V2 totals are the materials+labour project total — they
-            // don't know about fence-removal which is a flat surcharge.
-            // Add it here so the bottom totals bar matches the email.
+            // don't know about privacy inserts or fence-removal which are
+            // flat surcharges.  Add them here so the bottom totals bar
+            // matches the email.
+            const privacySurcharge = price.privacyTotal || 0;
             const removalSurcharge = price.removalTotal || 0;
-            const total = (v3 ? v3.total : v2 ? v2.total : price.total) + removalSurcharge;
+            const total = (v3 ? v3.total : v2 ? v2.total : price.total) + privacySurcharge + removalSurcharge;
             document.getElementById('totalLength').textContent = price.totalLengthFt.toFixed(1) + ' ft';
             document.getElementById('totalGates').textContent = price.totalGates;
 
@@ -9844,11 +9949,12 @@
             const price = calculatePrice();
             const v3 = (typeof calculateV3Project === 'function') ? calculateV3Project() : null;
             const v2 = v3 ? null : ((typeof calculateV2Project === 'function') ? calculateV2Project() : null);
-            // V3/V2 totals don't include fence-removal (that's a flat
-            // surcharge from the legacy path).  Add it here so the email
-            // total matches the customer-facing total in the totals bar.
+            // V3/V2 totals don't include privacy inserts or fence-removal
+            // (flat surcharges).  Add them here so the email total matches
+            // the customer-facing total in the totals bar.
+            const privacySurcharge = price.privacyTotal || 0;
             const removalSurcharge = price.removalTotal || 0;
-            const projectTotal = (v3 ? v3.total : v2 ? v2.total : price.total) + removalSurcharge;
+            const projectTotal = (v3 ? v3.total : v2 ? v2.total : price.total) + privacySurcharge + removalSurcharge;
             // Per-line cost still uses legacy line-by-line math for the email's
             // line breakdown (so each row tells a coherent story). Then we
             // SCALE every row's cost so the row totals sum to projectTotal.
@@ -9907,6 +10013,8 @@
                 markup: price.markup,
                 labourTotal: price.labourTotal || 0,
                 addonTotal: price.addonTotal || 0,
+                privacyTotal: price.privacyTotal || 0,
+                privacyInserts: price.privacyInserts || null,
                 removalTotal: price.removalTotal || 0,
                 fenceRemoval: price.fenceRemoval || null,
                 projectLabour: price.projectLabour || null,
@@ -10035,6 +10143,21 @@
                 html += '<td style="padding:8px;color:#666">' + r.desc + (r.length ? ' · ' + r.length : '') + (r.posts ? ' · ' + r.posts + ' posts' : '') + '</td>';
                 html += '<td style="padding:8px;text-align:right;font-weight:600">$' + r.cost.toLocaleString() + '</td></tr>';
             });
+            // Privacy inserts — height-grouped chainlink line items
+            if (breakdown.privacyInserts && breakdown.privacyInserts.keys && breakdown.privacyInserts.keys.length > 0) {
+                breakdown.privacyInserts.keys.forEach(k => {
+                    const r = breakdown.privacyInserts.byHeight[k];
+                    if (!r || (r.sell || 0) <= 0) return;
+                    html += '<tr style="border-bottom:1px solid #e5e5e5;background:rgba(138,111,207,0.05)"><td style="padding:8px;font-weight:600;color:#6952a0">🪟 Privacy inserts ' + r.height + "' fence</td>";
+                    html += '<td style="padding:8px;color:#6952a0">' + Math.round(r.ftMarked) + ' ft · ' + r.bags + ' bag' + (r.bags === 1 ? '' : 's') + ' × ' + r.bagLength + 'ft</td>';
+                    html += '<td style="padding:8px;text-align:right;font-weight:600;color:#6952a0">$' + Math.round(r.sell).toLocaleString() + '</td></tr>';
+                    if (r.installEnabled && (r.install || 0) > 0) {
+                        html += '<tr style="border-bottom:1px solid #e5e5e5;background:rgba(138,111,207,0.04)"><td style="padding:6px 8px 6px 24px;color:#6952a0;font-style:italic">↳ Privacy inserts installation</td>';
+                        html += '<td style="padding:6px 8px;color:#6952a0;font-style:italic">' + Math.round(r.ftMarked) + ' ft × $' + breakdown.privacyInserts.installPerFt + '/ft</td>';
+                        html += '<td style="padding:6px 8px;text-align:right;font-weight:600;color:#6952a0">$' + Math.round(r.install).toLocaleString() + '</td></tr>';
+                    }
+                });
+            }
             // Fence removal — separate line items per existing-fence type
             // marked for removal (chain link, wood, etc.).
             if (breakdown.fenceRemoval && breakdown.fenceRemoval.types && breakdown.fenceRemoval.types.length > 0) {
@@ -10535,6 +10658,26 @@
             if (aoTotal > 0) {
                 html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">+ Add-On Charges</td><td style="padding:6px 8px;text-align:right;font-weight:600">$' + aoTotal.toLocaleString() + '</td></tr>';
             }
+            // Privacy inserts — show cost/sell breakdown per height so
+            // admin can verify the markup is being applied as expected.
+            try {
+                var pri = breakdown.privacyInserts;
+                if (pri && pri.keys && pri.keys.length > 0) {
+                    var markupLabel = pri.markupMode === 'amount'
+                        ? '+$' + (pri.markupAmount || 0) + '/bag'
+                        : (pri.markupPct || 0) + '%';
+                    pri.keys.forEach(function(k) {
+                        var r = pri.byHeight[k];
+                        if (!r) return;
+                        if ((r.sell || 0) > 0) {
+                            html += '<tr style="border-bottom:1px solid #e5e5e5;background:rgba(138,111,207,0.05)"><td style="padding:6px 8px;color:#6952a0">+ Privacy inserts ' + r.height + "' (" + r.bags + ' bags · cost $' + Math.round(r.cost).toLocaleString() + ' · markup ' + markupLabel + ')</td><td style="padding:6px 8px;text-align:right;font-weight:600;color:#6952a0">$' + Math.round(r.sell).toLocaleString() + '</td></tr>';
+                        }
+                        if (r.installEnabled && (r.install || 0) > 0) {
+                            html += '<tr style="border-bottom:1px solid #e5e5e5;background:rgba(138,111,207,0.04)"><td style="padding:6px 8px 6px 18px;color:#6952a0">↳ Privacy install (' + Math.round(r.ftMarked) + ' ft × $' + pri.installPerFt + '/ft)</td><td style="padding:6px 8px;text-align:right;font-weight:600;color:#6952a0">$' + Math.round(r.install).toLocaleString() + '</td></tr>';
+                        }
+                    });
+                }
+            } catch (e) { console.warn('[email-privacy]', e); }
             // Fence removal — surfaces the per-type breakdown so admin
             // can verify the rate config matched what the customer paid.
             try {

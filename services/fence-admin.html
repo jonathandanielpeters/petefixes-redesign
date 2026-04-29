@@ -720,6 +720,55 @@ a{color:var(--accent);text-decoration:none}
 
   <!-- Recipe body — 5 stacked cards rebuilt every time tier or height changes -->
   <div id="cl3-recipe-body"></div>
+
+  <!-- ═══ PRIVACY INSERTS ═══
+       Consolidated chainlink privacy-insert pricing: bag cost varies by
+       fence height (different slat lengths), bag length is the linear
+       coverage per bag (typically 10 ft), markup is SEPARATE from the
+       chainlink fence-tier markup (own margin profile), and an optional
+       per-foot install rate kicks in only when the customer ticks
+       "Install for me". Replaces the legacy per-foot Privacy Inserts
+       add-on row + the materialPricing.chainlink bagPrice/bagCost pair. -->
+  <div class="card" style="border-left:3px solid #8a6fcf;background:rgba(138,111,207,0.04)">
+    <div class="card-title">Privacy Inserts <span style="font-size:10px;font-weight:600;color:#8a6fcf;margin-left:8px">— consolidated</span></div>
+    <div class="card-desc">Privacy slats sold by the bag. Bag cost varies by <strong>fence height</strong> (longer slats cost more); colour doesn't change the cost. The markup applies independently of the chainlink fence-tier markup, so privacy can have its own margin. Install per foot is added only when the customer ticks <em>Install for me</em>.</div>
+
+    <div class="card-row" style="margin-top:8px">
+      <div class="field">
+        <label>Bag length (linear ft)</label>
+        <input type="number" id="cfg-cl-pi-bagLength" step="0.5" min="1" value="10" oninput="markDirty();renderPrivacyInsertsSample();refreshSamplePrices()" title="How many linear feet of fence one bag of inserts covers. Typically 10 ft.">
+      </div>
+      <div class="field">
+        <label>Markup type</label>
+        <select id="cfg-cl-pi-markupMode" onchange="markDirty();onPrivacyMarkupModeChange();refreshSamplePrices()">
+          <option value="percent">Percent (%)</option>
+          <option value="amount">Flat $ per bag</option>
+        </select>
+      </div>
+      <div class="field">
+        <label id="cfg-cl-pi-markup-label">Markup (%)</label>
+        <input type="number" id="cfg-cl-pi-markupValue" step="0.5" min="0" value="60" oninput="markDirty();onPrivacyMarkupValueChange(this.value);renderPrivacyInsertsSample();refreshSamplePrices()" title="Percent: cost × (1 + pct/100). Amount: cost + flat $ per bag.">
+      </div>
+      <div class="field">
+        <label>Install per foot ($/ft)</label>
+        <input type="number" id="cfg-cl-pi-installPerFt" step="0.01" min="0" value="3.50" oninput="markDirty();renderPrivacyInsertsSample();refreshSamplePrices()" title="Charged when the customer selects 'Install for me'. Multiplied by the marked footage of fence with privacy inserts on.">
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Bag cost by fence height</div>
+      <div class="card-row" id="cfg-cl-pi-heightCosts">
+        <div class="field"><label>4 ft ($/bag)</label><input type="number" data-pi-height="4" step="0.01" min="0" value="0" oninput="markDirty();updatePrivacyInsertHeightCost('4',this.value);renderPrivacyInsertsSample();refreshSamplePrices()"></div>
+        <div class="field"><label>5 ft ($/bag)</label><input type="number" data-pi-height="5" step="0.01" min="0" value="0" oninput="markDirty();updatePrivacyInsertHeightCost('5',this.value);renderPrivacyInsertsSample();refreshSamplePrices()"></div>
+        <div class="field"><label>6 ft ($/bag)</label><input type="number" data-pi-height="6" step="0.01" min="0" value="0" oninput="markDirty();updatePrivacyInsertHeightCost('6',this.value);renderPrivacyInsertsSample();refreshSamplePrices()"></div>
+        <div class="field"><label>7 ft ($/bag)</label><input type="number" data-pi-height="7" step="0.01" min="0" value="0" oninput="markDirty();updatePrivacyInsertHeightCost('7',this.value);renderPrivacyInsertsSample();refreshSamplePrices()"></div>
+        <div class="field"><label>8 ft ($/bag)</label><input type="number" data-pi-height="8" step="0.01" min="0" value="0" oninput="markDirty();updatePrivacyInsertHeightCost('8',this.value);renderPrivacyInsertsSample();refreshSamplePrices()"></div>
+      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:4px">Set a height to <strong>$0</strong> to disable privacy inserts at that height (the customer-side toggle still appears, but the cost contribution is zero).</div>
+    </div>
+
+    <div id="cfg-cl-pi-sample" style="margin-top:12px;padding:10px 12px;background:var(--white);border:1px solid var(--gray-100);border-radius:6px;font-size:11px;color:var(--gray-500)"></div>
+  </div>
 </div>
 
 <!-- ────── 6. Ornamental Pricing ────── -->
@@ -1958,12 +2007,40 @@ function populateAll() {
   setVal('cfg-cl-color-black', cl.colorMod.black);
   setVal('cfg-cl-privacyMod', cl.privacyMod);
   setVal('cfg-cl-postCost', cl.postCost);
-  // Privacy insert bag pricing
-  const clPi = cl.privacyInserts || {};
-  setVal('cfg-cl-pi-bagLength', clPi.bagLength || 10);
-  setVal('cfg-cl-pi-bagCost', clPi.bagCost || 0);
-  setVal('cfg-cl-pi-bagPrice', clPi.bagPrice || 0);
-  setVal('cfg-cl-pi-installPerFt', clPi.installPerFt || 0);
+  // Privacy insert bag pricing — new consolidated schema. Migration
+  // happens here so an old config without bagCostByHeight / markupMode
+  // keeps loading without admin intervention.
+  if (!cl.privacyInserts) cl.privacyInserts = {};
+  const clPi = cl.privacyInserts;
+  if (clPi.bagLength == null) clPi.bagLength = 10;
+  if (!clPi.bagCostByHeight) {
+    const legacyCost = (clPi.bagCost > 0 ? clPi.bagCost : 0) || (clPi.bagPrice > 0 ? clPi.bagPrice : 0);
+    clPi.bagCostByHeight = { '4': legacyCost, '5': legacyCost, '6': legacyCost, '7': legacyCost, '8': legacyCost };
+  }
+  if (clPi.markupMode == null) {
+    if (clPi.bagCost > 0 && clPi.bagPrice > 0 && clPi.bagPrice > clPi.bagCost) {
+      clPi.markupMode = 'percent';
+      clPi.markupPct = Math.round(((clPi.bagPrice / clPi.bagCost) - 1) * 100);
+      clPi.markupAmount = 0;
+    } else {
+      clPi.markupMode = 'percent';
+      clPi.markupPct = 60;
+      clPi.markupAmount = 0;
+    }
+  }
+  if (clPi.installPerFt == null) clPi.installPerFt = 0;
+  setVal('cfg-cl-pi-bagLength', clPi.bagLength);
+  const modeEl = document.getElementById('cfg-cl-pi-markupMode');
+  if (modeEl) modeEl.value = clPi.markupMode;
+  setVal('cfg-cl-pi-installPerFt', clPi.installPerFt);
+  // Markup label + value swap depending on mode
+  if (typeof onPrivacyMarkupModeChange === 'function') onPrivacyMarkupModeChange();
+  // Per-height bag costs
+  ['4','5','6','7','8'].forEach(h => {
+    const el = document.querySelector('input[data-pi-height="' + h + '"]');
+    if (el) el.value = (clPi.bagCostByHeight && Number(clPi.bagCostByHeight[h])) || 0;
+  });
+  if (typeof renderPrivacyInsertsSample === 'function') renderPrivacyInsertsSample();
   // Top rail
   if (cl.topRail) {
     setVal('cfg-cl-topRail-galvanized', cl.topRail.galvanized);
@@ -2242,10 +2319,25 @@ function collectAll() {
   clc.postCost = getNum('cfg-cl-postCost');
   // Privacy insert bag pricing
   if (!clc.privacyInserts) clc.privacyInserts = {};
+  // The new consolidated privacy-inserts shape. Per-height bag costs +
+  // markupMode/Pct/Amount + installPerFt are written directly by their
+  // own oninput handlers (see updatePrivacyInsertHeightCost / on-*).
+  // Here we just sync the bagLength + installPerFt + mode + markup
+  // value the user might have typed without committing yet.
   clc.privacyInserts.bagLength = getNum('cfg-cl-pi-bagLength') || 10;
-  clc.privacyInserts.bagCost = getNum('cfg-cl-pi-bagCost');
-  clc.privacyInserts.bagPrice = getNum('cfg-cl-pi-bagPrice');
+  const piModeEl = document.getElementById('cfg-cl-pi-markupMode');
+  if (piModeEl) clc.privacyInserts.markupMode = piModeEl.value || 'percent';
+  const piVal = getNum('cfg-cl-pi-markupValue');
+  if (clc.privacyInserts.markupMode === 'amount') {
+    clc.privacyInserts.markupAmount = piVal;
+  } else {
+    clc.privacyInserts.markupPct = piVal;
+  }
   clc.privacyInserts.installPerFt = getNum('cfg-cl-pi-installPerFt');
+  // Drop legacy fields so the saved config doesn't keep stale values.
+  // bagCostByHeight + the new markup pair are the source of truth.
+  delete clc.privacyInserts.bagCost;
+  delete clc.privacyInserts.bagPrice;
   // Top rail
   if (!clc.topRail) clc.topRail = {};
   clc.topRail.galvanized = getNum('cfg-cl-topRail-galvanized');
@@ -4169,7 +4261,10 @@ const ADDON_ITEMS = [
   { key: 'thirdRail',      label: 'Third Rail',       desc: 'When 3-rail is chosen over 2-rail' },
   { key: 'cedar',          label: 'Cedar Upgrade',    desc: 'When cedar wood type is selected' },
   { key: 'horizontal',     label: 'Horizontal',       desc: 'When horizontal orientation is chosen' },
-  { key: 'privacyInserts', label: 'Privacy Inserts',  desc: 'When chainlink privacy inserts selected' },
+  // Privacy Inserts moved to its own consolidated card under Chain Link
+  // Pricing — the per-foot add-on here was a flat surcharge that
+  // duplicated the per-bag pricing. Single source of truth now lives
+  // in config.materialPricing.chainlink.privacyInserts.
   { key: 'designerCut',    label: 'Designer Cut',     desc: 'When a designer cut is applied' },
   { key: 'doubleCover',    label: 'Double Cover',     desc: 'When double cover boards on posts' }
 ];
@@ -8575,6 +8670,89 @@ function ensureLab2() {
   return config.labour2;
 }
 
+// ── Privacy inserts (chainlink) — handler shims ─────────────────────
+// The card lives in the Chain Link Recipes section; these handlers
+// keep config.materialPricing.chainlink.privacyInserts in sync as
+// the admin types.
+function ensurePrivacyInserts() {
+  if (!config.materialPricing) config.materialPricing = {};
+  if (!config.materialPricing.chainlink) config.materialPricing.chainlink = {};
+  const cl = config.materialPricing.chainlink;
+  if (!cl.privacyInserts) cl.privacyInserts = {};
+  const pi = cl.privacyInserts;
+  if (pi.bagLength == null) pi.bagLength = 10;
+  if (!pi.bagCostByHeight) pi.bagCostByHeight = { '4': 0, '5': 0, '6': 0, '7': 0, '8': 0 };
+  if (pi.markupMode == null) pi.markupMode = 'percent';
+  if (pi.markupPct == null) pi.markupPct = 60;
+  if (pi.markupAmount == null) pi.markupAmount = 0;
+  if (pi.installPerFt == null) pi.installPerFt = 0;
+  return pi;
+}
+
+function updatePrivacyInsertHeightCost(h, value) {
+  const pi = ensurePrivacyInserts();
+  pi.bagCostByHeight[h] = parseFloat(value) || 0;
+}
+
+function onPrivacyMarkupModeChange() {
+  const pi = ensurePrivacyInserts();
+  const modeEl = document.getElementById('cfg-cl-pi-markupMode');
+  const labelEl = document.getElementById('cfg-cl-pi-markup-label');
+  const valEl = document.getElementById('cfg-cl-pi-markupValue');
+  if (!modeEl || !labelEl || !valEl) return;
+  pi.markupMode = modeEl.value || 'percent';
+  if (pi.markupMode === 'amount') {
+    labelEl.textContent = 'Markup ($/bag)';
+    valEl.value = pi.markupAmount || 0;
+    valEl.step = '0.01';
+  } else {
+    labelEl.textContent = 'Markup (%)';
+    valEl.value = pi.markupPct || 0;
+    valEl.step = '0.5';
+  }
+  renderPrivacyInsertsSample();
+}
+
+function onPrivacyMarkupValueChange(value) {
+  const pi = ensurePrivacyInserts();
+  const v = parseFloat(value) || 0;
+  if (pi.markupMode === 'amount') pi.markupAmount = v;
+  else pi.markupPct = v;
+}
+
+function renderPrivacyInsertsSample() {
+  const host = document.getElementById('cfg-cl-pi-sample');
+  if (!host) return;
+  const pi = ensurePrivacyInserts();
+  const bagLen = Number(pi.bagLength) || 10;
+  // Sample at 100 ft × each height
+  const heights = ['4','5','6','7','8'];
+  const fmt = n => '$' + Math.round((n || 0) * 100) / 100;
+  const ftSample = 100;
+  const bags = Math.ceil(ftSample / bagLen);
+  let html = '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Sample @ ' + ftSample + ' ft (' + bags + ' bags · install/ft × ' + ftSample + ' ft = ' + fmt(ftSample * (Number(pi.installPerFt) || 0)) + ')</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="border-bottom:1px solid var(--gray-100);color:var(--gray-400)"><th style="text-align:left;padding:4px 6px">Height</th><th style="text-align:right;padding:4px 6px">Bag cost</th><th style="text-align:right;padding:4px 6px">Bag sell</th><th style="text-align:right;padding:4px 6px">Bags total cost</th><th style="text-align:right;padding:4px 6px">Bags total sell</th><th style="text-align:right;padding:4px 6px">+ install</th><th style="text-align:right;padding:4px 6px;font-weight:700;color:var(--black)">Customer pays</th></tr></thead><tbody>';
+  heights.forEach(h => {
+    const bagCost = Number(pi.bagCostByHeight && pi.bagCostByHeight[h]) || 0;
+    const bagSell = pi.markupMode === 'amount'
+      ? bagCost + (Number(pi.markupAmount) || 0)
+      : bagCost * (1 + (Number(pi.markupPct) || 0) / 100);
+    const totalCost = bags * bagCost;
+    const totalSell = bags * bagSell;
+    const install = ftSample * (Number(pi.installPerFt) || 0);
+    const customerPays = totalSell + install;
+    html += '<tr><td style="padding:3px 6px;font-weight:600">' + h + ' ft</td>' +
+      '<td style="padding:3px 6px;text-align:right">' + fmt(bagCost) + '</td>' +
+      '<td style="padding:3px 6px;text-align:right">' + fmt(bagSell) + '</td>' +
+      '<td style="padding:3px 6px;text-align:right;color:var(--gray-400)">' + fmt(totalCost) + '</td>' +
+      '<td style="padding:3px 6px;text-align:right">' + fmt(totalSell) + '</td>' +
+      '<td style="padding:3px 6px;text-align:right;color:#888">' + fmt(install) + '</td>' +
+      '<td style="padding:3px 6px;text-align:right;font-weight:700;color:#8a6fcf">' + fmt(customerPays) + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  host.innerHTML = html;
+}
+
 // ── Fence Removal — base + per-foot rates per existing fence type ──
 // Customer marks lines as "remove existing fence" in the build & price
 // tool; this config drives the price they see.  One row per type, shape
@@ -9575,6 +9753,10 @@ function refreshSamplePrices() {
     }
     if (name === 'fence-removal' || name === 'fenceRemoval') {
       try { renderFenceRemoval(); } catch (e) { console.warn('[render-fence-removal]', e); }
+    }
+    if (name === 'clRecipesV3') {
+      // Privacy inserts card lives here — refresh sample math + sync inputs
+      try { renderPrivacyInsertsSample(); } catch (e) { console.warn('[render-privacy-sample]', e); }
     }
   };
 })();
