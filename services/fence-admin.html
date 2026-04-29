@@ -270,6 +270,7 @@ a{color:var(--accent);text-decoration:none}
 
   <div class="sidebar-section-label">Labour</div>
   <div class="sidebar-nav-item" data-section="labour" onclick="showSection('labour')"><span class="nav-icon">&#9889;</span>Labour Calculator</div>
+  <div class="sidebar-nav-item" data-section="fence-removal" onclick="showSection('fence-removal')"><span class="nav-icon">&#128465;</span>Fence Removal</div>
 
   <div class="sidebar-section-label">Extras</div>
   <div class="sidebar-nav-item" data-section="branding" onclick="showSection('branding')"><span class="nav-icon">&#127912;</span>Branding &amp; Email</div>
@@ -1218,11 +1219,35 @@ a{color:var(--accent);text-decoration:none}
 <!-- ────── Labour Calculator ────── -->
 <div class="section" id="sec-labour">
   <h2 class="section-title">Labour Calculator</h2>
-  <p class="section-subtitle">EVERY labour setting below is per fence type. Pick a tab — the inputs swap to that type's hourly rates, OT rules, breaks, travel, load-up, tasks, profit target, and minimum job. Each fence type is fully isolated; nothing is shared.</p>
+  <p class="section-subtitle">Two task tiers. <strong>Project-Wide Tasks</strong> below run ONCE per job regardless of how many fence styles are mixed (setup, marking, string lines, etc.). <strong>Per-Fence-Type Tasks</strong> further down (post install, gate install, etc.) are material-specific and run for each fence type used.</p>
+
+  <!-- ═══ PROJECT-WIDE TASKS — shared across the whole job ═══ -->
+  <div class="card" style="border-left:3px solid #4a90d9;background:rgba(74,144,217,0.04)">
+    <div class="card-title">Project-Wide Tasks <span style="font-size:10px;font-weight:600;color:#4a90d9;margin-left:8px">— shared across the entire job</span></div>
+    <div class="card-desc">Tasks here are counted ONCE per project. A mixed wood + chainlink job sets up once, runs string lines once, marks all posts once. Use this list for anything that doesn't depend on the fence material. Add custom tasks as needed (e.g. "Site walkthrough", "Mark utilities", "Permit check-in").</div>
+    <div class="table-scroll">
+      <table class="data-table" id="lab2-proj-tasks-table">
+        <thead>
+          <tr>
+            <th style="min-width:220px">Task</th>
+            <th style="min-width:80px">Minutes</th>
+            <th style="min-width:80px">Employees</th>
+            <th style="min-width:110px">Unit</th>
+            <th style="min-width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="lab2-proj-tasks-body"></tbody>
+      </table>
+    </div>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-sm btn-outline" onclick="addCustomProjectLabourTask()">+ Add custom project task</button>
+      <button class="btn btn-sm btn-outline" onclick="restoreDefaultProjectLabourTasks()" title="Re-add the 3 default project tasks (Set up, Marking posts, String lines) and reset them to factory values. Custom project tasks are kept.">↻ Restore defaults</button>
+    </div>
+  </div>
 
   <!-- ═══ Fence-Type Tab Strip — switches the entire settings panel below ═══ -->
   <div class="card" style="border-left:3px solid var(--accent);background:var(--accent-light)">
-    <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Editing labour settings for:</div>
+    <div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Editing per-type labour settings for:</div>
     <div class="pill-tabs" id="lab2-type-tabs">
       <div class="pill-tab active" data-labtype="chainlink"  onclick="setLabActiveType('chainlink')">Chain Link</div>
       <div class="pill-tab"        data-labtype="wood"       onclick="setLabActiveType('wood')">Wood</div>
@@ -1363,6 +1388,31 @@ a{color:var(--accent);text-decoration:none}
       <iframe id="cl-sample-iframe" src="about:blank" style="width:100%;height:680px;border:0;display:block" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-storage-access-by-user-activation" title="Sample Fence Price (live customer engine preview)"></iframe>
     </div>
     <div style="font-size:10px;color:var(--gray-400);margin-top:6px">Tip: the iframe shows what a real customer would see right now. Bottom totals bar, save-estimate dialog, and the email all use the same numbers.</div>
+  </div>
+</div>
+
+<!-- ────── 11½. Fence Removal ────── -->
+<div class="section" id="sec-fence-removal">
+  <h2 class="section-title">Fence Removal</h2>
+  <p class="section-subtitle">Charges customers see when they mark a line as "remove existing fence" in the build &amp; price tool. Each type has its own base fee + per-foot rate. Set both to <strong>0</strong> to disable that type's removal option.</p>
+
+  <div class="card">
+    <div class="card-title">Removal Rates by Existing Fence Type</div>
+    <div class="card-desc">Cost = <strong>base fee</strong> (flat per project, charged once for that type if any line is marked) + <strong>per-foot rate</strong> × total marked footage of that type. Customer sees this as a separate line on their estimate.</div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="min-width:160px">Existing fence type</th>
+            <th style="min-width:140px">Base fee ($)</th>
+            <th style="min-width:140px">Per-foot rate ($/ft)</th>
+            <th style="min-width:300px">Sample (10 ft / 50 ft / 200 ft)</th>
+          </tr>
+        </thead>
+        <tbody id="fence-removal-body"></tbody>
+      </table>
+    </div>
+    <div style="font-size:10px;color:var(--gray-400);margin-top:8px">Custom removal types (e.g. ornamental, vinyl) inherit the same shape. Leave at $0 to hide them as removal options for the customer.</div>
   </div>
 </div>
 
@@ -2419,6 +2469,11 @@ function collectAll() {
   // were unreachable but their collect functions are kept for parity.
   if (typeof collectLabourUI === 'function') {
     try { collectLabourUI(); } catch (e) { console.warn('[labour] collect failed:', e); }
+  }
+  // Fence removal — inputs already write into config.fenceRemoval directly,
+  // so just seed defaults if the section was never opened.
+  if (typeof ensureFenceRemoval === 'function') {
+    try { ensureFenceRemoval(); } catch (e) { console.warn('[fence-removal] ensure failed:', e); }
   }
 
   // Commercial Edition — separate config layer for the customer-facing
@@ -8296,14 +8351,21 @@ function applyClMasterMarkup() {
 }
 
 // ── Labour Calculator ──
-// Per-fence-type task breakdowns. Hourly rates / OT / travel / load-up
-// stay GLOBAL (same crew, same wages, same overhead). Tasks + profit
-// target + minimum job charge become per-type so wood, ornamental,
-// chain link, etc. each get their own time estimates and profit floor.
+// Two task tiers:
+//   • PROJECT-WIDE tasks (LAB2_PROJECT_TASK_DEFS) — shared across the whole
+//     job, counted ONCE regardless of how many fence styles.  Setup,
+//     marking posts, string lines.  Operates on TOTAL project counts
+//     (sum of all types' footage / posts / etc.).
+//   • PER-FENCE-TYPE tasks (LAB2_TASK_DEFS) — material-specific, runs once
+//     per type used in a job.  Post install, gate install, mesh, etc.
+// This split prevents the previous double-counting bug where a mixed
+// wood + chainlink job billed setup time twice (once per type).
+const LAB2_PROJECT_TASK_DEFS = [
+  { key: 'setupDiscussion', label: 'Set up / discussing job',  unit: 'perJob',  minutes: 30, employees: 2 },
+  { key: 'markingPosts',    label: 'Marking posts',            unit: 'perPost', minutes: 2,  employees: 1 },
+  { key: 'stringLines',     label: 'Running string lines',     unit: 'perJob',  minutes: 20, employees: 2 }
+];
 const LAB2_TASK_DEFS = [
-  { key: 'setupDiscussion',   label: 'Set up / discussing job',         unit: 'perJob',    minutes: 30,  employees: 2 },
-  { key: 'markingPosts',      label: 'Marking posts',                   unit: 'perPost',   minutes: 2,   employees: 1 },
-  { key: 'stringLines',       label: 'Running string lines',            unit: 'perJob',    minutes: 20,  employees: 2 },
   { key: 'materialHandling',  label: 'Material handling',               unit: 'perJob',    minutes: 30,  employees: 2 },
   { key: 'postInstallation',  label: 'Post installation',               unit: 'perPost',   minutes: 15,  employees: 2 },
   { key: 'heightsAndCutting', label: 'Setting heights & cutting',       unit: 'perPost',   minutes: 3,   employees: 1 },
@@ -8314,6 +8376,9 @@ const LAB2_TASK_DEFS = [
   { key: 'tyingFence',        label: 'Tying the fence',                 unit: 'perFoot',   minutes: 0.5, employees: 1 },
   { key: 'touchUps',          label: 'Touch ups',                       unit: 'perJob',    minutes: 20,  employees: 1 }
 ];
+// Keys that USED to live per-type but moved to project-wide.  Migration
+// strips them out of every per-type slot and adds them to projectTasks.
+const LAB2_MOVED_TO_PROJECT = ['setupDiscussion', 'markingPosts', 'stringLines'];
 const LAB2_UNITS = ['perJob', 'perDay', 'perLine', 'perPost', 'perSection', 'perFoot', 'perHookup', 'perGate'];
 const LAB2_UNIT_LABEL = { perJob: 'per job', perDay: 'per day', perLine: 'per line', perPost: 'per post', perSection: 'per section', perFoot: 'per foot', perHookup: 'per hookup', perGate: 'per gate' };
 const LAB2_TYPES = [
@@ -8452,7 +8517,129 @@ function ensureLab2() {
   delete config.labour2.targetProfitPerDay;
   delete config.labour2.enforceProfitTarget;
 
+  // ── Project-wide task migration ────────────────────────────────────
+  // Tasks that should run ONCE per project (regardless of how many fence
+  // styles are mixed) live in labour2.projectTasks. First migration
+  // strips the moved keys out of every per-type slot so the engine
+  // doesn't double-count them, and seeds project defaults.  Idempotent.
+  if (!config.labour2.projectTasks) {
+    config.labour2.projectTasks = {};
+    config.labour2.customProjectTaskOrder = [];
+    config.labour2.hiddenProjectTasks = [];
+    // 1. Strip moved keys out of every per-type slot. Don't add to
+    //    slot.hiddenTasks — these tasks no longer exist at the per-type
+    //    layer at all (they were moved up).
+    Object.values(config.labour2.byType || {}).forEach(slot => {
+      if (!slot.tasks) return;
+      LAB2_MOVED_TO_PROJECT.forEach(k => {
+        if (slot.tasks[k]) delete slot.tasks[k];
+        // Also clean up customTaskOrder (in case it referenced one)
+        if (slot.customTaskOrder) {
+          slot.customTaskOrder = slot.customTaskOrder.filter(x => x !== k);
+        }
+        // Don't re-seed at per-type level by leaving them hidden so
+        // "Restore defaults" at the per-type tab won't re-add them.
+        if (!slot.hiddenTasks) slot.hiddenTasks = [];
+        if (slot.hiddenTasks.indexOf(k) === -1) slot.hiddenTasks.push(k);
+      });
+    });
+    // 2. Seed project-wide defaults.
+    LAB2_PROJECT_TASK_DEFS.forEach(def => {
+      config.labour2.projectTasks[def.key] = {
+        minutes: def.minutes, employees: def.employees, unit: def.unit
+      };
+    });
+  }
+  if (!config.labour2.customProjectTaskOrder) config.labour2.customProjectTaskOrder = [];
+  if (!config.labour2.hiddenProjectTasks)     config.labour2.hiddenProjectTasks = [];
+  // Backfill: if a moved key still exists per-type from a half-migrated
+  // older save, strip it now (defensive — safer than re-running the
+  // full migration block above).
+  Object.values(config.labour2.byType || {}).forEach(slot => {
+    if (!slot.tasks) return;
+    LAB2_MOVED_TO_PROJECT.forEach(k => {
+      if (slot.tasks[k]) delete slot.tasks[k];
+    });
+  });
+  // Seed any project tasks missing from a previous partial migration
+  // (matches the per-type "if missing, seed" behaviour above).
+  LAB2_PROJECT_TASK_DEFS.forEach(def => {
+    if ((config.labour2.hiddenProjectTasks || []).indexOf(def.key) !== -1) return;
+    if (!config.labour2.projectTasks[def.key]) {
+      config.labour2.projectTasks[def.key] = {
+        minutes: def.minutes, employees: def.employees, unit: def.unit
+      };
+    }
+  });
+
   return config.labour2;
+}
+
+// ── Fence Removal — base + per-foot rates per existing fence type ──
+// Customer marks lines as "remove existing fence" in the build & price
+// tool; this config drives the price they see.  One row per type, shape
+// stays consistent so admin can extend (mark vinyl/etc.) by editing
+// rates here without code changes.
+const FENCE_REMOVAL_TYPES = [
+  { key: 'chainlink',  label: 'Chain Link',   defaultBase: 0, defaultPerFt: 0 },
+  { key: 'wood',       label: 'Wood',         defaultBase: 0, defaultPerFt: 0 },
+  { key: 'ornamental', label: 'Ornamental',   defaultBase: 0, defaultPerFt: 0 },
+  { key: 'weldedWire', label: 'Welded Wire',  defaultBase: 0, defaultPerFt: 0 },
+  { key: 'vinyl',      label: 'Vinyl',        defaultBase: 0, defaultPerFt: 0 }
+];
+function ensureFenceRemoval() {
+  if (!config.fenceRemoval) config.fenceRemoval = {};
+  FENCE_REMOVAL_TYPES.forEach(def => {
+    if (!config.fenceRemoval[def.key]) {
+      config.fenceRemoval[def.key] = {
+        baseFee: def.defaultBase,
+        perFoot: def.defaultPerFt,
+        label: def.label
+      };
+    } else {
+      // Backfill missing fields on older saves
+      const r = config.fenceRemoval[def.key];
+      if (r.baseFee == null) r.baseFee = def.defaultBase;
+      if (r.perFoot == null) r.perFoot = def.defaultPerFt;
+      if (!r.label) r.label = def.label;
+    }
+  });
+  return config.fenceRemoval;
+}
+
+function renderFenceRemoval() {
+  const body = document.getElementById('fence-removal-body');
+  if (!body) return;
+  const cfg = ensureFenceRemoval();
+  const fmt = n => '$' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  let html = '';
+  FENCE_REMOVAL_TYPES.forEach(def => {
+    const r = cfg[def.key] || { baseFee: 0, perFoot: 0 };
+    const sample10  = (r.baseFee || 0) + (r.perFoot || 0) * 10;
+    const sample50  = (r.baseFee || 0) + (r.perFoot || 0) * 50;
+    const sample200 = (r.baseFee || 0) + (r.perFoot || 0) * 200;
+    html += '<tr>' +
+      '<td class="cell-label">' + clEscHtml(def.label) + '</td>' +
+      '<td><input type="number" value="' + (r.baseFee || 0) + '" step="0.01" min="0" oninput="updateFenceRemoval(\'' + def.key + '\',\'baseFee\',this.value)" style="width:96px;text-align:right"></td>' +
+      '<td><input type="number" value="' + (r.perFoot || 0) + '" step="0.01" min="0" oninput="updateFenceRemoval(\'' + def.key + '\',\'perFoot\',this.value)" style="width:96px;text-align:right"></td>' +
+      '<td style="font-size:11px;color:var(--gray-500)">' +
+        fmt(sample10)  + ' &middot; ' +
+        fmt(sample50)  + ' &middot; ' +
+        fmt(sample200) +
+      '</td>' +
+      '</tr>';
+  });
+  body.innerHTML = html;
+}
+
+function updateFenceRemoval(typeKey, field, value) {
+  const cfg = ensureFenceRemoval();
+  if (!cfg[typeKey]) cfg[typeKey] = { baseFee: 0, perFoot: 0, label: typeKey };
+  cfg[typeKey][field] = parseFloat(value) || 0;
+  markDirty();
+  // Live-update the sample-price columns + the iframe sample preview
+  renderFenceRemoval();
+  refreshSamplePrices();
 }
 
 // Return the active type's labour slot ({tasks, customTaskOrder, targetProfitPerDay, ...}).
@@ -8639,6 +8826,108 @@ function updateLab2Task(key, field, value) {
   refreshSamplePrices();
 }
 
+// ── Project-wide tasks: same handlers as per-type but operate on
+//    config.labour2.projectTasks instead of a per-type slot. ──────────
+function projectTaskMap() {
+  const lab = ensureLab2();
+  if (!lab.projectTasks) lab.projectTasks = {};
+  if (!lab.customProjectTaskOrder) lab.customProjectTaskOrder = [];
+  if (!lab.hiddenProjectTasks)     lab.hiddenProjectTasks = [];
+  return lab;
+}
+
+function renderProjectLabourTasks() {
+  const body = document.getElementById('lab2-proj-tasks-body');
+  if (!body) return;
+  const lab = projectTaskMap();
+  const hidden = lab.hiddenProjectTasks || [];
+  const isHidden = key => hidden.indexOf(key) !== -1;
+  let html = '';
+  // Predefined first (skip hidden)
+  for (const def of LAB2_PROJECT_TASK_DEFS) {
+    if (isHidden(def.key)) continue;
+    const t = lab.projectTasks[def.key] || {};
+    const unitOpts = LAB2_UNITS.map(u => '<option value="' + u + '"' + (t.unit === u ? ' selected' : '') + '>' + LAB2_UNIT_LABEL[u] + '</option>').join('');
+    html += '<tr>' +
+      '<td class="cell-label">' + clEscHtml(def.label) + '</td>' +
+      '<td><input type="number" value="' + (t.minutes || 0) + '" step="0.1" min="0" oninput="updateProjectLab2Task(\'' + def.key + '\',\'minutes\',this.value)" style="width:72px;text-align:right"></td>' +
+      '<td><input type="number" value="' + (t.employees || 1) + '" step="1" min="1" oninput="updateProjectLab2Task(\'' + def.key + '\',\'employees\',this.value)" style="width:56px;text-align:right"></td>' +
+      '<td><select onchange="updateProjectLab2Task(\'' + def.key + '\',\'unit\',this.value)" style="width:96px">' + unitOpts + '</select></td>' +
+      '<td><button class="btn-icon-danger" onclick="hidePredefinedProjectLabourTask(\'' + def.key + '\')" title="Hide this project task (Restore defaults brings it back)">&times;</button></td>' +
+      '</tr>';
+  }
+  // Custom project tasks
+  const customKeys = lab.customProjectTaskOrder || [];
+  for (const key of customKeys) {
+    const t = lab.projectTasks[key];
+    if (!t) continue;
+    const unitOpts = LAB2_UNITS.map(u => '<option value="' + u + '"' + (t.unit === u ? ' selected' : '') + '>' + LAB2_UNIT_LABEL[u] + '</option>').join('');
+    html += '<tr>' +
+      '<td><input type="text" data-proj-task-label="' + key + '" value="' + clEscAttr(t.label || '') + '" placeholder="Custom project task name" oninput="updateProjectLab2Task(\'' + key + '\',\'label\',this.value)" style="width:100%"></td>' +
+      '<td><input type="number" value="' + (t.minutes || 0) + '" step="0.1" min="0" oninput="updateProjectLab2Task(\'' + key + '\',\'minutes\',this.value)" style="width:72px;text-align:right"></td>' +
+      '<td><input type="number" value="' + (t.employees || 1) + '" step="1" min="1" oninput="updateProjectLab2Task(\'' + key + '\',\'employees\',this.value)" style="width:56px;text-align:right"></td>' +
+      '<td><select onchange="updateProjectLab2Task(\'' + key + '\',\'unit\',this.value)" style="width:96px">' + unitOpts + '</select></td>' +
+      '<td><button class="btn-icon-danger" onclick="deleteCustomProjectLabourTask(\'' + key + '\')" title="Delete this custom project task">&times;</button></td>' +
+      '</tr>';
+  }
+  body.innerHTML = html;
+}
+
+function updateProjectLab2Task(key, field, value) {
+  const lab = projectTaskMap();
+  if (!lab.projectTasks[key]) lab.projectTasks[key] = { minutes: 0, employees: 1, unit: 'perJob' };
+  if (field === 'minutes' || field === 'employees') {
+    lab.projectTasks[key][field] = parseFloat(value) || 0;
+  } else {
+    lab.projectTasks[key][field] = value;
+  }
+  markDirty();
+  refreshSamplePrices();
+}
+
+function addCustomProjectLabourTask() {
+  const lab = projectTaskMap();
+  const id = 'proj_custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  lab.projectTasks[id] = { minutes: 0, employees: 1, unit: 'perJob', label: 'Custom project task', custom: true };
+  lab.customProjectTaskOrder.push(id);
+  renderProjectLabourTasks();
+  markDirty();
+  setTimeout(() => {
+    const el = document.querySelector('input[data-proj-task-label="' + id + '"]');
+    if (el) { el.focus(); el.select(); }
+  }, 50);
+}
+
+function deleteCustomProjectLabourTask(key) {
+  const lab = projectTaskMap();
+  if (!lab.projectTasks[key] || !lab.projectTasks[key].custom) return;
+  delete lab.projectTasks[key];
+  lab.customProjectTaskOrder = (lab.customProjectTaskOrder || []).filter(x => x !== key);
+  renderProjectLabourTasks();
+  markDirty();
+  refreshSamplePrices();
+}
+
+function hidePredefinedProjectLabourTask(key) {
+  const lab = projectTaskMap();
+  if (lab.hiddenProjectTasks.indexOf(key) === -1) lab.hiddenProjectTasks.push(key);
+  delete lab.projectTasks[key];
+  renderProjectLabourTasks();
+  markDirty();
+  refreshSamplePrices();
+}
+
+function restoreDefaultProjectLabourTasks() {
+  const lab = projectTaskMap();
+  lab.hiddenProjectTasks = [];
+  LAB2_PROJECT_TASK_DEFS.forEach(def => {
+    lab.projectTasks[def.key] = { minutes: def.minutes, employees: def.employees, unit: def.unit };
+  });
+  renderProjectLabourTasks();
+  markDirty();
+  refreshSamplePrices();
+}
+
 function loadLabourUI() {
   const lab = ensureLab2();
   const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
@@ -8669,6 +8958,7 @@ function loadLabourUI() {
     ).join('');
   }
   renderLabourTasks();
+  renderProjectLabourTasks();  // project-wide tasks too
   updateLabourPreview();
 }
 
@@ -9283,6 +9573,9 @@ function refreshSamplePrices() {
       loadLabourUI();
       refreshSamplePrices();
     }
+    if (name === 'fence-removal' || name === 'fenceRemoval') {
+      try { renderFenceRemoval(); } catch (e) { console.warn('[render-fence-removal]', e); }
+    }
   };
 })();
 
@@ -9297,6 +9590,7 @@ window.addEventListener('load', () => {
   setTimeout(() => {
     try {
       if (document.getElementById('lab2-tasks-body')) loadLabourUI();
+      if (document.getElementById('fence-removal-body')) renderFenceRemoval();
       // Initial iframe load happens after the cloud config has had a chance
       // to settle (next setTimeout) so the iframe sees the latest config,
       // not a stale localStorage snapshot.

@@ -235,6 +235,31 @@
         .gate-type-select { width: 100%; padding: 5px 8px; font-size: 12px; font-weight: 500; font-family: inherit; color: var(--black); background: var(--white); border: 1.5px solid var(--gray-200); border-radius: 6px; cursor: pointer; margin-top: 4px; transition: border-color var(--transition); }
         .gate-type-select:focus { outline: none; border-color: #4a90d9; }
         .gate-post-badge { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: rgba(74,144,217,0.1); color: #4a90d9; margin-left: 4px; }
+
+        /* Per-line fence-removal sub-row (sits just below the main line row).
+           Slim by default to keep the sidebar compact; lights up amber when
+           removal is active so customers can scan which lines have it on. */
+        .fence-line-block { display: block; }
+        .fence-line-removal { display: flex; align-items: center; gap: 8px; padding: 4px 8px 6px 30px; font-size: 11px; color: var(--gray-400); border-bottom: 1px solid var(--gray-100); }
+        .fence-line-removal.active { color: #b87212; background: rgba(232, 145, 32, 0.05); }
+        .fence-line-removal-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; font-weight: 500; }
+        .fence-line-removal-toggle input[type="checkbox"] { width: 13px; height: 13px; accent-color: #e89120; cursor: pointer; margin: 0; }
+        .fence-line-removal-type { font-size: 10px; font-weight: 600; padding: 1px 18px 1px 6px; border-radius: 4px; border: 1px solid var(--gray-200); background: var(--white) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 4px center; color: var(--gray-500); cursor: pointer; appearance: none; -webkit-appearance: none; transition: border-color var(--transition), color var(--transition); }
+        .fence-line-removal-type:disabled { opacity: 0.4; cursor: not-allowed; }
+        .fence-line-removal.active .fence-line-removal-type { border-color: #e89120; color: #b87212; }
+
+        /* Bulk header above the lines list — Mark all / Clear all. */
+        .fence-removal-bulk { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 11px; color: var(--gray-500); background: var(--gray-50); border: 1px solid var(--gray-100); border-radius: var(--radius-sm); margin-bottom: 6px; flex-wrap: wrap; }
+        .fence-removal-bulk.has-marked { background: rgba(232,145,32,0.06); border-color: rgba(232,145,32,0.3); color: #b87212; }
+        .fence-removal-bulk-label { font-weight: 600; flex-shrink: 0; }
+        .fence-removal-bulk-btn { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--gray-200); background: var(--white); color: var(--gray-500); cursor: pointer; transition: all var(--transition); font-family: inherit; }
+        .fence-removal-bulk-btn:hover { border-color: #e89120; color: #b87212; }
+        .fence-removal-bulk-btn.active { background: #e89120; color: #fff; border-color: #e89120; }
+        .fence-removal-bulk-clear { color: var(--gray-400); }
+        .m-drawer-body .fence-line-removal { font-size: 10px; padding: 3px 6px 5px 24px; gap: 6px; }
+        .m-drawer-body .fence-removal-bulk { font-size: 10px; padding: 5px 6px; }
+        .m-drawer-body .fence-removal-bulk-btn { font-size: 10px; padding: 2px 8px; }
+
         /* Inline per-row style picker — appears next to the gate-post-badge
            when 2+ fence styles exist, lets the customer reassign a drawn
            line/gate to a different style without redrawing it. Sized to
@@ -6412,6 +6437,72 @@
             };
         }
 
+        // Per-task breakdown for the PROJECT-wide bucket (mirrors
+        // calculateTaskLabourBreakdown's shape but operates on
+        // labour2.projectTasks).  Used by the email per-task table so
+        // operators see exactly where the shared overhead minutes went.
+        function calculateProjectTaskBreakdown(totalCounts, rateSlot) {
+            const lab = PCFG && PCFG.labour2;
+            if (!lab || !lab.projectTasks) return null;
+            const tasks = lab.projectTasks;
+            if (Object.keys(tasks).length === 0) return null;
+            if (!rateSlot) return null;
+            const summary = calculateProjectTaskLabour(totalCounts, rateSlot);
+            if (!summary) return null;
+            const sections = Math.max(0, (totalCounts.totalPosts || 0) - (totalCounts.lines || 0));
+            const counts = {
+                perJob:    1,
+                perDay:    summary.daysNeeded || 1,
+                perLine:   totalCounts.lines || 0,
+                perPost:   totalCounts.totalPosts || 0,
+                perSection: sections,
+                perFoot:   totalCounts.lengthFt || 0,
+                perHookup: totalCounts.hookups || 0,
+                perGate:   totalCounts.gates || 0
+            };
+            const hidden = lab.hiddenProjectTasks || [];
+            const rows = [];
+            let totalActiveMinutes = 0;
+            Object.entries(tasks).forEach(([k, t]) => {
+                if (hidden.indexOf(k) !== -1) return;
+                const unit = t.unit || 'perJob';
+                const units = counts[unit] || 0;
+                const employees = t.employees || 1;
+                const minutes = (t.minutes || 0) * units * employees;
+                if (minutes <= 0) return;
+                rows.push({
+                    key: k,
+                    label: resolveTaskLabel(k, t),
+                    isCustom: !!t.custom,
+                    unit, unitLabel: LAB2_UNIT_LABELS[unit] || unit,
+                    minutesPerUnit: t.minutes || 0,
+                    units, employees, totalMinutes: minutes,
+                    hours: minutes / 60
+                });
+                totalActiveMinutes += minutes;
+            });
+            rows.forEach(r => {
+                const share = totalActiveMinutes > 0 ? (r.totalMinutes / totalActiveMinutes) : 0;
+                r.costShare   = share * (summary.cost   || 0);
+                r.chargeShare = share * (summary.charge || 0);
+                r.minuteShare = share;
+            });
+            rows.sort((a, b) => b.totalMinutes - a.totalMinutes);
+            return {
+                tasks: rows, totalActiveMinutes,
+                slot: {
+                    crew: summary.crew || 2,
+                    hoursPerDay: rateSlot.hoursPerDay || 8,
+                    breakMinPerDay: rateSlot.breakMinPerDay || 0,
+                    costPerHour: rateSlot.costPerHour || 0,
+                    chargePerHour: rateSlot.chargePerHour || 0,
+                    travelMinOneWay: 0,
+                    loadUpMin: 0
+                },
+                summary
+            };
+        }
+
         function calculateTaskLabour(fenceType, ctx, opts) {
             opts = opts || {};
             // excludeKeys: Set of task keys to skip — used by mixed-type
@@ -6479,12 +6570,125 @@
             return { cost, charge, workMinutes: workFinal, totalMinutes, hours: totalHours, regHrs, otHrs, daysNeeded, perPersonPerDay, perPersonHrs, crew };
         }
 
+        // ── PCFG project-task migration (in-memory) ────────────────────
+        // Older configs (cloud KV / localStorage cached) may not have
+        // labour2.projectTasks yet.  Seed it with the 3 defaults and strip
+        // those keys out of every per-type slot so the engine doesn't
+        // double-count.  This runs each pricing call but is idempotent —
+        // once admin saves the migrated config, the cloud copy already
+        // has projectTasks and the strip below is a no-op.
+        const _LAB2_MOVED_TO_PROJECT = ['setupDiscussion', 'markingPosts', 'stringLines'];
+        function ensurePCFGProjectTasksMigration() {
+            const lab = PCFG && PCFG.labour2;
+            if (!lab) return;
+            if (!lab.projectTasks) {
+                lab.projectTasks = {
+                    setupDiscussion: { unit: 'perJob',  minutes: 30, employees: 2 },
+                    markingPosts:    { unit: 'perPost', minutes: 2,  employees: 1 },
+                    stringLines:     { unit: 'perJob',  minutes: 20, employees: 2 }
+                };
+            }
+            if (!lab.hiddenProjectTasks) lab.hiddenProjectTasks = [];
+            // Strip moved keys from every per-type slot so they don't
+            // double-count.  Only run if at least one slot still has them
+            // (cheap guard so we don't loop on every pricing call).
+            const byType = lab.byType || {};
+            let needsStrip = false;
+            for (const t of Object.keys(byType)) {
+                const slot = byType[t];
+                if (!slot || !slot.tasks) continue;
+                for (const k of _LAB2_MOVED_TO_PROJECT) {
+                    if (slot.tasks[k]) { needsStrip = true; break; }
+                }
+                if (needsStrip) break;
+            }
+            if (needsStrip) {
+                Object.values(byType).forEach(slot => {
+                    if (!slot || !slot.tasks) return;
+                    _LAB2_MOVED_TO_PROJECT.forEach(k => { delete slot.tasks[k]; });
+                });
+            }
+        }
+
+        // Compute project-WIDE task labour (the new architecture).  These
+        // tasks (setup, marking, string lines, plus any custom additions)
+        // run ONCE for the entire job using TOTAL counts across types.
+        // Hourly rates / OT / break ratios come from the type with the
+        // most footage (the crew working it is the same crew handling
+        // these shared tasks).  Returns null if no project tasks exist.
+        function calculateProjectTaskLabour(totalCounts, rateSlot) {
+            const lab = PCFG && PCFG.labour2;
+            if (!lab || !lab.projectTasks) return null;
+            const tasks = lab.projectTasks;
+            const taskKeys = Object.keys(tasks);
+            if (taskKeys.length === 0) return null;
+            if (!rateSlot) return null;
+            const hidden = lab.hiddenProjectTasks || [];
+
+            const sections = Math.max(0, (totalCounts.totalPosts || 0) - (totalCounts.lines || 0));
+            const counts = {
+                perJob:    1,
+                perDay:    1,  // refined after daysNeeded
+                perLine:   totalCounts.lines || 0,
+                perPost:   totalCounts.totalPosts || 0,
+                perSection: sections,
+                perFoot:   totalCounts.lengthFt || 0,
+                perHookup: totalCounts.hookups || 0,
+                perGate:   totalCounts.gates || 0
+            };
+            // Pass 1: non-perDay
+            let workMinutes = 0;
+            const perDayTasks = [];
+            taskKeys.forEach(k => {
+                if (hidden.indexOf(k) !== -1) return;
+                const t = tasks[k];
+                if ((t.unit || 'perJob') === 'perDay') { perDayTasks.push(t); return; }
+                const units = counts[t.unit || 'perJob'] || 0;
+                workMinutes += (t.minutes || 0) * units * (t.employees || 1);
+            });
+            const hpd = rateSlot.hoursPerDay || 8;
+            const breakMinPerDay = rateSlot.breakMinPerDay || 0;
+            const crew = (rateSlot.tasks && rateSlot.tasks.setupDiscussion && rateSlot.tasks.setupDiscussion.employees)
+                || (tasks.setupDiscussion && tasks.setupDiscussion.employees) || 2;
+            // No travel/load — those are per-type.
+            const breaksInit = (hpd > 0 && breakMinPerDay > 0) ? (workMinutes / (hpd * 60)) * breakMinPerDay : 0;
+            const totalMinInit = workMinutes + breaksInit;
+            const maxHpd = rateSlot.maxHoursPerDay || 12;
+            let daysNeeded = Math.max(1, Math.ceil((totalMinInit / 60 / crew) / maxHpd));
+            // Pass 2: perDay
+            let perDayWork = 0;
+            perDayTasks.forEach(t => {
+                perDayWork += (t.minutes || 0) * daysNeeded * (t.employees || 1);
+            });
+            const workFinal = workMinutes + perDayWork;
+            const breakFinal = (hpd > 0 && breakMinPerDay > 0) ? (workFinal / (hpd * 60)) * breakMinPerDay : 0;
+            const totalMinutes = workFinal + breakFinal;
+            const totalHours = totalMinutes / 60;
+            const perPersonHrs = totalHours / crew;
+            daysNeeded = Math.max(1, Math.ceil(perPersonHrs / maxHpd));
+            const otThreshold = rateSlot.overtimeAfterHours || 8;
+            const otCostMult = rateSlot.otCostMult || 1;
+            const otChargeMult = rateSlot.otChargeMult || 1;
+            const perPersonPerDay = perPersonHrs / daysNeeded;
+            const regPerPersonPerDay = Math.min(perPersonPerDay, otThreshold);
+            const otPerPersonPerDay = Math.max(0, perPersonPerDay - otThreshold);
+            const regHrs = regPerPersonPerDay * daysNeeded * crew;
+            const otHrs = otPerPersonPerDay * daysNeeded * crew;
+            const cost = regHrs * (rateSlot.costPerHour || 0) + otHrs * (rateSlot.costPerHour || 0) * otCostMult;
+            const charge = regHrs * (rateSlot.chargePerHour || 0) + otHrs * (rateSlot.chargePerHour || 0) * otChargeMult;
+            return { cost, charge, hours: totalHours, workMinutes: workFinal, totalMinutes, regHrs, otHrs, daysNeeded, perPersonPerDay, perPersonHrs, crew };
+        }
+
         // Compute project-level task-based labour grouped by fence type.
-        // For mixed-type projects, tallies each type's footage/posts/hookups
-        // separately and runs calculateTaskLabour for each. Returns:
+        // Per-type per-unit tasks (postInstallation, hookup, gate install,
+        // tying, etc.) run for each type with that type's own counts.
+        // Project-wide tasks (setup, marking, string lines, plus customs)
+        // run ONCE via calculateProjectTaskLabour above.  Returns:
         //   { byType: { chainlink: { cost, charge, ... }, wood: ... },
+        //     project: { cost, charge, ... } | null,
         //     totalCost, totalCharge, hasMixedTypes, types: [...used] }
         function calculateProjectLabour() {
+            ensurePCFGProjectTasksMigration();
             const lab = PCFG.labour2;
             if (!lab || !lab.byType) return null;
             // Group counts by fence type
@@ -6536,14 +6740,10 @@
                 c.hookups = c._endIds.size + c._cornerIds.size;
                 delete c._endIds; delete c._cornerIds; delete c._linePostCount;
             });
-            // Determine the PRIMARY fence type — the one with the most
-            // footage.  Project-shared overhead tasks (perJob like setup,
-            // material handling, touch-ups; perDay like daily walkthrough)
-            // are claimed by the primary type.  Secondary types skip the
-            // SAME-keyed perJob/perDay tasks so the crew isn't billed twice
-            // for "set up the job" just because the job spans 2 fence
-            // types.  Per-unit tasks (perPost, perFoot, perHookup, etc.)
-            // remain per-type since the units themselves are type-specific.
+            // Pick the type with the most footage as the rate slot for
+            // project-wide tasks (the same crew works setup/marking/etc
+            // as the dominant type, so use its hourly rates + OT + break
+            // model).  Falls back to chainlink if no types resolved.
             const types = Object.keys(counts);
             let primaryType = null;
             types.forEach(t => {
@@ -6551,32 +6751,48 @@
                     primaryType = t;
                 }
             });
-            const sharedKeys = new Set();
-            if (primaryType && lab.byType[primaryType]) {
-                const primSlot = lab.byType[primaryType];
-                const primHidden = (primSlot.hiddenTasks || []);
-                Object.entries(primSlot.tasks || {}).forEach(([k, t]) => {
-                    if (primHidden.indexOf(k) !== -1) return;
-                    const u = t.unit || 'perJob';
-                    if (u === 'perJob' || u === 'perDay') sharedKeys.add(k);
-                });
-            }
-            // Run task-based labour for each type used.  Primary keeps all
-            // its tasks; secondaries skip any perJob/perDay key the primary
-            // already covers (but UNIQUE perJob/perDay keys on a secondary
-            // — e.g., a wood-only "stain panels" task — still run).
+            // Per-type calcs run with NO excludeKeys now — the project-wide
+            // tasks live in their own bucket (calculateProjectTaskLabour),
+            // so per-type tasks no longer overlap.  Each fence type's
+            // material-specific tasks (post install, gate install, mesh
+            // stretching, etc.) are counted once per type.
             const byType = {};
             let totalCost = 0, totalCharge = 0;
             types.forEach(t => {
-                const opts = (t === primaryType) ? null : { excludeKeys: sharedKeys };
-                const r = calculateTaskLabour(t, counts[t], opts);
+                const r = calculateTaskLabour(t, counts[t]);
                 if (r) {
-                    byType[t] = { ...r, ...counts[t], excludedSharedKeys: opts ? Array.from(sharedKeys) : [] };
+                    byType[t] = { ...r, ...counts[t] };
                     totalCost += r.cost;
                     totalCharge += r.charge;
                 }
             });
-            return { byType, totalCost, totalCharge, hasMixedTypes: types.length > 1, types, primaryType, sharedKeys: Array.from(sharedKeys) };
+            // Project-wide shared overhead — counted ONCE for the whole
+            // job using TOTAL counts across types.  Setup, marking posts,
+            // string lines, etc. live here.
+            const totalCounts = {
+                lengthFt: 0, totalPosts: 0, hookups: 0, gates: 0, lines: 0
+            };
+            types.forEach(t => {
+                totalCounts.lengthFt   += counts[t].lengthFt   || 0;
+                totalCounts.totalPosts += counts[t].totalPosts || 0;
+                totalCounts.hookups    += counts[t].hookups    || 0;
+                totalCounts.gates      += counts[t].gates      || 0;
+                totalCounts.lines      += counts[t].lines      || 0;
+            });
+            const rateSlot = (lab.byType && (lab.byType[primaryType] || lab.byType.chainlink)) || null;
+            const project = (totalCounts.lengthFt > 0 || totalCounts.totalPosts > 0 || totalCounts.gates > 0)
+                ? calculateProjectTaskLabour(totalCounts, rateSlot)
+                : null;
+            if (project) {
+                totalCost   += project.cost;
+                totalCharge += project.charge;
+            }
+            return {
+                byType, totalCost, totalCharge,
+                hasMixedTypes: types.length > 1, types, primaryType,
+                project,
+                totalCounts
+            };
         }
 
         // Compute the project profit-target floor.
@@ -6612,6 +6828,16 @@
                     if (rate > maxRate) maxRate = rate;
                 }
             });
+            // Include the project-wide bucket in the day-share too — its
+            // hours add to the same workdays.
+            if (projectLabour.project) {
+                const proj = projectLabour.project;
+                const rateSlotKey = projectLabour.primaryType;
+                const rs = (lab.byType && (lab.byType[rateSlotKey] || lab.byType.chainlink)) || null;
+                const hpd = rs ? (rs.hoursPerDay || 8) : 8;
+                const dayFraction = hpd > 0 ? ((proj.perPersonPerDay || 0) / hpd) * (proj.daysNeeded || 1) : 0;
+                projectDayFraction += dayFraction;
+            }
             if (!anyEnforced || maxRate <= 0) return 0;
             const targetProfit = projectDayFraction * maxRate;
             const totalLabCost = projectLabour.totalCost || 0;
@@ -6690,6 +6916,44 @@
             return { byType, totalMatCost, totalMatSell, types };
         }
 
+        // ── Fence removal pricing ───────────────────────────────────────
+        // Customer marks lines as "remove existing fence" with a type
+        // (chainlink, wood, etc.). For each removal type used, charge
+        // (baseFee + perFoot × marked-footage). Base is once per type
+        // (one mobilization per type, not per line). Returns a per-type
+        // breakdown plus totalCost. Returns null if nothing to remove.
+        function calculateFenceRemoval() {
+            const cfg = (PCFG && PCFG.fenceRemoval) || {};
+            const byType = {};
+            (state.lines || []).forEach(line => {
+                if (!isLineEnabled(line)) return;
+                const r = line.removal;
+                if (!r || !r.enabled) return;
+                const type = r.type || 'chainlink';
+                const p1 = state.points.find(p => p.id === line.p1);
+                const p2 = state.points.find(p => p.id === line.p2);
+                if (!p1 || !p2) return;
+                if (!byType[type]) byType[type] = { ftMarked: 0, lineCount: 0 };
+                byType[type].ftMarked += getLineLengthFt(p1, p2);
+                byType[type].lineCount += 1;
+            });
+            const types = Object.keys(byType);
+            if (types.length === 0) return null;
+            let totalCost = 0;
+            types.forEach(t => {
+                const settings = cfg[t] || { baseFee: 0, perFoot: 0 };
+                const ft = byType[t].ftMarked;
+                const baseFee = Number(settings.baseFee) || 0;
+                const perFoot = Number(settings.perFoot) || 0;
+                byType[t].baseFee = baseFee;
+                byType[t].perFoot = perFoot;
+                byType[t].cost = baseFee + perFoot * ft;
+                byType[t].label = settings.label || t;
+                totalCost += byType[t].cost;
+            });
+            return { byType, totalCost, types };
+        }
+
         function calculatePrice() {
             const stats = getTotalStats();
             const projectMaterial = calculateProjectMaterial();
@@ -6734,6 +6998,13 @@
                 addonTotal += calculateAddOnsForLine(line, len);
             });
 
+            // Fence-removal charge — flat addition on top of everything
+            // else. Profit target floor + min-job apply BEFORE removal is
+            // added (removal isn't service margin we want to bury under
+            // the floor).
+            const removal = calculateFenceRemoval();
+            const removalTotal = removal ? Math.round(removal.totalCost) : 0;
+
             let total = Math.round(totalMatSell + labourTotal + addonTotal);
 
             // Per-fence-type profit-target floor (max across enforced types)
@@ -6748,6 +7019,10 @@
                 : (getMinJobCharge() || 0);
             if (totalMaterial > 0 || labourTotal > 0 || addonTotal > 0) total = Math.max(total, minCharge);
 
+            // Add removal AFTER the floor / min-job so it always shows up
+            // on the customer side as a separate cost.
+            total += removalTotal;
+
             return {
                 ...stats,
                 total,
@@ -6756,6 +7031,8 @@
                 markup: effectiveMarkup,
                 labourTotal: Math.round(labourTotal),
                 addonTotal: Math.round(addonTotal),
+                removalTotal,
+                fenceRemoval: removal,
                 projectLabour: useTaskLabour ? projectLabour : null,
                 projectMaterial  // exposed for email per-type markup breakdown
             };
@@ -6773,7 +7050,11 @@
             // legacy if V3 isn't populated for the current project.
             const v3 = calculateV3Project();
             const v2 = v3 ? null : calculateV2Project();
-            const total = v3 ? v3.total : v2 ? v2.total : price.total;
+            // V3 / V2 totals are the materials+labour project total — they
+            // don't know about fence-removal which is a flat surcharge.
+            // Add it here so the bottom totals bar matches the email.
+            const removalSurcharge = price.removalTotal || 0;
+            const total = (v3 ? v3.total : v2 ? v2.total : price.total) + removalSurcharge;
             document.getElementById('totalLength').textContent = price.totalLengthFt.toFixed(1) + ' ft';
             document.getElementById('totalGates').textContent = price.totalGates;
 
@@ -7820,6 +8101,20 @@
             let html = '';
             const pnMap = getPostNumberMap();
 
+            // Bulk fence-removal toolbar — appears when there are fence
+            // lines to mark.  Two actions: mark all (each line uses its
+            // own fence type as the removal type by default) and clear
+            // all.  Lives at the top so customers see it immediately.
+            const anyMarked = (state.lines || []).some(l => l && l.removal && l.removal.enabled);
+            const allMarked = state.lines.length > 0 && state.lines.every(l => l && l.removal && l.removal.enabled);
+            if (state.lines.length > 0) {
+                html += '<div class="fence-removal-bulk' + (anyMarked ? ' has-marked' : '') + '" data-no-select="1">' +
+                    '<span class="fence-removal-bulk-label">Existing fence to remove:</span>' +
+                    '<button class="fence-removal-bulk-btn' + (allMarked ? ' active' : '') + '" data-removal-bulk="all" title="Mark all lines for removal (uses each line\'s own fence type)">' + (allMarked ? '✓ All marked' : '🗑 Mark all') + '</button>' +
+                    (anyMarked ? '<button class="fence-removal-bulk-btn fence-removal-bulk-clear" data-removal-bulk="clear" title="Clear all removal markings">Clear</button>' : '') +
+                    '</div>';
+            }
+
             // Fence lines
             state.lines.forEach((line, idx) => {
                 const p1 = state.points.find(p => p.id === line.p1);
@@ -7845,11 +8140,31 @@
                 // the badge (the picker replaces it).  When only 1 style,
                 // the badge stays informational with no picker.
                 const badgeStyleSuffix = state.fenceStyles.length > 1 ? '' : styleNumText;
-                html += '<div class="fence-line-item' + (sel ? ' selected' : '') + (enabled ? '' : ' disabled') + '" data-line-idx="' + idx + '">' +
+                // Per-line removal chip: shows below the main row.  When
+                // checked, the customer sees the removal cost on their
+                // estimate (admin-configured base + per-foot).  Defaults
+                // to the SAME fence type as the line itself, but can be
+                // overridden (e.g., installing chainlink where wood was).
+                const rem = line.removal || {};
+                const remEnabled = !!rem.enabled;
+                const remType = rem.type || lineFt || 'chainlink';
+                const removalTypeOpts = ['chainlink','wood','ornamental','weldedWire','vinyl']
+                    .map(t => '<option value="' + t + '"' + (t === remType ? ' selected' : '') + '>' + (FENCE_TYPE_COLORS[t] ? FENCE_TYPE_COLORS[t].label : t) + '</option>').join('');
+                const removalHtml = '<div class="fence-line-removal' + (remEnabled ? ' active' : '') + '" data-no-select="1" data-line-removal-idx="' + idx + '">' +
+                    '<label class="fence-line-removal-toggle" title="Charge the customer to remove the existing fence on this line before installing the new one">' +
+                        '<input type="checkbox" data-removal-enabled="' + idx + '"' + (remEnabled ? ' checked' : '') + '>' +
+                        '<span>Remove existing</span>' +
+                    '</label>' +
+                    '<select class="fence-line-removal-type" data-removal-type="' + idx + '"' + (remEnabled ? '' : ' disabled') + '>' + removalTypeOpts + '</select>' +
+                    '</div>';
+                html += '<div class="fence-line-block">' +
+                    '<div class="fence-line-item' + (sel ? ' selected' : '') + (enabled ? '' : ' disabled') + '" data-line-idx="' + idx + '">' +
                     switchHtml +
                     '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + badgeStyleSuffix + '</span>' + stylePicker + '</div><div class="fence-line-meta">' + pn1 + ' \u2192 ' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
                     '<input class="fence-line-input" type="number" min="1" max="2000" step="0.1" value="' + dist.toFixed(1) + '" data-line-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
-                    '<button class="fence-line-delete" data-delete-line="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
+                    '<button class="fence-line-delete" data-delete-line="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>' +
+                    removalHtml +
+                    '</div>';
             });
 
             // Gates
@@ -8017,6 +8332,57 @@
             });
             container.querySelectorAll('[data-delete-gate]').forEach(btn => {
                 btn.addEventListener('click', () => { pushUndo(); deleteGate(parseInt(btn.dataset.deleteGate)); });
+            });
+
+            // ── Fence removal handlers ─────────────────────────────────
+            // Per-line "remove existing" checkbox
+            container.querySelectorAll('input[data-removal-enabled]').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(e.target.dataset.removalEnabled);
+                    if (!state.lines[i]) return;
+                    if (!state.lines[i].removal) state.lines[i].removal = {};
+                    state.lines[i].removal.enabled = e.target.checked;
+                    // Default type = the line's own fence type
+                    if (e.target.checked && !state.lines[i].removal.type) {
+                        const ls = getStyleForLine(state.lines[i]);
+                        state.lines[i].removal.type = (ls && ls.fenceType) || 'chainlink';
+                    }
+                    renderSidebar(); drawCanvas(); updatePricing();
+                });
+            });
+            // Per-line removal type select
+            container.querySelectorAll('select[data-removal-type]').forEach(sel => {
+                sel.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(e.target.dataset.removalType);
+                    if (!state.lines[i]) return;
+                    if (!state.lines[i].removal) state.lines[i].removal = { enabled: false };
+                    state.lines[i].removal.type = e.target.value;
+                    renderSidebar(); drawCanvas(); updatePricing();
+                });
+                sel.addEventListener('click', (e) => e.stopPropagation());
+            });
+            // Bulk: mark all / clear all
+            container.querySelectorAll('[data-removal-bulk]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const action = btn.dataset.removalBulk;
+                    if (action === 'all') {
+                        state.lines.forEach(l => {
+                            if (!l) return;
+                            const ls = getStyleForLine(l);
+                            const t = (ls && ls.fenceType) || 'chainlink';
+                            l.removal = { enabled: true, type: (l.removal && l.removal.type) || t };
+                        });
+                    } else if (action === 'clear') {
+                        state.lines.forEach(l => {
+                            if (!l) return;
+                            if (l.removal) l.removal.enabled = false;
+                        });
+                    }
+                    renderSidebar(); drawCanvas(); updatePricing();
+                });
             });
         }
 
@@ -9244,7 +9610,7 @@
             const data = {
                 styles: state.fenceStyles.map(s => ({...s})),  // spread includes cl3Picks
                 points: state.points.map(p => ({ id: p.id, x: p.x, y: p.y })),
-                lines: state.lines.map(l => ({ p1: l.p1, p2: l.p2, styleIdx: l.styleIdx || 0, mode: l.mode })),
+                lines: state.lines.map(l => ({ p1: l.p1, p2: l.p2, styleIdx: l.styleIdx || 0, mode: l.mode, removal: l.removal ? { enabled: !!l.removal.enabled, type: l.removal.type || 'chainlink' } : null })),
                 gates: state.gates.map(g => ({ p1: g.p1, p2: g.p2, gateType: g.gateType, styleIdx: g.styleIdx || 0, hingePost: g.hingePost, swingDir: g.swingDir, slideDir: g.slideDir, mode: g.mode })),
                 houses: state.houses.map(h => ({ id: h.id, x: h.x, y: h.y, width: h.width, height: h.height, label: h.label || 'House' })),
                 activeStyleIdx: state.activeStyleIdx,
@@ -9478,7 +9844,11 @@
             const price = calculatePrice();
             const v3 = (typeof calculateV3Project === 'function') ? calculateV3Project() : null;
             const v2 = v3 ? null : ((typeof calculateV2Project === 'function') ? calculateV2Project() : null);
-            const projectTotal = v3 ? v3.total : v2 ? v2.total : price.total;
+            // V3/V2 totals don't include fence-removal (that's a flat
+            // surcharge from the legacy path).  Add it here so the email
+            // total matches the customer-facing total in the totals bar.
+            const removalSurcharge = price.removalTotal || 0;
+            const projectTotal = (v3 ? v3.total : v2 ? v2.total : price.total) + removalSurcharge;
             // Per-line cost still uses legacy line-by-line math for the email's
             // line breakdown (so each row tells a coherent story). Then we
             // SCALE every row's cost so the row totals sum to projectTotal.
@@ -9537,6 +9907,8 @@
                 markup: price.markup,
                 labourTotal: price.labourTotal || 0,
                 addonTotal: price.addonTotal || 0,
+                removalTotal: price.removalTotal || 0,
+                fenceRemoval: price.fenceRemoval || null,
                 projectLabour: price.projectLabour || null,
                 projectMaterial: price.projectMaterial || null
             };
@@ -9663,6 +10035,17 @@
                 html += '<td style="padding:8px;color:#666">' + r.desc + (r.length ? ' · ' + r.length : '') + (r.posts ? ' · ' + r.posts + ' posts' : '') + '</td>';
                 html += '<td style="padding:8px;text-align:right;font-weight:600">$' + r.cost.toLocaleString() + '</td></tr>';
             });
+            // Fence removal — separate line items per existing-fence type
+            // marked for removal (chain link, wood, etc.).
+            if (breakdown.fenceRemoval && breakdown.fenceRemoval.types && breakdown.fenceRemoval.types.length > 0) {
+                breakdown.fenceRemoval.types.forEach(t => {
+                    const r = breakdown.fenceRemoval.byType[t];
+                    if (!r || (r.cost || 0) <= 0) return;
+                    html += '<tr style="border-bottom:1px solid #e5e5e5;background:rgba(232,145,32,0.05)"><td style="padding:8px;font-weight:600;color:#b87212">🗑 Remove ' + escHtml(r.label) + ' fence</td>';
+                    html += '<td style="padding:8px;color:#b87212">' + Math.round(r.ftMarked) + ' ft · ' + r.lineCount + ' line' + (r.lineCount === 1 ? '' : 's') + (r.baseFee > 0 ? ' · base $' + r.baseFee.toLocaleString() : '') + (r.perFoot > 0 ? ' + $' + r.perFoot + '/ft' : '') + '</td>';
+                    html += '<td style="padding:8px;text-align:right;font-weight:600;color:#b87212">$' + Math.round(r.cost).toLocaleString() + '</td></tr>';
+                });
+            }
             html += '<tr style="background:#f0ead6"><td colspan="2" style="padding:10px 8px;font-weight:700;font-size:15px">Estimated Total</td>';
             html += '<td style="padding:10px 8px;text-align:right;font-weight:700;font-size:15px;color:' + cfgAccent() + '">$' + breakdown.total.toLocaleString() + '</td></tr>';
             html += '</table>';
@@ -10008,6 +10391,59 @@
                     // employee count, total minutes, hours, and an allocated
                     // share of cost / charge so per-task numbers sum to the
                     // type's task-labour total.
+
+                    // ── Project-wide tasks first (counted once per job) ──
+                    if (pl.project && pl.totalCounts) {
+                        try {
+                            var ptb = (typeof calculateProjectTaskBreakdown === 'function')
+                                ? calculateProjectTaskBreakdown(pl.totalCounts, (PCFG.labour2.byType[pl.primaryType] || PCFG.labour2.byType.chainlink))
+                                : null;
+                            if (ptb && ptb.tasks && ptb.tasks.length > 0) {
+                                html += '<h4 style="margin:14px 0 4px;font-size:12px;color:#4a90d9">🌐 Project-Wide Labour <span style="font-size:10px;font-weight:600;color:#888">— shared across the whole job, counted once</span></h4>';
+                                html += '<p style="font-size:10px;color:#888;margin:0 0 6px">Setup, marking, string lines, etc.  These run ONCE regardless of how many fence styles are mixed.  Rates pulled from the dominant fence type (' + escHtml(typeLabels[pl.primaryType] || pl.primaryType || 'chainlink') + ').</p>';
+                                html += '<table style="width:100%;border-collapse:collapse;margin-bottom:8px;font-size:10px">';
+                                html += '<tr style="background:#4a90d9;color:#fff">';
+                                html += '<th style="text-align:left;padding:5px 8px">Task</th>';
+                                html += '<th style="text-align:center;padding:5px 8px">Unit</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">Min/unit</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">× Units</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">× Crew</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">Mins</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">Hrs</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">% job</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">Cost share</th>';
+                                html += '<th style="text-align:right;padding:5px 8px">Charge share</th>';
+                                html += '</tr>';
+                                var pSumMins = 0, pSumHrs = 0, pSumCost = 0, pSumChrg = 0;
+                                ptb.tasks.forEach(function(row) {
+                                    pSumMins += row.totalMinutes; pSumHrs += row.hours;
+                                    pSumCost += row.costShare; pSumChrg += row.chargeShare;
+                                    html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                                    html += '<td style="padding:5px 8px;font-weight:600">' + escHtml(row.label) + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:center;color:#888">' + escHtml(row.unitLabel) + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right">' + row.minutesPerUnit + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right">' + (row.units % 1 === 0 ? row.units : row.units.toFixed(1)) + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right;color:#888">' + row.employees + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + Math.round(row.totalMinutes) + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right">' + row.hours.toFixed(1) + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right;color:#888">' + (row.minuteShare * 100).toFixed(0) + '%</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + Math.round(row.costShare).toLocaleString() + '</td>';
+                                    html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + Math.round(row.chargeShare).toLocaleString() + '</td>';
+                                    html += '</tr>';
+                                });
+                                html += '<tr style="background:#eef5fb;font-weight:700">';
+                                html += '<td colspan="5" style="padding:6px 8px;text-align:right">Project-wide total · ' + (ptb.summary.daysNeeded || 1) + ' day' + ((ptb.summary.daysNeeded || 1) === 1 ? '' : 's') + ' · ' + (ptb.slot.crew || 1) + '-person crew</td>';
+                                html += '<td style="padding:6px 8px;text-align:right">' + Math.round(ptb.summary.totalMinutes || 0) + '</td>';
+                                html += '<td style="padding:6px 8px;text-align:right">' + (ptb.summary.hours || 0).toFixed(1) + '</td>';
+                                html += '<td style="padding:6px 8px"></td>';
+                                html += '<td style="padding:6px 8px;text-align:right">$' + Math.round(ptb.summary.cost || 0).toLocaleString() + '</td>';
+                                html += '<td style="padding:6px 8px;text-align:right">$' + Math.round(ptb.summary.charge || 0).toLocaleString() + '</td>';
+                                html += '</tr>';
+                                html += '</table>';
+                            }
+                        } catch (e) { console.warn('[email project-task]', e); }
+                    }
+
                     pl.types.forEach(function(tk) {
                         var tlb = (typeof calculateTaskLabourBreakdown === 'function')
                             ? calculateTaskLabourBreakdown(tk, pl.byType[tk] || {})
@@ -10099,6 +10535,18 @@
             if (aoTotal > 0) {
                 html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">+ Add-On Charges</td><td style="padding:6px 8px;text-align:right;font-weight:600">$' + aoTotal.toLocaleString() + '</td></tr>';
             }
+            // Fence removal — surfaces the per-type breakdown so admin
+            // can verify the rate config matched what the customer paid.
+            try {
+                var rmv = breakdown.fenceRemoval;
+                if (rmv && rmv.types && rmv.types.length > 0) {
+                    rmv.types.forEach(function(t) {
+                        var r = rmv.byType[t];
+                        if (!r || (r.cost || 0) <= 0) return;
+                        html += '<tr style="border-bottom:1px solid #e5e5e5;background:rgba(232,145,32,0.05)"><td style="padding:6px 8px;color:#b87212">+ Remove ' + escHtml(r.label) + ' (' + Math.round(r.ftMarked) + ' ft · base $' + r.baseFee + ' + $' + r.perFoot + '/ft)</td><td style="padding:6px 8px;text-align:right;font-weight:600;color:#b87212">$' + Math.round(r.cost).toLocaleString() + '</td></tr>';
+                    });
+                }
+            } catch (e) { console.warn('[email-removal]', e); }
 
             var finalPrice = breakdown.total;
             var grossProfit = finalPrice - matOrder.totalMaterial;
