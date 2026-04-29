@@ -2,7 +2,18 @@
 <html lang="en-CA">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- viewport-fit=cover lets us paint into the iPhone safe areas
+         (home indicator + notch) using env(safe-area-inset-*) CSS. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+
+    <!-- iOS standalone (Add to Home Screen) — the tool launches without
+         Safari chrome and respects the apple-mobile-web-app-* settings.
+         Android uses the manifest's display:standalone for the same. -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Fence Builder Pro">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Fence Builder Pro">
 
     <!-- SEO Meta Tags -->
     <title>Fence Build & Price Tool | Design Your Fence Online | Pete Fixes Winnipeg</title>
@@ -27,8 +38,15 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
     <link rel="shortcut icon" href="/favicon.ico">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-    <link rel="manifest" href="/site.webmanifest">
+    <!-- Tool-scoped manifest: when the user adds Fence Builder Pro to
+         their home screen, the icon launches the build & price tool
+         standalone — not the marketing site root. -->
+    <link rel="manifest" href="/services/fence-builder-pro.webmanifest">
     <meta name="theme-color" content="#1d1d1f">
+    <!-- Status-bar light tint so the iOS dynamic island / notch reads
+         well over the dark canvas chrome.  Matches background-color. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f7f8">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1d1d1f">
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -111,6 +129,36 @@
            We shrink the site nav, shrink the beta banner, and lock the body
            to 100vh so the canvas never causes the page to scroll. */
         html, body { overflow: hidden; height: 100vh; color-scheme: light; }
+        /* Native-app polish: viewport-fit=cover paints into the iOS
+           safe areas (home indicator, notch). 100dvh tracks the dynamic
+           viewport so the totals bar stays visible when the browser
+           URL bar collapses on scroll. */
+        @supports (height: 100dvh) {
+            html, body { height: 100dvh; }
+        }
+        /* iOS auto-zooms text inputs when their font-size < 16px on
+           focus. Force every input to 16px by default to suppress that
+           jarring zoom-in behaviour. Pair with text-size-adjust:none so
+           rotation doesn't reflow paragraph text either. */
+        input, textarea, select { font-size: 16px; }
+        @media (min-width: 768px) {
+            input, textarea, select { font-size: inherit; }
+        }
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+        /* Standalone-mode treatment: when the tool is launched from the
+           home screen icon, hide the site-wide nav header (it's chrome
+           we don't need in app mode) and lift the canvas to fill the
+           full screen. Detected via display-mode: standalone media. */
+        @media all and (display-mode: standalone) {
+            .nav-header, .beta-banner { display: none !important; }
+            body { padding-top: env(safe-area-inset-top, 0); }
+        }
+        /* Bottom totals bar respects the iOS home indicator. The bar is
+           the customer-facing pricing strip; padding-bottom adds room
+           for the indicator without overlapping the buttons. */
+        .pricing-bar, #pricingBar, .totals-bar {
+            padding-bottom: max(8px, env(safe-area-inset-bottom, 0)) !important;
+        }
         /* Force the nav header opaque on this page.  The default site nav uses
            a 72%-opacity frosted glass that can look dim/dark if the browser
            is doing auto-dark or the user clicked through from the homepage's

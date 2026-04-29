@@ -2,8 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Quotes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f7f7f8">
+<link rel="manifest" href="/services/fence-builder-pro.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <title>Submitted Quotes | Pete Fixes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,12 +30,30 @@
     --radius-sm: 8px;
 }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
     margin: 0;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background: var(--gray-50);
     color: var(--black);
     -webkit-font-smoothing: antialiased;
+    /* Safe-area aware bottom padding so the dashboard's last quote
+       row never sits under the iOS home indicator in PWA mode. */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+/* iOS auto-zooms inputs <16px on focus.  Force 16px on phones,
+   restore inherit on tablets/desktops where it's not a problem. */
+input, textarea, select { font-size: 16px; }
+@media (min-width: 768px) {
+    input, textarea, select { font-size: 13px; }
+}
+@media all and (display-mode: standalone) {
+    /* Add top safe-area inset only when launched from the home screen
+       icon (PWA mode) so the sticky header doesn't get clipped by the
+       notch / dynamic island. */
+    header.page-header {
+        padding-top: calc(14px + env(safe-area-inset-top, 0)) !important;
+    }
 }
 header.page-header {
     background: var(--white);
@@ -292,9 +316,41 @@ table.quotes-table tr.row:hover {
     table.quotes-table th.col-title,
     table.quotes-table td.col-title { display: none; }
 }
+
+/* Pull-to-refresh indicator (mobile only, visible during pull gesture) */
+.ptr-indicator {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+    pointer-events: none;
+    z-index: 200;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+    transition: height 0.18s ease;
+    background: linear-gradient(to bottom, rgba(247,247,248,0.96), rgba(247,247,248,0));
+}
+.ptr-indicator.pulling { transition: none; }
+.ptr-indicator.snap   { transition: height 0.22s cubic-bezier(0.2,0.8,0.4,1); }
+.ptr-indicator .ptr-spinner {
+    width: 22px;
+    height: 22px;
+    border: 2.5px solid rgba(0,0,0,0.12);
+    border-top-color: var(--accent, #c8a55a);
+    border-radius: 50%;
+    margin-bottom: 12px;
+    transform: rotate(0deg);
+}
+.ptr-indicator.armed .ptr-spinner { border-top-color: #1d1d1f; }
+.ptr-indicator.refreshing .ptr-spinner { animation: ptrSpin 0.8s linear infinite; }
+@keyframes ptrSpin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
+<div class="ptr-indicator" id="ptrIndicator" aria-hidden="true"><div class="ptr-spinner"></div></div>
 <header class="page-header">
     <div class="logo">Pete Fixes <span>Quotes Dashboard</span></div>
     <div class="crumb">All submitted estimates</div>
@@ -590,6 +646,86 @@ $('confirmDelete').addEventListener('click', (e) => {
         $('confirmDelete').classList.remove('open');
     }
 });
+
+// Pull-to-refresh (mobile / standalone PWA)
+(function () {
+    const indicator = $('ptrIndicator');
+    if (!indicator) return;
+    if (!('ontouchstart' in window) && !navigator.maxTouchPoints) return; // skip on desktop
+
+    const TRIGGER = 70;          // px to arm refresh
+    const MAX     = 120;         // visual cap
+    const RESISTANCE = 0.55;     // damping
+    let startY = 0;
+    let pulling = false;
+    let armed = false;
+    let refreshing = false;
+
+    function atTop() {
+        return (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
+    }
+
+    function onStart(e) {
+        if (refreshing) return;
+        if (!atTop()) return;
+        const t = e.touches[0];
+        startY = t.clientY;
+        pulling = true;
+        armed = false;
+        indicator.classList.add('pulling');
+        indicator.classList.remove('snap', 'refreshing', 'armed');
+    }
+
+    function onMove(e) {
+        if (!pulling || refreshing) return;
+        const t = e.touches[0];
+        let dy = t.clientY - startY;
+        if (dy <= 0) {
+            indicator.style.height = '0px';
+            armed = false;
+            indicator.classList.remove('armed');
+            return;
+        }
+        // dampen pull
+        const visual = Math.min(MAX, dy * RESISTANCE);
+        indicator.style.height = visual + 'px';
+        const shouldArm = visual >= TRIGGER;
+        if (shouldArm !== armed) {
+            armed = shouldArm;
+            indicator.classList.toggle('armed', armed);
+        }
+        // prevent rubber-band when actively pulling
+        if (e.cancelable) e.preventDefault();
+    }
+
+    function onEnd() {
+        if (!pulling) return;
+        pulling = false;
+        indicator.classList.remove('pulling');
+        indicator.classList.add('snap');
+        if (armed) {
+            refreshing = true;
+            indicator.classList.add('refreshing');
+            indicator.style.height = '54px';
+            Promise.resolve(loadQuotes())
+                .catch(() => {})
+                .finally(() => {
+                    setTimeout(() => {
+                        refreshing = false;
+                        indicator.classList.remove('refreshing', 'armed');
+                        indicator.style.height = '0px';
+                    }, 280);
+                });
+        } else {
+            indicator.style.height = '0px';
+        }
+    }
+
+    document.addEventListener('touchstart', onStart, { passive: true });
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd, { passive: true });
+    document.addEventListener('touchcancel', onEnd, { passive: true });
+})();
 
 // Initial load
 loadQuotes();

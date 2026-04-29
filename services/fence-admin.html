@@ -2,16 +2,20 @@
 <html lang="en-CA">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Fence Configurator Admin | Pricing Panel</title>
 <meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pricing">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
 <!-- Favicons -->
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
 <link rel="shortcut icon" href="/favicon.ico">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="manifest" href="/site.webmanifest">
+<link rel="manifest" href="/services/fence-builder-pro.webmanifest">
 <meta name="theme-color" content="#1d1d1f">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,9 +34,17 @@
   --shadow-sm:0 2px 8px rgba(0,0,0,0.04);--shadow-md:0 4px 20px rgba(0,0,0,0.08);--shadow-lg:0 8px 40px rgba(0,0,0,0.12);
   --sidebar-w:170px;
 }
-html{font-size:11px}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--black);background:var(--gray-50);line-height:1.5;min-height:100vh}
+html{font-size:11px;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--black);background:var(--gray-50);line-height:1.5;min-height:100vh;padding-bottom:env(safe-area-inset-bottom,0)}
+@supports (min-height: 100dvh) { body { min-height: 100dvh; } }
 input,select,textarea,button{font-family:inherit}
+input,textarea,select{font-size:16px}
+@media (min-width: 768px) { input,textarea,select{font-size:inherit} }
+@media all and (display-mode: standalone){
+  .admin-header{padding-top:env(safe-area-inset-top,0);height:calc(40px + env(safe-area-inset-top,0))}
+  .admin-layout{margin-top:calc(40px + env(safe-area-inset-top,0))}
+  .admin-sidebar{top:calc(40px + env(safe-area-inset-top,0))}
+}
 a{color:var(--accent);text-decoration:none}
 
 /* ───── Top Header ───── */
