@@ -11065,6 +11065,35 @@
 
                 await sendEstimateEmails(email, fullName, custSubject, customerHtml, intSubject, internalHtml);
 
+                // Save the quote to the admin dashboard.  Fire-and-forget
+                // so a backend hiccup never blocks the customer's
+                // confirmation — the email is the source of truth.
+                try {
+                    fetch('/api/quotes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            customer: { firstName: firstName, lastName: lastName, email: email, phone: phone, address: address, notes: notes, marketing: marketing },
+                            estimate: {
+                                title: estimateTitle,
+                                total: breakdown.total,
+                                totalLength: breakdown.totalLength,
+                                totalGates: breakdown.totalGates,
+                                totalPosts: breakdown.totalPosts,
+                                rows: breakdown.rows,
+                                privacyTotal: breakdown.privacyTotal || 0,
+                                removalTotal: breakdown.removalTotal || 0,
+                                fenceRemoval: breakdown.fenceRemoval || null,
+                                privacyInserts: breakdown.privacyInserts || null
+                            },
+                            drawing: serializeConfig(),
+                            drawingPng: drawingDataUrl || null,
+                            deploymentId: (PCFG && PCFG.deploymentId) || 'default',
+                            sourceUrl: window.location.href
+                        })
+                    }).catch(e => console.warn('[quote-save]', e));
+                } catch (e) { console.warn('[quote-save]', e); }
+
                 statusEl.textContent = 'Estimate sent! Check your inbox.';
                 statusEl.className = 'save-estimate-status success';
                 btn.textContent = 'Sent ✓';

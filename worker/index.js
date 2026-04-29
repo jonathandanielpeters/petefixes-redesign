@@ -16,7 +16,7 @@
 const DEFAULT_USER = "admin";
 
 // ── Paths that require auth ─────────────────────────────────────────
-const PROTECTED = ["/services/fence-admin"];
+const PROTECTED = ["/services/fence-admin", "/services/fence-quotes"];
 
 function isProtected(pathname) {
   const clean = pathname.replace(/\.html$/, "").replace(/\/$/, "");
@@ -422,6 +422,124 @@ async function handleConfig(request, env) {
   return corsResponse({ ok: false, error: "method not allowed" }, 405);
 }
 
+// ── /api/quotes — Submitted estimate dashboard ──────────────────────
+// POST   /api/quotes        : open (any visitor) — saves a submitted estimate
+// GET    /api/quotes        : auth — lists all saved quotes (newest first)
+// GET    /api/quotes/:id    : auth — fetches one quote with full payload
+// DELETE /api/quotes/:id    : auth — deletes a quote
+//
+// Storage: same KV namespace as admin config, prefix "quote:".  KV's
+// list({prefix}) is enough to drive the dashboard list view; for richer
+// queries we'd graduate to D1 but KV keeps the deploy story simple.
+function makeQuoteId() {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return "q_" + ts + "_" + rand;
+}
+
+async function handleQuotes(request, env, idFromPath) {
+  if (!env.CONFIG_KV) {
+    return corsResponse({ ok: false, error: "CONFIG_KV not bound" }, 500);
+  }
+
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Max-Age": "86400",
+      },
+    });
+  }
+
+  // POST /api/quotes — anyone (the customer Build & Price submits here)
+  if (request.method === "POST" && !idFromPath) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return corsResponse({ ok: false, error: "invalid JSON" }, 400);
+    }
+    const id = makeQuoteId();
+    const record = {
+      id,
+      createdAt: new Date().toISOString(),
+      status: "new",
+      // Customer-submitted info — flat for easy listing
+      customer: body.customer || {},
+      // Estimate details — total, title, breakdown summary, fence stats
+      estimate: body.estimate || {},
+      // Drawing payload — base64 serialized state, restorable via
+      // /services/fence-build-price.html?config=<this>
+      drawing: body.drawing || "",
+      // Optional: inline preview image so the dashboard doesn't have to
+      // re-render every drawing. ~50–100 KB per quote.
+      drawingPng: body.drawingPng || null,
+      // Where the quote was submitted from (deployment) — useful when
+      // the same KV is shared across sites or environments.
+      deploymentId: body.deploymentId || "default",
+      // Source URL the customer submitted from
+      sourceUrl: body.sourceUrl || "",
+    };
+    // Total payload guard — KV's per-value limit is 25 MB but a single
+    // dashboard list call would be slow if quotes balloon. Reject big.
+    const json = JSON.stringify(record);
+    if (json.length > 5 * 1024 * 1024) {
+      return corsResponse({ ok: false, error: "quote payload too large (>5MB)" }, 413);
+    }
+    await env.CONFIG_KV.put("quote:" + id, json, {
+      // Index metadata so list() can render a useful summary without
+      // having to fetch each quote's full body.
+      metadata: {
+        createdAt: record.createdAt,
+        customerName: ((record.customer.firstName || "") + " " + (record.customer.lastName || "")).trim(),
+        customerEmail: record.customer.email || "",
+        customerPhone: record.customer.phone || "",
+        address: record.customer.address || "",
+        total: record.estimate.total || 0,
+        title: record.estimate.title || "",
+        status: record.status,
+        deploymentId: record.deploymentId,
+      },
+    });
+    return corsResponse({ ok: true, id, createdAt: record.createdAt });
+  }
+
+  // Auth required for every other operation.
+  if (!checkBasicAuth(request, env)) return unauthorized();
+
+  // GET /api/quotes — list all (newest first), summary only
+  if (request.method === "GET" && !idFromPath) {
+    const url = new URL(request.url);
+    const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10), 1000);
+    const list = await env.CONFIG_KV.list({ prefix: "quote:", limit });
+    const rows = list.keys
+      .map(k => ({ id: k.name.replace(/^quote:/, ""), ...(k.metadata || {}) }))
+      .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    return corsResponse({ ok: true, quotes: rows, complete: list.list_complete });
+  }
+
+  // GET /api/quotes/:id — full payload for the dashboard's view-modal
+  if (request.method === "GET" && idFromPath) {
+    const value = await env.CONFIG_KV.get("quote:" + idFromPath);
+    if (!value) return corsResponse({ ok: false, error: "not_found" }, 404);
+    return new Response(value, {
+      status: 200,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+    });
+  }
+
+  // DELETE /api/quotes/:id
+  if (request.method === "DELETE" && idFromPath) {
+    await env.CONFIG_KV.delete("quote:" + idFromPath);
+    return corsResponse({ ok: true, id: idFromPath });
+  }
+
+  return corsResponse({ ok: false, error: "method not allowed" }, 405);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -438,6 +556,14 @@ export default {
     }
     if (url.pathname === "/api/config") {
       return handleConfig(request, env);
+    }
+    // Quotes dashboard — exact "/api/quotes" or "/api/quotes/<id>"
+    if (url.pathname === "/api/quotes") {
+      return handleQuotes(request, env, null);
+    }
+    const quoteIdMatch = url.pathname.match(/^\/api\/quotes\/([a-z0-9_-]+)$/i);
+    if (quoteIdMatch) {
+      return handleQuotes(request, env, quoteIdMatch[1]);
     }
 
     // Only enforce auth on protected paths

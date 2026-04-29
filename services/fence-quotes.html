@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Submitted Quotes | Pete Fixes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+    --black: #1d1d1f;
+    --white: #ffffff;
+    --gray-50:  #f7f7f8;
+    --gray-100: #ececef;
+    --gray-200: #d8d8db;
+    --gray-300: #b8b8bd;
+    --gray-400: #888890;
+    --gray-500: #58585d;
+    --accent: #c8a55a;
+    --accent-light: #f0ead6;
+    --radius: 12px;
+    --radius-sm: 8px;
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--gray-50);
+    color: var(--black);
+    -webkit-font-smoothing: antialiased;
+}
+header.page-header {
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-100);
+    padding: 14px 22px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+.logo {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.logo span { color: var(--accent); font-weight: 600; }
+.crumb {
+    font-size: 12px;
+    color: var(--gray-400);
+    margin-left: 4px;
+}
+.page-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn {
+    background: var(--white);
+    color: var(--gray-500);
+    border: 1px solid var(--gray-200);
+    padding: 7px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.18s;
+}
+.btn:hover { border-color: var(--accent); color: var(--black); }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #b8943f; border-color: #b8943f; color: #fff; }
+.btn-danger {
+    border-color: rgba(196, 60, 60, 0.4);
+    color: #c43c3c;
+}
+.btn-danger:hover { background: #c43c3c; color: #fff; border-color: #c43c3c; }
+
+.page-body {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 22px 60px;
+}
+
+.toolbar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.toolbar input[type="search"] {
+    flex: 1;
+    min-width: 200px;
+    max-width: 360px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+}
+.toolbar input[type="search"]:focus { outline: none; border-color: var(--accent); }
+.toolbar select {
+    padding: 8px 28px 8px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+    background: var(--white) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 8px center;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+.toolbar .stat {
+    font-size: 12px;
+    color: var(--gray-400);
+    margin-left: auto;
+}
+
+.empty-state {
+    background: var(--white);
+    border: 1px dashed var(--gray-200);
+    border-radius: var(--radius);
+    padding: 50px 30px;
+    text-align: center;
+    color: var(--gray-400);
+}
+.empty-state h3 { color: var(--gray-500); font-size: 16px; margin: 0 0 8px; }
+.empty-state p { margin: 0; font-size: 13px; line-height: 1.6; }
+
+.quotes-table-wrap {
+    background: var(--white);
+    border: 1px solid var(--gray-100);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+table.quotes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+table.quotes-table thead {
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-100);
+}
+table.quotes-table th {
+    text-align: left;
+    padding: 10px 12px;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray-400);
+}
+table.quotes-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--gray-100);
+    vertical-align: middle;
+}
+table.quotes-table tr:last-child td { border-bottom: none; }
+table.quotes-table tr.row:hover {
+    background: rgba(200,165,90,0.04);
+    cursor: default;
+}
+.thumb {
+    width: 80px;
+    height: 56px;
+    object-fit: contain;
+    background: var(--gray-50);
+    border-radius: 6px;
+    border: 1px solid var(--gray-100);
+    display: block;
+}
+.thumb-fallback {
+    width: 80px;
+    height: 56px;
+    background: var(--gray-50);
+    border: 1px dashed var(--gray-200);
+    border-radius: 6px;
+    color: var(--gray-300);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+.cust-name {
+    font-weight: 600;
+    color: var(--black);
+}
+.cust-meta {
+    font-size: 11px;
+    color: var(--gray-400);
+    line-height: 1.45;
+    margin-top: 2px;
+}
+.cust-meta a { color: inherit; text-decoration: none; }
+.cust-meta a:hover { color: var(--accent); }
+.title-cell { max-width: 320px; }
+.title-text {
+    font-weight: 500;
+    color: var(--gray-500);
+    line-height: 1.4;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.total {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--accent);
+    text-align: right;
+    white-space: nowrap;
+}
+.date-cell {
+    color: var(--gray-400);
+    font-size: 11px;
+    white-space: nowrap;
+}
+.status-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: rgba(74,144,217,0.12);
+    color: #4a90d9;
+}
+.actions-cell { white-space: nowrap; }
+.btn-icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 4px;
+}
+.btn-icon svg { width: 14px; height: 14px; }
+
+.toast {
+    position: fixed;
+    bottom: 22px;
+    right: 22px;
+    background: var(--black);
+    color: var(--white);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    z-index: 100;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.error { background: #c43c3c; }
+.toast.success { background: #2a8a3f; }
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+    background: var(--white);
+    border-radius: var(--radius);
+    max-width: 600px;
+    width: 100%;
+    padding: 22px 22px 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.modal h3 { margin: 0 0 8px; font-size: 16px; }
+.modal p { margin: 0 0 14px; font-size: 13px; color: var(--gray-500); line-height: 1.55; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+@media (max-width: 720px) {
+    table.quotes-table th.col-thumb,
+    table.quotes-table td.col-thumb,
+    table.quotes-table th.col-title,
+    table.quotes-table td.col-title { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="page-header">
+    <div class="logo">Pete Fixes <span>Quotes Dashboard</span></div>
+    <div class="crumb">All submitted estimates</div>
+    <div class="page-actions">
+        <a href="fence-admin.html" class="btn">⚙️ Admin Settings</a>
+        <a href="fence-build-price.html" class="btn" target="_blank">↗ Build &amp; Price</a>
+        <button class="btn btn-primary" id="refreshBtn">↻ Refresh</button>
+    </div>
+</header>
+
+<div class="page-body">
+    <div class="toolbar">
+        <input type="search" id="searchInput" placeholder="Search name, email, phone, address, title…">
+        <select id="sortSelect">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="total-desc">Highest total</option>
+            <option value="total-asc">Lowest total</option>
+            <option value="name">Customer name (A–Z)</option>
+        </select>
+        <span class="stat" id="quoteStat">—</span>
+    </div>
+
+    <div id="quotesContainer"></div>
+</div>
+
+<div class="modal-backdrop" id="confirmDelete">
+    <div class="modal">
+        <h3>Delete this quote?</h3>
+        <p id="confirmDeleteText">This will permanently remove the saved quote from the dashboard. This cannot be undone — but the customer's email already went out, so the email record is unaffected.</p>
+        <div class="modal-actions">
+            <button class="btn" id="confirmDeleteCancel">Cancel</button>
+            <button class="btn btn-danger" id="confirmDeleteOk">Delete quote</button>
+        </div>
+    </div>
+</div>
+
+<div id="toastHost"></div>
+
+<script>
+'use strict';
+
+// State
+let allQuotes = [];
+let pendingDeleteId = null;
+
+const $ = (id) => document.getElementById(id);
+const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function toast(msg, kind) {
+    const el = document.createElement('div');
+    el.className = 'toast' + (kind ? ' ' + kind : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 250);
+    }, 2600);
+}
+
+function fmtDate(iso) {
+    if (!iso) return '—';
+    try {
+        const d = new Date(iso);
+        const today = new Date();
+        const sameDay = d.toDateString() === today.toDateString();
+        const opts = sameDay
+            ? { hour: 'numeric', minute: '2-digit' }
+            : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+        return d.toLocaleString(undefined, opts) + (sameDay ? ' today' : '');
+    } catch { return iso; }
+}
+
+function fmtMoney(n) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + Math.round(n).toLocaleString();
+}
+
+async function loadQuotes() {
+    const container = $('quotesContainer');
+    container.innerHTML = '<div class="empty-state"><p>Loading quotes…</p></div>';
+    try {
+        const res = await fetch('/api/quotes', { credentials: 'same-origin' });
+        if (res.status === 401) {
+            toast('Auth expired — reload to re-enter admin credentials.', 'error');
+            return;
+        }
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'fetch failed');
+        allQuotes = data.quotes || [];
+        renderTable();
+    } catch (e) {
+        console.error('[loadQuotes]', e);
+        container.innerHTML = '<div class="empty-state"><h3>Could not load quotes</h3><p>' + escHtml(e.message || 'Network error') + '</p></div>';
+        toast('Failed to load quotes', 'error');
+    }
+}
+
+function filteredSorted() {
+    const q = ($('searchInput').value || '').trim().toLowerCase();
+    const sort = $('sortSelect').value;
+    let rows = allQuotes.slice();
+    if (q) {
+        rows = rows.filter(r => {
+            const blob = [
+                r.customerName, r.customerEmail, r.customerPhone,
+                r.address, r.title, r.id, r.deploymentId
+            ].filter(Boolean).join(' ').toLowerCase();
+            return blob.indexOf(q) !== -1;
+        });
+    }
+    rows.sort((a, b) => {
+        switch (sort) {
+            case 'oldest':     return (a.createdAt || '').localeCompare(b.createdAt || '');
+            case 'total-desc': return (b.total || 0) - (a.total || 0);
+            case 'total-asc':  return (a.total || 0) - (b.total || 0);
+            case 'name':       return (a.customerName || '').localeCompare(b.customerName || '');
+            case 'newest':
+            default:           return (b.createdAt || '').localeCompare(a.createdAt || '');
+        }
+    });
+    return rows;
+}
+
+function renderTable() {
+    const container = $('quotesContainer');
+    const rows = filteredSorted();
+
+    $('quoteStat').textContent = rows.length === allQuotes.length
+        ? rows.length + ' quote' + (rows.length === 1 ? '' : 's')
+        : rows.length + ' of ' + allQuotes.length + ' quote' + (allQuotes.length === 1 ? '' : 's');
+
+    if (rows.length === 0) {
+        if (allQuotes.length === 0) {
+            container.innerHTML = '<div class="empty-state">' +
+                '<h3>No quotes yet</h3>' +
+                '<p>Once a customer submits an estimate from the Build &amp; Price tool, it will appear here.</p>' +
+                '</div>';
+        } else {
+            container.innerHTML = '<div class="empty-state">' +
+                '<h3>No matches</h3>' +
+                '<p>Try a different search term or change the filter.</p>' +
+                '</div>';
+        }
+        return;
+    }
+
+    let html = '<div class="quotes-table-wrap"><table class="quotes-table"><thead><tr>' +
+        '<th class="col-thumb">Drawing</th>' +
+        '<th>Customer</th>' +
+        '<th class="col-title">Quote</th>' +
+        '<th style="text-align:right">Total</th>' +
+        '<th>Submitted</th>' +
+        '<th></th>' +
+        '</tr></thead><tbody>';
+
+    rows.forEach(r => {
+        const phone = (r.customerPhone || '').replace(/\D+/g, '');
+        const phoneLink = phone ? '<a href="tel:' + phone + '">' + escHtml(r.customerPhone) + '</a>' : '';
+        const emailLink = r.customerEmail ? '<a href="mailto:' + escHtml(r.customerEmail) + '">' + escHtml(r.customerEmail) + '</a>' : '';
+        html += '<tr class="row" data-id="' + escHtml(r.id) + '">';
+        html += '<td class="col-thumb"><div class="thumb-fallback" data-thumb-host>📐</div></td>';
+        html += '<td>' +
+            '<div class="cust-name">' + escHtml(r.customerName || '—') + '</div>' +
+            '<div class="cust-meta">' + emailLink + (phoneLink ? ' · ' + phoneLink : '') + '</div>' +
+            (r.address ? '<div class="cust-meta">📍 ' + escHtml(r.address) + '</div>' : '') +
+            '</td>';
+        html += '<td class="col-title title-cell"><div class="title-text">' + escHtml(r.title || '—') + '</div></td>';
+        html += '<td class="total">' + fmtMoney(r.total) + '</td>';
+        html += '<td class="date-cell">' + fmtDate(r.createdAt) + '</td>';
+        html += '<td class="actions-cell">' +
+            '<button class="btn btn-icon" data-action="open" title="View / edit in Build & Price tool"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg></button>' +
+            '<button class="btn btn-icon btn-danger" data-action="delete" title="Delete quote"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg></button>' +
+            '</td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+
+    // Lazy-load thumbnails (drawings stored on the quote payload).
+    // We only fetch the full quote when thumbnails are needed so the
+    // initial dashboard load stays fast even with hundreds of quotes.
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+            if (!entry.isIntersecting) return;
+            const host = entry.target;
+            const tr = host.closest('tr');
+            const id = tr && tr.dataset.id;
+            if (!id || host.dataset.loaded) return;
+            host.dataset.loaded = '1';
+            observer.unobserve(host);
+            fetch('/api/quotes/' + encodeURIComponent(id), { credentials: 'same-origin' })
+                .then(r => r.ok ? r.json() : null)
+                .then(rec => {
+                    if (rec && rec.drawingPng) {
+                        host.outerHTML = '<img class="thumb" src="' + rec.drawingPng + '" alt="Fence drawing">';
+                    }
+                }).catch(() => { /* keep fallback icon */ });
+        });
+    }, { rootMargin: '120px' });
+    container.querySelectorAll('[data-thumb-host]').forEach(el => observer.observe(el));
+
+    // Row actions
+    container.querySelectorAll('button[data-action]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const tr = btn.closest('tr');
+            const id = tr && tr.dataset.id;
+            if (!id) return;
+            if (btn.dataset.action === 'open') openQuote(id);
+            else if (btn.dataset.action === 'delete') promptDelete(id);
+        });
+    });
+    // Whole-row click also opens
+    container.querySelectorAll('tr.row').forEach(tr => {
+        tr.addEventListener('click', (e) => {
+            if (e.target.closest('a') || e.target.closest('button')) return;
+            const id = tr.dataset.id;
+            if (id) openQuote(id);
+        });
+    });
+}
+
+async function openQuote(id) {
+    // Fetch the full record so we can hand the drawing config to the
+    // Build & Price tool via ?config= URL param.  Open in new tab so
+    // the dashboard stays available for the next quote.
+    try {
+        const res = await fetch('/api/quotes/' + encodeURIComponent(id), { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const rec = await res.json();
+        if (!rec || !rec.drawing) {
+            toast('This quote has no saved drawing', 'error');
+            return;
+        }
+        const url = '/services/fence-build-price.html?config=' + encodeURIComponent(rec.drawing);
+        window.open(url, '_blank', 'noopener');
+    } catch (e) {
+        console.error('[openQuote]', e);
+        toast('Could not open quote: ' + (e.message || 'fetch failed'), 'error');
+    }
+}
+
+function promptDelete(id) {
+    pendingDeleteId = id;
+    const q = allQuotes.find(r => r.id === id);
+    const name = q ? (q.customerName || q.customerEmail || id) : id;
+    $('confirmDeleteText').innerHTML = 'This will permanently remove <strong>' + escHtml(name) + '</strong>’s saved quote from the dashboard. This cannot be undone — but the customer’s email already went out, so the email record is unaffected.';
+    $('confirmDelete').classList.add('open');
+}
+
+async function confirmDelete() {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    pendingDeleteId = null;
+    $('confirmDelete').classList.remove('open');
+    try {
+        const res = await fetch('/api/quotes/' + encodeURIComponent(id), {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        allQuotes = allQuotes.filter(r => r.id !== id);
+        renderTable();
+        toast('Quote deleted', 'success');
+    } catch (e) {
+        console.error('[delete]', e);
+        toast('Delete failed: ' + (e.message || 'network error'), 'error');
+    }
+}
+
+// Wire UI
+$('searchInput').addEventListener('input', renderTable);
+$('sortSelect').addEventListener('change', renderTable);
+$('refreshBtn').addEventListener('click', loadQuotes);
+$('confirmDeleteCancel').addEventListener('click', () => { pendingDeleteId = null; $('confirmDelete').classList.remove('open'); });
+$('confirmDeleteOk').addEventListener('click', confirmDelete);
+$('confirmDelete').addEventListener('click', (e) => {
+    if (e.target === $('confirmDelete')) {
+        pendingDeleteId = null;
+        $('confirmDelete').classList.remove('open');
+    }
+});
+
+// Initial load
+loadQuotes();
+</script>
+</body>
+</html>
