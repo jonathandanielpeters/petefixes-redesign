@@ -7329,7 +7329,19 @@
             const elP = document.getElementById('totalPosts');
             if (elP) elP.textContent = (corners || 0) + (ends || 0) + (linePosts || 0);
 
-            document.getElementById('totalPrice').textContent = '$' + total.toLocaleString();
+            // Admin frame: layer the parent-supplied admin extras on top
+            // of the engine total so the customer-facing footer matches
+            // the admin overlay's "Quote total".  Outside admin mode
+            // _adminExtrasTotal stays 0 and the display is unchanged.
+            // Expose the RAW engine total via data-engine-total so the
+            // admin builder doesn't double-count when it reads this DOM.
+            let displayTotal = total;
+            try {
+                if (_IS_ADMIN_FRAME && _adminExtrasTotal) displayTotal += _adminExtrasTotal;
+            } catch (e) { /* admin globals not initialized yet */ }
+            const totalEl = document.getElementById('totalPrice');
+            totalEl.textContent = '$' + Math.round(displayTotal).toLocaleString();
+            totalEl.dataset.engineTotal = String(Math.round(total));
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -9011,6 +9023,10 @@
             catch (e) { return false; }
         })();
         let _adminClickMode = false;
+        // Admin extras total (set by parent admin builder via postMessage).
+        // Added to the customer-facing #totalPrice so the black footer
+        // matches the admin overlay's "Quote total" after extras.
+        let _adminExtrasTotal = 0;
 
         // Admin selection state — populated by drag-rectangle / single-tap
         // when activeTool === 'select-admin'.  Each entry is either a real
@@ -9112,6 +9128,13 @@
                     document.body.classList.toggle('admin-click-mode', _adminClickMode);
                     // Reveal the Select tool button when admin click mode is on
                     if (selectToolBtn) selectToolBtn.style.display = _adminClickMode ? '' : 'none';
+                    return;
+                }
+                if (msg.type === 'admin:setExtrasTotal') {
+                    const newTotal = Number(msg.total) || 0;
+                    if (newTotal === _adminExtrasTotal) return;
+                    _adminExtrasTotal = newTotal;
+                    if (typeof updatePricing === 'function') updatePricing();
                     return;
                 }
                 if (msg.type === 'admin:getBreakdown') {

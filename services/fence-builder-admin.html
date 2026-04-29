@@ -335,6 +335,7 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
         <div class="panel-header">
             <h2>🔧 Admin Overlay</h2>
             <span class="desc">Custom parts + per-quote labour line items + admin notes. These add to the customer total <em>after</em> the engine math.</span>
+            <button id="panelCloseBtn" title="Hide the admin overlay" style="background:transparent;border:1px solid var(--gray-200);color:var(--gray-500);padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0">▼ Hide</button>
         </div>
         <div class="panel-tabs">
             <button class="panel-tab active" data-tab="parts">Custom parts</button>
@@ -627,6 +628,11 @@ function updateSummary() {
     const bd = state.breakdown || {};
     if ($('hdrMatSell'))   $('hdrMatSell').textContent   = fmtMoney(bd.matSell || 0);
     if ($('hdrLabCharge')) $('hdrLabCharge').textContent = fmtMoney(bd.labCharge || 0);
+    // Push the current admin-extras total into the iframe so its
+    // customer-facing footer ($/+tax) reflects the same number the
+    // admin overlay's "Quote total" shows.  Cheap postMessage; the
+    // iframe ignores it if it's not running in admin-frame mode.
+    try { iframe.contentWindow.postMessage({ type: 'admin:setExtrasTotal', total: adminExtrasTotal() }, '*'); } catch (e) {}
     // Profit ≈ engine total − (mat cost + lab cost) + admin extras.  This
     // is an OPERATOR view (true gross): customer pays grand total; we
     // pay matCost + labCost.  Admin extras are pure margin minus their
@@ -1096,15 +1102,25 @@ $('adminNotes').addEventListener('input', () => {
     markDirty();
 });
 
-// Panel toggle
+// Panel toggle: when the panel is OPEN, the floating "▲ Admin tools"
+// pill disappears so it doesn't overlap the iframe content.  Closing
+// is via the "▼ Hide" button inside the panel header.  When closed,
+// the pill re-appears at the bottom edge so the panel can be reopened.
 let panelOpen = true;
 function setPanel(open) {
     panelOpen = open;
     $('adminPanel').classList.toggle('open', open);
-    $('panelToggle').textContent = open ? '▼ Hide admin tools' : '▲ Admin tools';
-    $('panelToggle').style.bottom = open ? 'calc(50vh + 8px)' : '0';
+    if (open) {
+        $('panelToggle').style.display = 'none';
+    } else {
+        $('panelToggle').style.display = '';
+        $('panelToggle').textContent = '▲ Admin tools';
+        $('panelToggle').style.bottom = '0';
+    }
 }
 $('panelToggle').addEventListener('click', () => setPanel(!panelOpen));
+const _panelCloseBtn = $('panelCloseBtn');
+if (_panelCloseBtn) _panelCloseBtn.addEventListener('click', () => setPanel(false));
 setPanel(true);
 
 // ── Quote loading ──────────────────────────────────────────────────
@@ -1177,8 +1193,15 @@ function pollEngineTotal() {
         if (!doc) return;
         const totalEl = doc.getElementById('totalPrice');
         if (totalEl) {
-            const txt = (totalEl.textContent || '').replace(/[^\d.]/g, '');
-            const n = parseFloat(txt);
+            // Prefer the data-engine-total attribute (RAW engine total
+            // before admin extras) so we don't double-count when
+            // updateSummary later adds adminExtrasTotal().  Fall back to
+            // text parse for the brief moment before the iframe sets it.
+            let n = parseFloat(totalEl.dataset.engineTotal);
+            if (isNaN(n)) {
+                const txt = (totalEl.textContent || '').replace(/[^\d.]/g, '');
+                n = parseFloat(txt);
+            }
             if (!isNaN(n) && n !== state.engineTotal) {
                 state.engineTotal = n;
                 updateSummary();
