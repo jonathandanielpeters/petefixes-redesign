@@ -8851,7 +8851,90 @@
             drawCanvas();
         });
 
+        // ── Admin builder bridge ─────────────────────────────────────
+        // When this page is loaded inside the admin builder iframe, the
+        // parent enables "admin click mode" via postMessage.  Clicking
+        // an existing post in that mode bubbles a `postClicked` event
+        // up to the parent (which opens the per-post parts panel) and
+        // suppresses the regular drawing-tool behaviour.
+        const _IS_ADMIN_FRAME = (function() {
+            try { return window.parent && window.parent !== window.self; }
+            catch (e) { return false; }
+        })();
+        let _adminClickMode = false;
+
+        if (_IS_ADMIN_FRAME) {
+            window.addEventListener('message', (e) => {
+                const msg = (e && e.data) || {};
+                if (!msg || typeof msg !== 'object') return;
+                if (msg.type === 'admin:setClickMode') {
+                    _adminClickMode = !!msg.enabled;
+                    document.body.classList.toggle('admin-click-mode', _adminClickMode);
+                    return;
+                }
+                if (msg.type === 'admin:getMasterItems') {
+                    const items = (PCFG && PCFG.chainlinkMaster && PCFG.chainlinkMaster.items) || [];
+                    try { window.parent.postMessage({ type: 'admin:masterItems', items }, '*'); } catch (err) { /* ignore */ }
+                    return;
+                }
+                if (msg.type === 'admin:getPostMeta') {
+                    const id = msg.postId;
+                    const point = state.points.find(p => p.id === id);
+                    if (!point) {
+                        try { window.parent.postMessage({ type: 'admin:postMeta', postId: id, missing: true }, '*'); } catch (err) {}
+                        return;
+                    }
+                    let labelMap = {};
+                    try { labelMap = (typeof getPostNumberMap === 'function') ? getPostNumberMap() : {}; } catch (err) {}
+                    const linesAt = state.lines
+                        .map((l, idx) => ({ l, idx }))
+                        .filter(({ l }) => l.p1 === id || l.p2 === id)
+                        .map(({ l, idx }) => ({
+                            idx,
+                            otherEndId: l.p1 === id ? l.p2 : l.p1,
+                            otherEndLabel: labelMap[l.p1 === id ? l.p2 : l.p1] || '?',
+                            styleIdx: l.styleIdx || 0,
+                            fenceType: ((state.fenceStyles[l.styleIdx || 0]) || {}).fenceType || 'chainlink',
+                            height: ((state.fenceStyles[l.styleIdx || 0]) || {}).height || 6
+                        }));
+                    const gatesAt = state.gates
+                        .map((g, idx) => ({ g, idx }))
+                        .filter(({ g }) => g.p1 === id || g.p2 === id)
+                        .map(({ g, idx }) => ({ idx, gateType: g.gateType }));
+                    const isCorner = (typeof isCornerPost === 'function') && isCornerPost(id);
+                    const role = isCorner ? 'corner' : (linesAt.length === 0 && gatesAt.length === 0 ? 'orphan' : (linesAt.length + gatesAt.length === 1 ? 'end' : 'inline'));
+                    try {
+                        window.parent.postMessage({
+                            type: 'admin:postMeta',
+                            postId: id,
+                            label: labelMap[id] || '?',
+                            role,
+                            linesAt, gatesAt
+                        }, '*');
+                    } catch (err) {}
+                    return;
+                }
+            });
+        }
+
         canvas.addEventListener('click', (e) => {
+            // ADMIN HOOK: in admin-frame mode, a click on an existing
+            // post bubbles up to the parent admin builder + suppresses
+            // the regular drawing-tool behaviour.  We let the regular
+            // drag/pan checks above the click handler still run so
+            // admin can still pan + zoom; this only intercepts a clean
+            // (non-drag) tap that lands on a post.
+            if (_IS_ADMIN_FRAME && _adminClickMode && !isPanning && !dragMoved) {
+                const r0 = canvas.getBoundingClientRect();
+                const sx0 = e.clientX - r0.left, sy0 = e.clientY - r0.top;
+                const adminHit = (typeof findNearbyPoint === 'function') ? findNearbyPoint(sx0, sy0) : null;
+                if (adminHit) {
+                    state.selectedPointId = adminHit.id;
+                    drawCanvas();
+                    try { window.parent.postMessage({ type: 'admin:postClicked', postId: adminHit.id }, '*'); } catch (err) {}
+                    return;
+                }
+            }
             if (state.activeTool === 'pan' || spaceHeld || isPanning) return;
             if (dragMoved) { dragMoved = false; return; }
             const r = canvas.getBoundingClientRect();

@@ -328,6 +328,7 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
         <div class="panel-tabs">
             <button class="panel-tab active" data-tab="parts">Custom parts</button>
             <button class="panel-tab" data-tab="labour">Per-quote labour</button>
+            <button class="panel-tab" data-tab="postparts">Per-post parts</button>
             <button class="panel-tab" data-tab="notes">Admin notes</button>
         </div>
 
@@ -372,6 +373,47 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
                 </div>
             </div>
 
+            <div class="tab-pane" data-pane="postparts">
+                <div id="postPartsHint" style="font-size:12px;color:var(--gray-400);background:var(--gray-50);padding:14px 16px;border-radius:6px;line-height:1.55">
+                    Click any post in the drawing above to manage its parts.<br>
+                    <span style="font-size:11px">Posts are little circles where lines meet. The drawing tool stays in admin click mode while this panel is open — clicking a post opens its parts here instead of editing the geometry.</span>
+                </div>
+                <div id="postPartsBody" style="display:none">
+                    <div id="postPartsHeader" style="padding:8px 12px;background:var(--admin-light);border-radius:6px;font-size:12px;color:var(--admin);margin-bottom:10px"></div>
+
+                    <div style="margin-bottom:10px">
+                        <label style="font-size:11px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:4px">Search the parts catalog</label>
+                        <input type="search" id="postPartsSearch" placeholder="Type a code or description… e.g. tension band, brace, post cap" style="width:100%;padding:7px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit">
+                        <div id="postPartsSearchResults" style="max-height:180px;overflow-y:auto;border:1px solid var(--gray-100);border-radius:6px;margin-top:6px;display:none;background:var(--white)"></div>
+                    </div>
+
+                    <div style="margin-top:14px">
+                        <div style="font-size:11px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Custom parts on this post</div>
+                        <table class="line-items" id="postPartsTable">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:240px">Description</th>
+                                    <th style="width:80px;text-align:right">Qty</th>
+                                    <th style="width:110px;text-align:right">Unit cost ($)</th>
+                                    <th style="width:110px;text-align:right">Markup %</th>
+                                    <th style="width:110px;text-align:right">Sell ($)</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <div class="add-row" style="margin-top:8px">
+                            <button data-add="postpart">+ Manual add (no SKU lookup)</button>
+                        </div>
+                    </div>
+
+                    <div class="section-summary" style="margin-top:8px">
+                        <span>Cost on this post: <strong id="postPartsCostSum">$0</strong></span>
+                        <span>Sell on this post: <strong id="postPartsSellSum">$0</strong></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="tab-pane" data-pane="notes">
                 <label style="font-size:11px;color:var(--gray-400);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:6px">Internal admin notes (not shown to customer)</label>
                 <textarea class="notes" id="adminNotes" placeholder="Site notes, equipment requirements, scheduling caveats, follow-up reminders…"></textarea>
@@ -399,13 +441,18 @@ const state = {
     engineTotal: 0,
     // Admin extras stored on quote.adminExtras
     adminExtras: {
-        customParts: [],
+        customParts: [],   // each row may carry { ..., attachedToPost: <id> }
         customLabour: [],
         adminNotes: ''
     },
     record: null,           // last loaded full quote record
     loadedDrawing: null,    // serialized drawing from the loaded quote
-    dirty: false
+    dirty: false,
+    // Per-post overlay
+    selectedPostId: null,
+    selectedPostMeta: null,
+    masterItems: [],         // chainlink master parts catalog (from iframe)
+    masterFetched: false
 };
 
 function escHtml(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -450,14 +497,20 @@ function renderPartsTable() {
     const tbody = $('partsTable').querySelector('tbody');
     const rows = state.adminExtras.customParts || [];
     if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No custom parts yet. Click <b>+ Add custom part</b> for one-off SKUs that aren\'t in the standard recipes.</div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No custom parts yet. Click <b>+ Add custom part</b> for one-off SKUs that aren\'t in the standard recipes, or open <b>Per-post parts</b> after clicking a post.</div></td></tr>';
     } else {
         let html = '';
         rows.forEach((r, i) => {
             const cost = (Number(r.qty) || 0) * (Number(r.unitCost) || 0);
             const sell = cost * (1 + (Number(r.markupPct) || 0) / 100);
+            // Small badge on per-post-attached rows so the operator can
+            // see at a glance which custom parts came from the per-post
+            // panel vs free-form additions.
+            const postBadge = (r.attachedToPost != null)
+                ? '<span style="display:inline-block;font-size:9px;font-weight:700;background:rgba(74,144,217,0.15);color:var(--admin);padding:1px 6px;border-radius:8px;margin-right:6px">📍 post</span>'
+                : '';
             html += '<tr data-row-idx="' + i + '">' +
-                '<td><input data-field="description" value="' + escHtml(r.description) + '" placeholder="e.g. Custom 10ft post — galvanized" /></td>' +
+                '<td>' + postBadge + '<input data-field="description" value="' + escHtml(r.description) + '" placeholder="e.g. Custom 10ft post — galvanized" style="width:calc(100% - ' + (postBadge ? '60px' : '0') + ')" /></td>' +
                 '<td><input class="qty" data-field="qty" type="number" step="0.5" min="0" value="' + (r.qty || 0) + '" /></td>' +
                 '<td><input class="unit" data-field="unitCost" type="number" step="0.01" min="0" value="' + (r.unitCost || 0) + '" /></td>' +
                 '<td><input class="qty" data-field="markupPct" type="number" step="1" min="0" value="' + (r.markupPct || 0) + '" /></td>' +
@@ -541,9 +594,201 @@ function updateSummary() {
     $('partsCostSum').textContent = fmtMoney(partsCost(state.adminExtras.customParts || []));
     $('partsSellSum').textContent = fmtMoney(partsSell(state.adminExtras.customParts || []));
     $('labourSum').textContent    = fmtMoney(labourTotal(state.adminExtras.customLabour || []));
+    // Per-post panel summary mirrors the filtered-to-this-post sub-list
+    const onPost = (state.adminExtras.customParts || []).filter(r => r.attachedToPost === state.selectedPostId);
+    if ($('postPartsCostSum')) $('postPartsCostSum').textContent = fmtMoney(partsCost(onPost));
+    if ($('postPartsSellSum')) $('postPartsSellSum').textContent = fmtMoney(partsSell(onPost));
     const grand = (state.engineTotal || 0) + adminExtrasTotal();
     $('grandTotal').textContent = fmtMoney(grand);
 }
+
+// ── Per-post parts panel ───────────────────────────────────────────
+// Renders the post-info header + the list of custom parts attached to
+// the currently selected post.  Adding from the search results pushes
+// a new row into adminExtras.customParts tagged with attachedToPost.
+function renderPostPartsPanel() {
+    const hint = $('postPartsHint');
+    const body = $('postPartsBody');
+    if (!hint || !body) return;
+    if (state.selectedPostId == null) {
+        hint.style.display = '';
+        body.style.display = 'none';
+        return;
+    }
+    hint.style.display = 'none';
+    body.style.display = '';
+
+    const meta = state.selectedPostMeta || {};
+    const linesStr = (meta.linesAt && meta.linesAt.length > 0)
+        ? meta.linesAt.map(l => 'Line ' + (l.idx + 1) + ' → ' + l.otherEndLabel + ' (' + (l.fenceType || 'chainlink') + ' ' + l.height + "')").join(' · ')
+        : '(no connected lines)';
+    const gatesStr = (meta.gatesAt && meta.gatesAt.length > 0)
+        ? ' · ' + meta.gatesAt.map(g => 'Gate ' + (g.idx + 1) + ' (' + (g.gateType || '?') + ')').join(', ')
+        : '';
+    $('postPartsHeader').innerHTML = '<strong>📍 Post ' + escHtml(meta.label || '?') + '</strong>' +
+        ' <span style="opacity:0.7">· role: ' + escHtml(meta.role || '?') + '</span>' +
+        '<div style="font-size:11px;color:var(--gray-500);margin-top:3px;font-weight:400">' + escHtml(linesStr + gatesStr) + '</div>';
+
+    renderPostPartsTable();
+}
+
+function renderPostPartsTable() {
+    const tbody = $('postPartsTable').querySelector('tbody');
+    const rows = (state.adminExtras.customParts || [])
+        .map((r, i) => ({ r, i }))
+        .filter(({ r }) => r.attachedToPost === state.selectedPostId);
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No custom parts on this post yet. Search above to add a SKU, or use <b>+ Manual add</b> for an off-catalog item.</div></td></tr>';
+    } else {
+        let html = '';
+        rows.forEach(({ r, i }) => {
+            const cost = (Number(r.qty) || 0) * (Number(r.unitCost) || 0);
+            const sell = cost * (1 + (Number(r.markupPct) || 0) / 100);
+            html += '<tr data-row-idx="' + i + '">' +
+                '<td><input data-field="description" value="' + escHtml(r.description) + '" placeholder="Part description" /></td>' +
+                '<td><input class="qty" data-field="qty" type="number" step="0.5" min="0" value="' + (r.qty || 0) + '" /></td>' +
+                '<td><input class="unit" data-field="unitCost" type="number" step="0.01" min="0" value="' + (r.unitCost || 0) + '" /></td>' +
+                '<td><input class="qty" data-field="markupPct" type="number" step="1" min="0" value="' + (r.markupPct || 0) + '" /></td>' +
+                '<td class="total">' + fmtMoney(sell) + '</td>' +
+                '<td class="del"><button class="del-btn" data-del="postparts">×</button></td>' +
+                '</tr>';
+        });
+        tbody.innerHTML = html;
+    }
+    bindRowEvents(tbody, 'parts');  // reuse the parts row binder
+    // Also wire the postpart-specific delete (data-del="postparts")
+    tbody.querySelectorAll('button[data-del="postparts"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tr = btn.closest('tr');
+            if (!tr) return;
+            const idx = parseInt(tr.dataset.rowIdx);
+            if (isNaN(idx)) return;
+            state.adminExtras.customParts.splice(idx, 1);
+            renderPartsTable();
+            renderPostPartsTable();
+            updateSummary();
+            markDirty();
+        });
+    });
+}
+
+// Master-parts search — filters PCFG.chainlinkMaster.items fetched
+// via postMessage from the iframe.  Click a hit to add it as a custom
+// part attached to the currently selected post.
+let _searchTimer = null;
+function onSearchInput() {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(renderSearchResults, 120);
+}
+function renderSearchResults() {
+    const host = $('postPartsSearchResults');
+    if (!host) return;
+    const q = ($('postPartsSearch').value || '').trim().toLowerCase();
+    if (!q || q.length < 2) {
+        host.style.display = 'none';
+        host.innerHTML = '';
+        return;
+    }
+    if (!state.masterFetched) {
+        // Lazy-fetch from iframe on first search
+        try {
+            iframe.contentWindow.postMessage({ type: 'admin:getMasterItems' }, '*');
+            state.masterFetched = true;
+        } catch (e) {}
+    }
+    const items = state.masterItems || [];
+    if (items.length === 0) {
+        host.style.display = '';
+        host.innerHTML = '<div style="padding:10px 12px;color:var(--gray-400);font-size:12px">No parts catalog loaded yet — fetching from the builder…</div>';
+        return;
+    }
+    const hits = items.filter(it => {
+        const blob = ((it.code || '') + ' ' + (it.description || '') + ' ' + (it.category || '') + ' ' + (it.material || '')).toLowerCase();
+        return blob.indexOf(q) !== -1;
+    }).slice(0, 30);
+    if (hits.length === 0) {
+        host.style.display = '';
+        host.innerHTML = '<div style="padding:10px 12px;color:var(--gray-400);font-size:12px">No parts match "' + escHtml(q) + '"</div>';
+        return;
+    }
+    let html = '';
+    hits.forEach((it, i) => {
+        const price = Number(it.priceAfterTax || it.price || it.cost || 0);
+        html += '<div class="search-result" data-hit-idx="' + i + '" style="padding:7px 10px;border-bottom:1px solid var(--gray-100);cursor:pointer;display:flex;gap:10px;align-items:center;font-size:12px">' +
+            '<div style="flex:1;min-width:0">' +
+                '<div style="font-weight:600;color:var(--black);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(it.description || it.code || 'Part') + '</div>' +
+                '<div style="font-size:10px;color:var(--gray-400);font-family:Menlo,monospace">' + escHtml(it.code || '') + (it.category ? ' · ' + escHtml(it.category) : '') + '</div>' +
+            '</div>' +
+            '<div style="font-weight:600;color:var(--admin);white-space:nowrap">' + fmtMoney(price) + '</div>' +
+            '<button data-add-hit="' + i + '" style="background:var(--admin);color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add</button>' +
+            '</div>';
+    });
+    host.style.display = '';
+    host.innerHTML = html;
+    host.querySelectorAll('button[data-add-hit]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.addHit);
+            const it = hits[idx];
+            if (!it) return;
+            addPartToPost(it);
+        });
+    });
+}
+
+function addPartToPost(item) {
+    if (state.selectedPostId == null) return;
+    const cost = Number(item.priceAfterTax || item.price || item.cost || 0);
+    state.adminExtras.customParts.push({
+        description: (item.code ? item.code + ' — ' : '') + (item.description || 'Part'),
+        qty: 1,
+        unitCost: cost,
+        markupPct: 50,
+        attachedToPost: state.selectedPostId,
+        sourceCode: item.code || null
+    });
+    renderPartsTable();
+    renderPostPartsTable();
+    updateSummary();
+    markDirty();
+    // Clear search to make the next-add quick
+    $('postPartsSearch').value = '';
+    $('postPartsSearchResults').style.display = 'none';
+}
+
+// ── Iframe ↔ admin postMessage ─────────────────────────────────────
+window.addEventListener('message', (e) => {
+    const msg = (e && e.data) || {};
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.type === 'admin:postClicked') {
+        state.selectedPostId = msg.postId;
+        state.selectedPostMeta = null;
+        // Switch to the per-post tab so the panel is visible
+        document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        const tab = document.querySelector('.panel-tab[data-tab="postparts"]');
+        const pane = document.querySelector('.tab-pane[data-pane="postparts"]');
+        if (tab) tab.classList.add('active');
+        if (pane) pane.classList.add('active');
+        if (!panelOpen) setPanel(true);
+        // Ask the iframe for full metadata so we can label the post
+        try { iframe.contentWindow.postMessage({ type: 'admin:getPostMeta', postId: msg.postId }, '*'); } catch (err) {}
+        renderPostPartsPanel();
+        return;
+    }
+    if (msg.type === 'admin:postMeta') {
+        if (msg.postId === state.selectedPostId) {
+            state.selectedPostMeta = msg;
+            renderPostPartsPanel();
+        }
+        return;
+    }
+    if (msg.type === 'admin:masterItems') {
+        state.masterItems = Array.isArray(msg.items) ? msg.items : [];
+        // Re-render search if there's a pending query
+        if (($('postPartsSearch').value || '').trim().length >= 2) renderSearchResults();
+        return;
+    }
+});
 
 // ── Add buttons ────────────────────────────────────────────────────
 document.querySelectorAll('button[data-add]').forEach(btn => {
@@ -551,18 +796,39 @@ document.querySelectorAll('button[data-add]').forEach(btn => {
         if (btn.dataset.add === 'parts') {
             state.adminExtras.customParts.push({ description: '', qty: 1, unitCost: 0, markupPct: 50 });
             renderPartsTable();
-        } else {
+        } else if (btn.dataset.add === 'labour') {
             state.adminExtras.customLabour.push({ description: '', hours: 1, rate: 85 });
             renderLabourTable();
+        } else if (btn.dataset.add === 'postpart') {
+            // Manual add (no SKU lookup) — same shape, tagged with postId
+            if (state.selectedPostId == null) return;
+            state.adminExtras.customParts.push({
+                description: '', qty: 1, unitCost: 0, markupPct: 50,
+                attachedToPost: state.selectedPostId
+            });
+            renderPartsTable();
+            renderPostPartsTable();
         }
         updateSummary();
         markDirty();
-        // Focus the newest description input
+        // Focus the newest description input in whichever pane we're in
         const tab = btn.closest('.tab-pane');
-        const last = tab.querySelector('tr:last-child input[data-field="description"]');
+        const last = tab && tab.querySelector('tr:last-child input[data-field="description"]');
         if (last) last.focus();
     });
 });
+
+// Wire per-post search input
+const _postSearchEl = $('postPartsSearch');
+if (_postSearchEl) {
+    _postSearchEl.addEventListener('input', onSearchInput);
+    _postSearchEl.addEventListener('focus', () => {
+        if (!state.masterFetched) {
+            try { iframe.contentWindow.postMessage({ type: 'admin:getMasterItems' }, '*'); } catch (e) {}
+            state.masterFetched = true;
+        }
+    });
+}
 
 // Tabs
 document.querySelectorAll('.panel-tab').forEach(tab => {
@@ -642,6 +908,13 @@ function pushDrawingToIframe() {
 
 iframe.addEventListener('load', () => {
     iframeReady = true;
+    // Enable the per-post click hook in the iframe so taps on posts
+    // bubble up here as `admin:postClicked` messages.  Any iframe
+    // reload (e.g. when we push a saved drawing) re-runs this listener
+    // so admin click mode stays on for the whole session.
+    try {
+        iframe.contentWindow.postMessage({ type: 'admin:setClickMode', enabled: true }, '*');
+    } catch (e) { /* not ready yet — message events handle async */ }
     // Listen for total-price messages from the iframe.  Until we add a
     // proper postMessage hook in the builder, fall back to polling its
     // window for the totalPrice element so the admin overlay stays in
