@@ -919,27 +919,16 @@ function renderPartsListPane() {
     const order = state.materialOrder;
     const v3 = state.v3Parts;
     const adminParts = state.adminExtras.customParts || [];
-    if (!order || !order.items || order.items.length === 0) {
+    // Empty-state guard — show "draw a fence" hint when neither the
+    // consolidated order nor the V3 SKU breakdown has anything to show.
+    const hasOrder = order && order.items && order.items.length > 0;
+    const hasV3 = v3 && v3.categories && v3.categories.length > 0;
+    if (!hasOrder && !hasV3) {
         host.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:14px 16px;background:var(--gray-50);border-radius:6px;text-align:center">Draw a fence to see the parts list.</div>';
         return;
     }
     const fmt = n => '$' + Math.round((n || 0) * 100) / 100;
     let html = '';
-
-    // ─ Consolidated material order ─────────────────────────────
-    html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:4px 0 6px">📋 Material Order — consolidated</div>';
-    html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">All lumber + chainlink + gate parts the engine pulled in for this drawing.</div>';
-    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
-    html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Material</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Total</th></tr></thead><tbody>';
-    order.items.forEach(it => {
-        html += '<tr style="border-bottom:1px solid var(--gray-100)"><td style="padding:5px 8px">' + escHtml(it.label) + '</td>' +
-            '<td style="padding:5px 8px;text-align:right">' + (it.qty || 0) + '</td>' +
-            '<td style="padding:5px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
-            '<td style="padding:5px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td></tr>';
-    });
-    html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="3" style="padding:6px 8px">Material subtotal (cost)</td>' +
-        '<td style="padding:6px 8px;text-align:right">' + fmt(order.totalMaterial || 0) + '</td></tr>';
-    html += '</tbody></table>';
 
     // ─ V3 chainlink breakdown (when applicable) ────────────────
     if (v3 && v3.categories && v3.categories.length > 0) {
