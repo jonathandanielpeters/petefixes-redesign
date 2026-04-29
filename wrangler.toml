@@ -14,7 +14,7 @@ SQUARE_ENV = "sandbox"
 directory = "./"
 binding = "ASSETS"
 not_found_handling = "404-page"
-run_worker_first = ["/services/fence-admin*", "/services/fence-quotes*", "/api/*"]
+run_worker_first = ["/services/fence-admin*", "/services/fence-quotes*", "/services/fence-builder-admin*", "/api/*"]
 
 # Cloud-stored admin config (pricing recipes + master pricelist + branding).
 # Read by /api/config GET, written by /api/config PUT (auth-protected).

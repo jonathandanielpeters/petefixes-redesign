@@ -16,7 +16,11 @@
 const DEFAULT_USER = "admin";
 
 // ── Paths that require auth ─────────────────────────────────────────
-const PROTECTED = ["/services/fence-admin", "/services/fence-quotes"];
+const PROTECTED = [
+  "/services/fence-admin",
+  "/services/fence-quotes",
+  "/services/fence-builder-admin",  // admin version of the Build & Price tool
+];
 
 function isProtected(pathname) {
   const clean = pathname.replace(/\.html$/, "").replace(/\/$/, "");
@@ -535,6 +539,47 @@ async function handleQuotes(request, env, idFromPath) {
   if (request.method === "DELETE" && idFromPath) {
     await env.CONFIG_KV.delete("quote:" + idFromPath);
     return corsResponse({ ok: true, id: idFromPath });
+  }
+
+  // PUT /api/quotes/:id — admin-only edit (custom parts + labour, status,
+  // notes). Merges into the existing record so we don't have to round-trip
+  // every field on every save.
+  if (request.method === "PUT" && idFromPath) {
+    const existing = await env.CONFIG_KV.get("quote:" + idFromPath);
+    if (!existing) return corsResponse({ ok: false, error: "not_found" }, 404);
+    let patch;
+    try { patch = await request.json(); }
+    catch { return corsResponse({ ok: false, error: "invalid JSON" }, 400); }
+    let record;
+    try { record = JSON.parse(existing); }
+    catch { return corsResponse({ ok: false, error: "stored record corrupt" }, 500); }
+    // Whitelisted top-level patch fields. Don't let admins overwrite
+    // immutable provenance (id, createdAt, source).
+    const allowed = ["status", "adminNotes", "adminExtras", "drawing", "drawingPng", "estimate", "customer"];
+    Object.keys(patch).forEach(k => {
+      if (allowed.indexOf(k) !== -1) record[k] = patch[k];
+    });
+    record.updatedAt = new Date().toISOString();
+    record.updatedBy = "admin";
+    const json = JSON.stringify(record);
+    if (json.length > 5 * 1024 * 1024) {
+      return corsResponse({ ok: false, error: "quote payload too large (>5MB)" }, 413);
+    }
+    await env.CONFIG_KV.put("quote:" + idFromPath, json, {
+      metadata: {
+        createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        customerName: ((record.customer && (record.customer.firstName || "")) + " " + (record.customer && (record.customer.lastName || ""))).trim(),
+        customerEmail: (record.customer && record.customer.email) || "",
+        customerPhone: (record.customer && record.customer.phone) || "",
+        address: (record.customer && record.customer.address) || "",
+        total: (record.estimate && record.estimate.total) || 0,
+        title: (record.estimate && record.estimate.title) || "",
+        status: record.status || "new",
+        deploymentId: record.deploymentId || "default",
+      },
+    });
+    return corsResponse({ ok: true, id: idFromPath, updatedAt: record.updatedAt });
   }
 
   return corsResponse({ ok: false, error: "method not allowed" }, 405);
