@@ -528,6 +528,8 @@ const state = {
         customLabour: [],
         adminNotes: '',
         removedSkus: [],            // array of SKU keys removed from the engine list
+        skuQtyOverrides: {},        // sku-code → forced qty (replaces engine qty)
+        customSkus: [],             // [{ code, description, qty, unitPrice, category }] manually added
         matSellOverride: null,      // null = use engine matSell
         labCostOverride: null,      // null = use engine labCost (operator-only)
         labSellOverride: null       // null = use engine labCharge
@@ -603,16 +605,68 @@ function removedSkuSell() {
     return cost * markup;
 }
 
+// Resolved qty for a SKU after applying any admin override.
+function effectiveSkuQty(code, engineQty) {
+    const ov = state.adminExtras.skuQtyOverrides || {};
+    if (Object.prototype.hasOwnProperty.call(ov, code)) {
+        const n = Number(ov[code]);
+        if (!isNaN(n) && n >= 0) return n;
+    }
+    return engineQty;
+}
+
+// Cost delta from qty overrides on engine SKUs.  (override - engine) × unit.
+function qtyOverrideCostDelta() {
+    const ov = state.adminExtras.skuQtyOverrides || {};
+    if (!ov || Object.keys(ov).length === 0) return 0;
+    if (!state.unifiedParts || !Array.isArray(state.unifiedParts.categories)) return 0;
+    let delta = 0;
+    state.unifiedParts.categories.forEach(cat => {
+        (cat.items || []).forEach(it => {
+            if (Object.prototype.hasOwnProperty.call(ov, it.code)) {
+                const eff = Number(ov[it.code]);
+                const eng = Number(it.qty) || 0;
+                if (!isNaN(eff)) delta += (eff - eng) * (Number(it.unitPrice) || 0);
+            }
+        });
+    });
+    return delta;
+}
+
+// Sell-side delta from qty overrides — uses the engine's effective material markup.
+function qtyOverrideSellDelta() {
+    const cost = qtyOverrideCostDelta();
+    if (cost === 0) return 0;
+    const bd = state.breakdown || {};
+    const markup = (bd.matCost > 0) ? (bd.matSell / bd.matCost) : 1;
+    return cost * markup;
+}
+
+// Total cost of admin-added custom SKUs.
+function customSkuCost() {
+    const list = state.adminExtras.customSkus || [];
+    return list.reduce((s, r) => s + (Number(r.qty) || 0) * (Number(r.unitPrice) || 0), 0);
+}
+function customSkuSell() {
+    const cost = customSkuCost();
+    if (cost <= 0) return 0;
+    const bd = state.breakdown || {};
+    const markup = (bd.matCost > 0) ? (bd.matSell / bd.matCost) : 1;
+    return cost * markup;
+}
+
 // Net delta from engine total to final customer-facing quote total.
-// = customParts.sell + customLabour - removedSkuSell + (matSellOverride ?? 0 delta) + (labSellOverride ?? 0 delta).
+// = customParts.sell + customLabour − removedSkuSell + qtyOverrideSellDelta
+//   + customSkuSell + (matSellOverride ?? 0 delta) + (labSellOverride ?? 0 delta).
 // labCostOverride does not affect the customer total, only profit math.
 function adminExtrasTotal() {
     const bd = state.breakdown || {};
     const customSell = partsSell(state.adminExtras.customParts || []);
     const customLab  = labourTotal(state.adminExtras.customLabour || []);
 
-    // Effective material sell — override wins; otherwise engine value minus removed SKU sell.
-    const baseMatSell = (bd.matSell || 0) - removedSkuSell();
+    // Effective material sell — override wins; otherwise engine value minus
+    // removed SKU sell, plus qty-override delta and custom SKUs.
+    const baseMatSell = (bd.matSell || 0) - removedSkuSell() + qtyOverrideSellDelta() + customSkuSell();
     const effMatSell = (state.adminExtras.matSellOverride != null && !isNaN(state.adminExtras.matSellOverride))
         ? Number(state.adminExtras.matSellOverride)
         : baseMatSell;
@@ -1065,12 +1119,25 @@ function renderPartsListPane() {
         return '<button class="sku-toggle-btn" data-sku-toggle="' + escHtml(skuKey) + '" title="' + title + '" style="background:transparent;border:1px solid ' + color + ';color:' + color + ';width:22px;height:22px;border-radius:50%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1;padding:0">' + label + '</button>';
     }
 
+    const qtyOv = state.adminExtras.skuQtyOverrides || {};
+    const customSkus = state.adminExtras.customSkus || [];
+
+    // Editable qty input — pre-fills with the override (if set) or the engine
+    // qty.  The placeholder shows the engine value so admin always sees what
+    // the recipe expected vs. what they're forcing.
+    function qtyCell(code, engineQty) {
+        const hasOverride = Object.prototype.hasOwnProperty.call(qtyOv, code);
+        const val = hasOverride ? qtyOv[code] : engineQty;
+        const colorStyle = hasOverride ? 'color:var(--admin);font-weight:700' : 'color:var(--black);font-weight:600';
+        return '<input type="number" min="0" step="1" value="' + val + '" placeholder="' + engineQty + '" data-sku-qty="' + escHtml(code) + '" data-engine-qty="' + engineQty + '" style="width:55px;text-align:right;padding:2px 4px;border:1px solid var(--gray-200);border-radius:3px;font-size:11px;font-family:inherit;' + colorStyle + '">';
+    }
+
     // ─ Unified Parts List — V3 chainlink + wood lumber + gate kits + ─
     //   post hardware + privacy + etc. Single source of truth.
-    html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🔩 Parts List — Exact SKUs (by Category)</div>';
-    html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Every SKU the engine pulled in for this drawing — chain-link recipes, wood lumber from the price chart, gate kits, post hardware, privacy bags. Click × to remove a SKU from the quote.</div>';
+    html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px;display:flex;align-items:center;gap:8px"><span>🔩 Parts List — Exact SKUs (by Category)</span><button id="addSkuBtn" style="margin-left:auto;background:var(--admin);color:#fff;border:none;padding:5px 12px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">+ Add SKU</button></div>';
+    html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Every SKU the engine pulled in for this drawing. Edit qty to override the recipe count, click × to drop a SKU, or <b>+ Add SKU</b> to insert a new one.</div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
-    html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:120px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
+    html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:120px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
     let activeGrandTotal = 0;
     unified.categories.forEach(cat => {
         html += '<tr style="background:var(--gray-100)"><td colspan="6" style="padding:5px 8px;font-weight:700;font-size:10px;color:var(--gray-500);letter-spacing:0.05em">' + escHtml(cat.category) + '</td></tr>';
@@ -1078,13 +1145,15 @@ function renderPartsListPane() {
         (cat.items || []).forEach(it => {
             const isRemoved = removed.has(it.code);
             const rowStyle = isRemoved ? removedRowStyle : '';
-            if (!isRemoved) activeSub += (it.total || 0);
+            const effQty = effectiveSkuQty(it.code, Number(it.qty) || 0);
+            const effTotal = effQty * (Number(it.unitPrice) || 0);
+            if (!isRemoved) activeSub += effTotal;
             html += '<tr style="border-bottom:1px solid var(--gray-100);' + rowStyle + '">' +
                 '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.code || '') + '</td>' +
                 '<td style="padding:4px 8px">' + escHtml(it.description || '') + '</td>' +
-                '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
+                '<td style="padding:4px 8px;text-align:right">' + qtyCell(it.code, Number(it.qty) || 0) + '</td>' +
                 '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
-                '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td>' +
+                '<td style="padding:4px 8px;text-align:right;font-weight:600" data-sku-total="' + escHtml(it.code || '') + '">' + fmt(effTotal) + '</td>' +
                 '<td style="padding:4px 8px;text-align:center">' + actionBtn(it.code || '') + '</td>' +
                 '</tr>';
         });
@@ -1092,6 +1161,28 @@ function renderPartsListPane() {
         html += '<tr style="background:#fafafa;font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--gray-500)">' + escHtml(cat.category) + ' subtotal (active)</td>' +
             '<td style="padding:5px 8px;text-align:right">' + fmt(activeSub) + '</td><td></td></tr>';
     });
+
+    // ─ Custom SKUs added by the admin in this quote ─
+    if (customSkus.length > 0) {
+        html += '<tr style="background:var(--admin);color:#fff"><td colspan="6" style="padding:5px 8px;font-weight:700;font-size:10px;letter-spacing:0.05em">CUSTOM (admin-added)</td></tr>';
+        let customSub = 0;
+        customSkus.forEach((c, i) => {
+            const total = (Number(c.qty) || 0) * (Number(c.unitPrice) || 0);
+            customSub += total;
+            html += '<tr style="border-bottom:1px solid var(--gray-100);background:rgba(74,144,217,0.04)">' +
+                '<td style="padding:4px 8px"><input type="text" value="' + escHtml(c.code || '') + '" data-custom-sku-field="code" data-custom-sku-idx="' + i + '" placeholder="SKU code" style="width:100px;padding:2px 4px;border:1px solid var(--gray-200);border-radius:3px;font-size:10px;font-family:Menlo,Consolas,monospace"></td>' +
+                '<td style="padding:4px 8px"><input type="text" value="' + escHtml(c.description || '') + '" data-custom-sku-field="description" data-custom-sku-idx="' + i + '" placeholder="Description" style="width:100%;padding:2px 4px;border:1px solid var(--gray-200);border-radius:3px;font-size:11px;font-family:inherit"></td>' +
+                '<td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (c.qty || 0) + '" data-custom-sku-field="qty" data-custom-sku-idx="' + i + '" style="width:55px;text-align:right;padding:2px 4px;border:1px solid var(--gray-200);border-radius:3px;font-size:11px;font-family:inherit"></td>' +
+                '<td style="padding:4px 8px;text-align:right"><input type="number" min="0" step="0.01" value="' + (c.unitPrice || 0) + '" data-custom-sku-field="unitPrice" data-custom-sku-idx="' + i + '" style="width:70px;text-align:right;padding:2px 4px;border:1px solid var(--gray-200);border-radius:3px;font-size:11px;font-family:inherit"></td>' +
+                '<td style="padding:4px 8px;text-align:right;font-weight:600" data-custom-sku-total="' + i + '">' + fmt(total) + '</td>' +
+                '<td style="padding:4px 8px;text-align:center"><button class="custom-sku-del-btn" data-custom-sku-del="' + i + '" title="Remove this SKU" style="background:transparent;border:1px solid #c43c3c;color:#c43c3c;width:22px;height:22px;border-radius:50%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1;padding:0">×</button></td>' +
+                '</tr>';
+        });
+        activeGrandTotal += customSub;
+        html += '<tr style="background:rgba(74,144,217,0.10);font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--admin)">Custom SKUs subtotal</td>' +
+            '<td style="padding:5px 8px;text-align:right">' + fmt(customSub) + '</td><td></td></tr>';
+    }
+
     html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Parts List active total</td>' +
         '<td style="padding:6px 8px;text-align:right">' + fmt(activeGrandTotal) + '</td><td></td></tr>';
     html += '</tbody></table>';
@@ -1152,6 +1243,92 @@ function renderPartsListPane() {
             markDirty();
         });
     });
+
+    // Editable SKU qty — typing a value writes to skuQtyOverrides; clearing
+    // the input (or matching the engine value) restores the engine qty.
+    host.querySelectorAll('input[data-sku-qty]').forEach(inp => {
+        inp.addEventListener('input', () => {
+            const code = inp.dataset.skuQty;
+            const engineQty = Number(inp.dataset.engineQty) || 0;
+            const raw = inp.value.trim();
+            if (!state.adminExtras.skuQtyOverrides) state.adminExtras.skuQtyOverrides = {};
+            const ov = state.adminExtras.skuQtyOverrides;
+            if (raw === '') {
+                delete ov[code];
+            } else {
+                const v = Math.max(0, Math.round(Number(raw) || 0));
+                if (v === engineQty) delete ov[code];
+                else ov[code] = v;
+            }
+            // Recompute the row total inline so typing feels live without a
+            // full re-render (which would steal focus).
+            const totalCell = host.querySelector('[data-sku-total="' + CSS.escape(code) + '"]');
+            if (totalCell) {
+                const eff = effectiveSkuQty(code, engineQty);
+                const row = inp.closest('tr');
+                const unitCell = row && row.children[3];
+                const unitPrice = unitCell ? parseFloat((unitCell.textContent || '').replace(/[^0-9.\-]/g, '')) || 0 : 0;
+                totalCell.textContent = '$' + Math.round(eff * unitPrice * 100) / 100;
+            }
+            // Reflect override styling on the input itself.
+            const overridden = Object.prototype.hasOwnProperty.call(ov, code);
+            inp.style.color = overridden ? 'var(--admin)' : 'var(--black)';
+            inp.style.fontWeight = overridden ? '700' : '600';
+            updateSummary();
+            markDirty();
+        });
+    });
+
+    // Custom SKU rows — admin-added SKUs that flow into the customer total
+    // alongside engine SKUs. Each field updates state.adminExtras.customSkus.
+    host.querySelectorAll('input[data-custom-sku-idx]').forEach(inp => {
+        inp.addEventListener('input', () => {
+            const idx = parseInt(inp.dataset.customSkuIdx);
+            const field = inp.dataset.customSkuField;
+            if (isNaN(idx) || !field) return;
+            const list = state.adminExtras.customSkus || [];
+            if (!list[idx]) return;
+            if (field === 'qty' || field === 'unitPrice') {
+                list[idx][field] = Number(inp.value) || 0;
+            } else {
+                list[idx][field] = inp.value;
+            }
+            const totalCell = host.querySelector('[data-custom-sku-total="' + idx + '"]');
+            if (totalCell) {
+                const t = (Number(list[idx].qty) || 0) * (Number(list[idx].unitPrice) || 0);
+                totalCell.textContent = '$' + Math.round(t * 100) / 100;
+            }
+            updateSummary();
+            markDirty();
+        });
+    });
+    host.querySelectorAll('button[data-custom-sku-del]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.customSkuDel);
+            if (isNaN(idx)) return;
+            const list = state.adminExtras.customSkus || [];
+            list.splice(idx, 1);
+            renderPartsListPane();
+            updateSummary();
+            markDirty();
+        });
+    });
+
+    // + Add SKU — appends an empty custom SKU row that the admin can fill in.
+    const addBtn = host.querySelector('#addSkuBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', () => {
+            if (!Array.isArray(state.adminExtras.customSkus)) state.adminExtras.customSkus = [];
+            state.adminExtras.customSkus.push({ code: '', description: '', qty: 1, unitPrice: 0 });
+            renderPartsListPane();
+            updateSummary();
+            markDirty();
+            // Focus the description field of the row we just added.
+            const last = state.adminExtras.customSkus.length - 1;
+            const focusEl = host.querySelector('input[data-custom-sku-idx="' + last + '"][data-custom-sku-field="description"]');
+            if (focusEl) focusEl.focus();
+        });
+    }
 }
 
 // Polled alongside breakdown so the parts list refreshes as drawing
@@ -1326,10 +1503,12 @@ async function loadQuote() {
         state.record = rec;
         state.loadedDrawing = rec.drawing || null;
         state.adminExtras = Object.assign(
-            { customParts: [], customLabour: [], adminNotes: '', removedSkus: [], matSellOverride: null, labCostOverride: null, labSellOverride: null },
+            { customParts: [], customLabour: [], adminNotes: '', removedSkus: [], skuQtyOverrides: {}, customSkus: [], matSellOverride: null, labCostOverride: null, labSellOverride: null },
             rec.adminExtras || {}
         );
         if (!Array.isArray(state.adminExtras.removedSkus)) state.adminExtras.removedSkus = [];
+        if (!state.adminExtras.skuQtyOverrides || typeof state.adminExtras.skuQtyOverrides !== 'object') state.adminExtras.skuQtyOverrides = {};
+        if (!Array.isArray(state.adminExtras.customSkus)) state.adminExtras.customSkus = [];
         const name = ((rec.customer && rec.customer.firstName) || '') + ' ' + ((rec.customer && rec.customer.lastName) || '');
         $('quoteIdLabel').textContent = name.trim() || quoteId;
         $('quoteMeta').textContent = '· total ' + fmtMoney(rec.estimate && rec.estimate.total) + ' · created ' + (rec.createdAt ? new Date(rec.createdAt).toLocaleDateString() : '?');
