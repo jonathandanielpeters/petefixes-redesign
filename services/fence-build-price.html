@@ -1291,9 +1291,14 @@
                 <label class="config-label">Build Type</label>
                 <div class="config-pills" id="buildTypePills">
                     <div class="config-pill" data-buildtype="posts-only">Posts Only</div>
-                    <div class="config-pill" data-buildtype="posts-frame">Posts &amp; Frame</div>
-                    <div class="config-pill active" data-buildtype="full">Posts, Frame &amp; Infill</div>
-                    <div class="config-pill" data-buildtype="horizontal">Horizontal Boards</div>
+                    <div class="config-pill active" data-buildtype="full">Complete Fence Build</div>
+                </div>
+            </div>
+            <div class="config-section" data-show-for="wood" id="picketOrientationSection">
+                <label class="config-label">Picket Orientation</label>
+                <div class="config-pills" id="picketOrientationPills">
+                    <div class="config-pill active" data-orientation="vertical">Vertical Boards</div>
+                    <div class="config-pill" data-orientation="horizontal">Horizontal Boards</div>
                 </div>
             </div>
             <div class="config-section" data-show-for="wood" id="postTypeSection">
@@ -1417,10 +1422,6 @@
                 <label class="config-label">Post Depth</label>
                 <div class="config-pills" id="postDepthPills"></div>
                 <p class="config-hint" style="font-size:11px; color:var(--gray-400); margin-top:6px;">Longer posts provide deeper ground embed for added stability.</p>
-            </div>
-            <div class="config-section" id="postInstallSection" style="display:none">
-                <label class="config-label">Post Installation</label>
-                <div class="config-pills" id="postInstallPills"></div>
             </div>
             <div class="config-section" id="mudRemovalSection" style="display:none">
                 <label class="config-label">Mud Removal</label>
@@ -1669,10 +1670,8 @@
                     </div>
                     <div class="lle-row">
                         <button class="lle-step" data-lle-step="-1" aria-label="-1 ft">-1</button>
-                        <button class="lle-step lle-step-sm" data-lle-step="-0.1" aria-label="-0.1 ft">-0.1</button>
-                        <input type="number" class="lle-input" id="lleInput" step="0.1" min="0.1" max="2000" inputmode="decimal">
+                        <input type="number" class="lle-input" id="lleInput" step="1" min="1" max="2000" inputmode="numeric">
                         <span class="lle-unit">ft</span>
-                        <button class="lle-step lle-step-sm" data-lle-step="0.1" aria-label="+0.1 ft">+0.1</button>
                         <button class="lle-step" data-lle-step="1" aria-label="+1 ft">+1</button>
                     </div>
                     <div class="lle-actions">
@@ -2073,6 +2072,14 @@
 
         function activeStyle() { return state.fenceStyles[state.activeStyleIdx]; }
 
+        // Migrate legacy build-type values: 'horizontal' becomes full + orientation:horizontal,
+        // 'posts-frame' (no longer offered) collapses to 'full'.
+        function migrateStyleBuildType(s) {
+            if (!s) return;
+            if (s.woodBuildType === 'horizontal') { s.woodBuildType = 'full'; s.orientation = 'horizontal'; }
+            else if (s.woodBuildType === 'posts-frame') { s.woodBuildType = 'full'; }
+        }
+
         // Convenience getters for current active style (used by config panel and drawing)
         Object.defineProperties(state, {
             fenceType: { get() { return activeStyle().fenceType; }, set(v) { activeStyle().fenceType = v; } },
@@ -2262,9 +2269,10 @@
                         userCanChooseSpan: false
                     },
                     infillStyle: {
-                        available: ['standard', 'friendlyNeighbor', 'picketGap'],
+                        available: ['standard', 'friendlyNeighbor', 'picketGap', 'gaplessBoardOnBoard'],
                         default: 'standard',
                         picketGap: { options: [0.5, 1.0, 1.5, 2.0], default: 1.0 },
+                        gaplessBoardOnBoard: { extraBoardMultiplier: 0.2 },
                         userCanChooseStyle: true
                     },
                     rails: {
@@ -2380,7 +2388,8 @@
                 topCap: { enabled: false, perFoot: 0 }, trimBoards: { enabled: false, perFoot: 0 },
                 thirdRail: { enabled: false, perFoot: 0 }, cedar: { enabled: false, perFoot: 0 },
                 horizontal: { enabled: false, perFoot: 0 }, privacyInserts: { enabled: false, perFoot: 0 },
-                designerCut: { enabled: false, perFoot: 0 }, doubleCover: { enabled: false, perFoot: 0 }
+                designerCut: { enabled: false, perFoot: 0 }, doubleCover: { enabled: false, perFoot: 0 },
+                gaplessBoardOnBoard: { enabled: false, perFoot: 0 }
             },
             // Legacy fields kept for backward compatibility with old configs
             hourlyPricing: { ratePerHour: 85, includesMaterial: false, hoursPerFoot: {}, gateHours: {} },
@@ -2559,6 +2568,9 @@
                 if (addons.horizontal && addons.horizontal.enabled && style.orientation === 'horizontal') {
                     total += lengthFt * (addons.horizontal.perFoot || 0);
                 }
+                if (addons.gaplessBoardOnBoard && addons.gaplessBoardOnBoard.enabled && style.infillStyle === 'gaplessBoardOnBoard') {
+                    total += lengthFt * (addons.gaplessBoardOnBoard.perFoot || 0);
+                }
                 if (addons.designerCut && addons.designerCut.enabled && style.designerCutId && style.designerCutId !== 'none') {
                     total += lengthFt * (addons.designerCut.perFoot || 0);
                 }
@@ -2725,7 +2737,14 @@
                     var pgGap = parseFloat(style.picketGapSpacing) || 1.0;
                     effectiveW = wIn + pgGap;
                 }
-                return Math.ceil((sw * 12) / effectiveW) * sections;
+                var qty = Math.ceil((sw * 12) / effectiveW) * sections;
+                // Gapless board on board: 20% extra boards for overlapping coverage
+                if (item._infillStyle === 'gaplessBoardOnBoard') {
+                    var recipe = cfgWoodBuild();
+                    var mult = (recipe.vertical && recipe.vertical.infillStyle && recipe.vertical.infillStyle.gaplessBoardOnBoard && recipe.vertical.infillStyle.gaplessBoardOnBoard.extraBoardMultiplier) || 0.2;
+                    qty = Math.ceil(qty * (1 + mult));
+                }
+                return qty;
             } else if (item.qtyMode === 'fillHeight') {
                 return Math.round((h * 12) / wIn) * sections;
             } else if (item.qtyMode === 'fillHeightCustom') {
@@ -3004,9 +3023,6 @@
                 if (!isItemEnabled(item, style)) return;
                 if (!checkItemCondition(item, sw)) return;
 
-                // Posts-frame: only rails
-                if (bt === 'posts-frame' && !RAIL_IDS.includes(item.id)) return;
-
                 const dim = resolveItemDimension(item, style);
                 const neededLen = computeSectionItemLength(item, style, sw);
                 const qty = computeSectionItemQty(item, style, sections, sw);
@@ -3219,16 +3235,28 @@
 
         // Material cost for a gate
         function calculateGateMaterial(gateType, widthFt, style) {
-            const gates = cfgGateMat();
-            const gm = gates[gateType] || gates['single-swing'] || { base: 71, perFt: 8 };
-            let cost = gm.base + gm.perFt * widthFt;
+            const fenceType = style && style.fenceType;
+            let cost = 0;
+            // Chainlink gate kit hardware — chainlink-only
+            if (fenceType === 'chainlink') {
+                const gates = cfgGateMat();
+                const gm = gates[gateType] || gates['single-swing'] || { base: 71, perFt: 8 };
+                cost += gm.base + gm.perFt * widthFt;
+            }
             // Wood gates: recipe-driven gate post materials (2 posts per gate)
-            if (style && style.fenceType === 'wood') {
+            if (fenceType === 'wood') {
                 const recipe = cfgWoodBuild();
                 const gateMats = recipe.gatePostMaterials || [];
                 gateMats.forEach(item => {
                     cost += purchaseBoards(style.woodType, item.dimension, item.length, Math.ceil((item.quantity || 1) * 2)).cost;
                 });
+            }
+            // Other fence types (ornamental, weldedWire, vinyl) still use the gateMaterial table
+            // for hardware kits — these are panel-system gates with their own kits.
+            if (fenceType && fenceType !== 'chainlink' && fenceType !== 'wood') {
+                const gates = cfgGateMat();
+                const gm = gates[gateType] || gates['single-swing'] || { base: 71, perFt: 8 };
+                cost += gm.base + gm.perFt * widthFt;
             }
             return cost;
         }
@@ -3259,7 +3287,7 @@
             const order = {}; // key → { label, qty, unitPrice, total }
             function addToOrder(key, label, boards, unitPrice) {
                 if (boards <= 0) return;
-                if (!order[key]) order[key] = { label: label, qty: 0, unitPrice: unitPrice, total: 0 };
+                if (!order[key]) order[key] = { key: key, label: label, qty: 0, unitPrice: unitPrice, total: 0 };
                 order[key].qty += boards;
                 order[key].total += boards * unitPrice;
             }
@@ -3471,8 +3499,6 @@
                             if (!item.orientations.includes(orient)) return;
                             if (!isItemEnabled(item, s)) return;
                             if (!checkItemCondition(item, sw)) return;
-                            // Posts-frame: only rails
-                            if (bt === 'posts-frame' && !RAIL_IDS.includes(item.id)) return;
                             const dim = resolveItemDimension(item, s);
                             const neededLen = computeSectionItemLength(item, s, sw);
                             const qty = computeSectionItemQty(item, s, sections, sw);
@@ -3536,11 +3562,14 @@
                 const gs = getStyleForLine(g);
                 const mat = calculateGateMaterial(g.gateType, w, gs);
                 gateTotal += mat;
-                const gLabel = (GATE_TYPE_LABELS[g.gateType] || 'Gate') + ' ' + w.toFixed(1) + "'";
-                // Gate kit (hardware)
-                const gates = cfgGateMat();
-                const gm = gates[g.gateType] || gates['single-swing'] || { base: 71, perFt: 8 };
-                addToOrder('gate-' + g.gateType + '-' + w.toFixed(1), gLabel + ' (kit)', 1, gm.base + gm.perFt * w);
+                const gLabel = (GATE_TYPE_LABELS[g.gateType] || 'Gate') + ' ' + Math.round(w) + "'";
+                // Gate kit (hardware) — chainlink-only and panel-system fences (ornamental/weldedWire/vinyl).
+                // Wood gates use lumber + their own gate hardware, not the chainlink kit.
+                if (gs.fenceType !== 'wood') {
+                    const gates = cfgGateMat();
+                    const gm = gates[g.gateType] || gates['single-swing'] || { base: 71, perFt: 8 };
+                    addToOrder('gate-' + g.gateType + '-' + Math.round(w), gLabel + ' (kit)', 1, gm.base + gm.perFt * w);
+                }
                 // Wood gates: recipe-driven gate post lumber (2 posts per gate)
                 if (gs.fenceType === 'wood') {
                     const recipe = cfgWoodBuild();
@@ -3762,7 +3791,7 @@
         const BASE_GRID_SPACING = 40;
         const SNAP_RADIUS = 15;
         const POST_MAX_SPACING = 8;
-        const POINT_RADIUS = 7;
+        const POINT_RADIUS = 5;
         const MIN_ZOOM = 0.02;   // shows ~1000ft on a standard 800px canvas
         const MAX_ZOOM = 5;
         const DEFAULT_VIEW_WIDTH_FT = 80;  // default view shows ~80ft across
@@ -3928,11 +3957,14 @@
             onConfigChange();
         });
 
-        // Build type selector — drives orientation and section visibility
+        // Build type selector — Posts Only or Complete Fence Build
         setupSelector('buildTypePills', 'buildtype', 'woodBuildType');
         document.getElementById('buildTypePills').addEventListener('click', () => {
-            // Sync orientation from build type
-            state.orientation = state.woodBuildType === 'horizontal' ? 'horizontal' : 'vertical';
+            updateWoodSubOptions(); updateRailPillsByHeight();
+        });
+        // Picket orientation selector — Vertical or Horizontal boards
+        setupSelector('picketOrientationPills', 'orientation', 'orientation');
+        document.getElementById('picketOrientationPills').addEventListener('click', () => {
             updateWoodSubOptions(); updateRailPillsByHeight();
         });
 
@@ -4016,9 +4048,9 @@
         function updateWoodSubOptions() {
             const isWood = state.fenceType === 'wood';
             const bt = state.woodBuildType || 'full';
-            const isHz = bt === 'horizontal';
+            const isHz = state.orientation === 'horizontal';
             const isVert = !isHz;
-            const hasFrame = bt === 'posts-frame' || bt === 'full';
+            const hasFrame = bt === 'full';
             const hasInfill = bt === 'full';
             const recipe = cfgWoodBuild();
             const vRails = recipe.vertical && recipe.vertical.rails;
@@ -4081,7 +4113,7 @@
             // Infill style: only for full vertical build
             const showInfill = isVert && isWood && bt === 'full' && vInfill.userCanChooseStyle && (vInfill.available || []).length > 1;
             if (showInfill) {
-                const STYLE_LABELS = { standard: 'Standard', friendlyNeighbor: 'Friendly Neighbor', picketGap: 'Picket Gap' };
+                const STYLE_LABELS = { standard: 'Standard', friendlyNeighbor: 'Friendly Neighbor', picketGap: 'Picket Gap', gaplessBoardOnBoard: 'Gapless Board on Board' };
                 populatePills('infillStylePills', (vInfill.available || ['standard']).map(s => ({
                     value: s, label: STYLE_LABELS[s] || s, isDefault: s === (vInfill.default || 'standard')
                 })), 'infillstyle', 'infillStyle');
@@ -4381,6 +4413,7 @@
             document.querySelectorAll('#woodTypePills [data-wood]').forEach(p => p.classList.toggle('active', p.dataset.wood === s.woodType));
             document.querySelectorAll('#boardSizePills [data-board]').forEach(p => p.classList.toggle('active', p.dataset.board === s.boardSize));
             document.querySelectorAll('#buildTypePills [data-buildtype]').forEach(p => p.classList.toggle('active', p.dataset.buildtype === (s.woodBuildType || 'full')));
+            document.querySelectorAll('#picketOrientationPills [data-orientation]').forEach(p => p.classList.toggle('active', p.dataset.orientation === (s.orientation || 'vertical')));
             document.querySelectorAll('#postSpacingPills [data-spacing]').forEach(p => p.classList.toggle('active', parseInt(p.dataset.spacing) === (s.postSpacing || 8)));
             document.querySelectorAll('#boardSpanPills [data-span]').forEach(p => p.classList.toggle('active', p.dataset.span === s.boardSpan));
             document.querySelectorAll('#railPills [data-rails]').forEach(p => p.classList.toggle('active', p.dataset.rails === s.woodRails));
@@ -4577,7 +4610,7 @@
                 if (!p1 || !p2) return;
                 editingLineIdx = lineIdx;
                 originalLen = getLineLengthFt(p1, p2);
-                input.value = originalLen.toFixed(1);
+                input.value = Math.round(originalLen);
                 const labelMap = getPostNumberMap ? getPostNumberMap() : {};
                 const pn1 = labelMap[line.p1] || '?';
                 const pn2 = labelMap[line.p2] || '?';
@@ -4602,9 +4635,8 @@
                 const currentLen = Math.sqrt(dx * dx + dy * dy);
                 if (currentLen < 0.01) return close();
                 const ratio = newLen / currentLen;
-                // Round to 0.1ft so lengths stay clean.
-                const newX = Math.round((p1.x + dx * ratio) * 10) / 10;
-                const newY = Math.round((p1.y + dy * ratio) * 10) / 10;
+                const newX = Math.round(p1.x + dx * ratio);
+                const newY = Math.round(p1.y + dy * ratio);
                 pushUndo && pushUndo();
                 p2.x = newX; p2.y = newY;
                 drawCanvas && drawCanvas();
@@ -4625,8 +4657,8 @@
                 btn.addEventListener('click', () => {
                     const step = parseFloat(btn.dataset.lleStep) || 0;
                     const cur = parseFloat(input.value) || 0;
-                    const next = Math.max(0.1, Math.round((cur + step) * 10) / 10);
-                    input.value = next.toFixed(1);
+                    const next = Math.max(1, Math.round(cur + step));
+                    input.value = next;
                 });
             });
             window.__openLineLengthEditor = open;
@@ -5372,7 +5404,7 @@
                 const d = getLineLengthFt(p1, p2);
                 const mx = (s1.x + s2.x) / 2, my = (s1.y + s2.y) / 2;
                 const typeLabel = FENCE_TYPE_COLORS[lineFt] ? FENCE_TYPE_COLORS[lineFt].label : '';
-                const lb = typeLabel + ' ' + d.toFixed(1) + ' ft';
+                const lb = typeLabel + ' ' + Math.round(d) + ' ft';
                 ctx.font = '600 11px Inter, sans-serif';
                 const tw = ctx.measureText(lb).width;
                 // Label pill — enlarged so it's finger-tappable. Bounds stored for hit-testing.
@@ -5460,7 +5492,7 @@
                 }
 
                 // Label
-                const lb = gateW.toFixed(1) + '\' ' + (GATE_TYPE_LABELS[gate.gateType] || 'Gate');
+                const lb = Math.round(gateW) + '\' ' + (GATE_TYPE_LABELS[gate.gateType] || 'Gate');
                 ctx.font = '600 10px Inter, sans-serif';
                 const tw = ctx.measureText(lb).width;
                 ctx.fillStyle = sel ? 'rgba(74,144,217,0.95)' : 'rgba(74,144,217,0.85)';
@@ -5538,7 +5570,7 @@
                         ctx.font = '500 11px Inter, sans-serif';
                         ctx.fillStyle = isGate ? 'rgba(74,144,217,0.7)' : 'rgba(200,165,90,0.7)';
                         ctx.textAlign = 'center';
-                        let lbl = distFt.toFixed(1) + ' ft';
+                        let lbl = Math.round(distFt) + ' ft';
                         if (isGate && distFt >= 2) lbl += ' - ' + GATE_TYPE_LABELS[getDefaultGateType(distFt)];
                         ctx.fillText(lbl, midX, midY - 10);
                         ctx.textAlign = 'start';
@@ -7357,7 +7389,7 @@
             const privacySurcharge = price.privacyTotal || 0;
             const removalSurcharge = price.removalTotal || 0;
             const total = (v3 ? v3.total : v2 ? v2.total : price.total) + privacySurcharge + removalSurcharge;
-            document.getElementById('totalLength').textContent = price.totalLengthFt.toFixed(1) + ' ft';
+            document.getElementById('totalLength').textContent = Math.round(price.totalLengthFt) + ' ft';
             document.getElementById('totalGates').textContent = price.totalGates;
 
             // Post count breakdown for display — always from getTotalStats so
@@ -7636,7 +7668,9 @@
 
             const enabledLines = state.lines.filter(isLineEnabled);
             const clLines = enabledLines.filter(l => getStyleForLine(l).fenceType === 'chainlink');
-            const enabledGates = state.gates.filter(isGateEnabled);
+            // Only chainlink-fenced gates use the chainlink V3 SKU recipe.
+            // Wood/ornamental/etc. gates have their own hardware in the consolidated order.
+            const enabledGates = state.gates.filter(g => isGateEnabled(g) && getStyleForLine(g).fenceType === 'chainlink');
             if (clLines.length === 0 && enabledGates.length === 0) return null;
 
             const itemByCode = {};
@@ -7827,7 +7861,8 @@
             // V3 only handles all-chainlink projects right now — fall through to legacy
             // (which can mix wood/ornamental/etc) if there's anything else on the canvas.
             if (nonCl > 0) return null;
-            const enabledGates = state.gates.filter(isGateEnabled);
+            // Only chainlink-fenced gates run through the V3 chainlink recipe.
+            const enabledGates = state.gates.filter(g => isGateEnabled(g) && getStyleForLine(g).fenceType === 'chainlink');
             if (clLines.length === 0 && enabledGates.length === 0) return null;
 
             // Index master items by code for O(1) price lookups
@@ -8475,7 +8510,7 @@
                     '<div class="fence-line-item' + (sel ? ' selected' : '') + (enabled ? '' : ' disabled') + '" data-line-idx="' + idx + '">' +
                     switchHtml +
                     '<div class="fence-line-color" style="background:' + lineColor + '"></div><div class="fence-line-info"><div class="fence-line-name">Line ' + (idx + 1) + ' <span class="gate-post-badge" style="background:' + lineColor + '20;color:' + lineColor + '">' + typeLabel + ' ' + heightLabel + badgeStyleSuffix + '</span>' + stylePicker + '</div><div class="fence-line-meta">' + pn1 + ' \u2192 ' + pn2 + ' \u00b7 ' + posts.length + ' posts</div></div>' +
-                    '<input class="fence-line-input" type="number" min="1" max="2000" step="0.1" value="' + dist.toFixed(1) + '" data-line-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
+                    '<input class="fence-line-input" type="number" min="1" max="2000" step="1" value="' + Math.round(dist) + '" data-line-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-line="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>' +
                     removalHtml +
                     '</div>';
@@ -8515,7 +8550,7 @@
                     gSwitchHtml +
                     '<div class="fence-line-color gate-color"></div><div class="fence-line-info"><div class="fence-line-name">Gate ' + (idx + 1) + ' <span class="gate-post-badge">' + gpn1 + '\u2013' + gpn2 + ' \u00b7 ' + postCtx.desc + '</span>' + dirBadge + gateStylePicker + '</div>' +
                     '<select class="gate-type-select" data-gate-type-idx="' + idx + '">' + typeOptions + '</select></div>' +
-                    '<input class="fence-line-input" type="number" min="2" max="30" step="0.5" value="' + width.toFixed(1) + '" data-gate-width-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
+                    '<input class="fence-line-input" type="number" min="2" max="30" step="1" value="' + Math.round(width) + '" data-gate-width-idx="' + idx + '"><span class="fence-line-unit">ft</span>' +
                     '<button class="fence-line-delete" data-delete-gate="' + idx + '" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>';
             });
 
@@ -8845,6 +8880,7 @@
             state.gates.push(newGate);
             state.actionHistory.push({ type: 'gate', ref: newGate });
             addGateModal.classList.remove('open'); state.pendingPoint = null;
+            setActiveTool('draw');
             autoFitIfNeeded(); drawCanvas(); updatePricing(); renderSidebar();
             showGateDirectionPopup(state.gates.length - 1);
         });
@@ -9391,6 +9427,7 @@
                     state.gates.push(newGate);
                     state.actionHistory.push({ type: 'gate', ref: newGate });
                     state.pendingPoint = null;
+                    setActiveTool('draw');
                     updateHint();
                     // Show direction popup after drawing
                     setTimeout(() => showGateDirectionPopup(state.gates.length - 1), 50);
@@ -9501,7 +9538,7 @@
             state.houses = snap.houses;
             state.actionHistory = snap.actionHistory;
             state.pendingPoint = snap.pendingPoint;
-            if (snap.fenceStyles) { state.fenceStyles = snap.fenceStyles; state.activeStyleIdx = snap.activeStyleIdx || 0; }
+            if (snap.fenceStyles) { state.fenceStyles = snap.fenceStyles; state.activeStyleIdx = snap.activeStyleIdx || 0; state.fenceStyles.forEach(migrateStyleBuildType); }
             // Restore ID counters to max existing
             pointIdCounter = state.points.reduce((m, p) => Math.max(m, p.id), pointIdCounter);
             gateIdCounter = state.gates.reduce((m, g) => Math.max(m, g.id || 0), gateIdCounter);
@@ -9917,6 +9954,7 @@
             { id: 'heightSection',         tabs: ['build'] },
             { id: 'chainlinkOptions',      tabs: ['build'] },
             { id: 'buildTypeSection',      tabs: ['build'] },
+            { id: 'picketOrientationSection', tabs: ['build'] },
             { id: 'woodTypeSection',       tabs: ['build'] },
             { id: 'postTypeSection',       tabs: ['build'] },
             { id: 'postSpacingSection',    tabs: ['build'] },
@@ -9939,7 +9977,6 @@
             { id: 'designerCutSection',    tabs: ['build'] },
             { id: 'bundleSection',         tabs: ['build'] },
             // install
-            { id: 'postInstallSection',    tabs: ['install'] },
             { id: 'mudRemovalSection',     tabs: ['install'] },
             // finish (color + privacy insert/install/color all read as "look")
             { id: 'ornamentalColorSection',tabs: ['finish'] },
@@ -10195,6 +10232,7 @@
                 state.fenceStyles = data.styles.map(s => {
                     const restored = {...createDefaultStyle(), ...s};
                     delete restored.cl3Picks;
+                    migrateStyleBuildType(restored);
                     return restored;
                 });
                 state.activeStyleIdx = data.activeStyleIdx || 0;
@@ -10352,11 +10390,10 @@
                 let desc = STYLE_LABELS[s.fenceType] + ' ' + s.height + "'";
                 if (s.fenceType === 'wood') {
                     const wbt = s.woodBuildType || 'full';
-                    const BUILD_LABELS = { 'posts-only': 'Posts only', 'posts-frame': 'Posts & frame', 'full': '', 'horizontal': 'Horizontal' };
+                    const BUILD_LABELS = { 'posts-only': 'Posts only', 'full': '' };
                     if (BUILD_LABELS[wbt]) desc += ' ' + BUILD_LABELS[wbt];
-                    if (wbt === 'full') desc += ' ' + s.boardSize + ' vertical';
-                    if (wbt === 'horizontal') desc += ' ' + s.boardSize;
-                    if ((wbt === 'posts-frame' || wbt === 'full') && s.orientation === 'vertical') desc += ' ' + (s.woodRails || s.railCount || 2) + '-rail';
+                    if (wbt === 'full') desc += ' ' + s.boardSize + ' ' + (s.orientation || 'vertical');
+                    if (wbt === 'full' && s.orientation === 'vertical') desc += ' ' + (s.woodRails || s.railCount || 2) + '-rail';
                     if (wbt !== 'posts-only' && s.woodTopCap !== 'none') desc += ' + top cap';
                 } else if (s.fenceType === 'chainlink') {
                     desc += ' ' + s.chainlinkColor;
@@ -10419,13 +10456,13 @@
                 const labour = allocLine(d);
                 const lineMk = lineMarkup(d.s, d.len, d.mat);
                 const cost = Math.round(d.mat * lineMk + labour + d.addons);
-                rows.push({ type: 'line', label: d.label, desc: d.desc, length: d.len.toFixed(1) + ' ft', posts: d.posts.length, cost: cost, material: Math.round(d.mat), markup: lineMk, labour: Math.round(labour), addons: Math.round(d.addons) });
+                rows.push({ type: 'line', label: d.label, desc: d.desc, length: Math.round(d.len) + ' ft', posts: d.posts.length, cost: cost, material: Math.round(d.mat), markup: lineMk, labour: Math.round(labour), addons: Math.round(d.addons) });
             });
             gateDrafts.forEach(d => {
                 const labour = allocGate(d);
                 const gateMk = lineMarkup(d.gs, d.w, d.mat);
                 const cost = Math.round(d.mat * gateMk + labour);
-                rows.push({ type: 'gate', label: d.label, desc: (GATE_TYPE_LABELS[d.gate.gateType] || 'Gate') + ' ' + d.w.toFixed(1) + "'", cost: cost, material: Math.round(d.mat), markup: gateMk, labour: Math.round(labour), addons: 0 });
+                rows.push({ type: 'gate', label: d.label, desc: (GATE_TYPE_LABELS[d.gate.gateType] || 'Gate') + ' ' + Math.round(d.w) + "'", cost: cost, material: Math.round(d.mat), markup: gateMk, labour: Math.round(labour), addons: 0 });
             });
 
             // Scale per-row costs so they sum exactly to projectTotal. This
@@ -10449,7 +10486,7 @@
             return {
                 rows,
                 total: projectTotal,
-                totalLength: price.totalLengthFt.toFixed(1),
+                totalLength: Math.round(price.totalLengthFt),
                 totalGates: price.totalGates,
                 totalPosts: price.totalPosts,
                 markup: price.markup,
@@ -11239,7 +11276,7 @@
                 var lineCost = Math.round(mat * mk + labour + addons);
                 var sectionCount = Math.max(posts.length - 1, 0);
 
-                html += '<tr style="background:#eee"><td colspan="4" style="padding:6px 8px;font-weight:700">Line ' + (idx + 1) + ': ' + (STYLE_LABELS[s.fenceType] || s.fenceType) + ' ' + s.height + "' — " + len.toFixed(1) + ' ft, ' + posts.length + ' posts, ' + sectionCount + ' sections</td></tr>';
+                html += '<tr style="background:#eee"><td colspan="4" style="padding:6px 8px;font-weight:700">Line ' + (idx + 1) + ': ' + (STYLE_LABELS[s.fenceType] || s.fenceType) + ' ' + s.height + "' — " + Math.round(len) + ' ft, ' + posts.length + ' posts, ' + sectionCount + ' sections</td></tr>';
                 html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Fence material (mesh/panels/boards)</td><td style="padding:3px 8px;text-align:right">$' + fenceMat.toFixed(2) + '</td></tr>';
                 html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Posts (' + posts.length + ' × hardware + install)</td><td style="padding:3px 8px;text-align:right">$' + postMat.toFixed(2) + '</td></tr>';
                 html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Total material</td><td style="padding:3px 8px;text-align:right;font-weight:600">$' + mat.toFixed(2) + '</td></tr>';
@@ -11257,7 +11294,7 @@
                 var gMat = calculateGateMaterial(gate.gateType, gw, gs);
                 var gLabour = calculateLabourForGate(gate.gateType);
                 var gCost = Math.round(gMat * mk + gLabour);
-                html += '<tr style="background:#eee"><td colspan="4" style="padding:6px 8px;font-weight:700">Gate ' + (idx + 1) + ': ' + (GATE_TYPE_LABELS[gate.gateType] || 'Gate') + ' — ' + gw.toFixed(1) + "' wide</td></tr>";
+                html += '<tr style="background:#eee"><td colspan="4" style="padding:6px 8px;font-weight:700">Gate ' + (idx + 1) + ': ' + (GATE_TYPE_LABELS[gate.gateType] || 'Gate') + ' — ' + Math.round(gw) + "' wide</td></tr>";
                 html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">Gate material</td><td style="padding:3px 8px;text-align:right">$' + gMat.toFixed(2) + '</td></tr>';
                 html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">× markup ' + mk + '×</td><td style="padding:3px 8px;text-align:right">$' + Math.round(gMat * mk).toLocaleString() + '</td></tr>';
                 if (gLabour > 0) html += '<tr style="border-bottom:1px solid #eee"><td style="padding:3px 8px 3px 20px;color:#888" colspan="3">+ Labour</td><td style="padding:3px 8px;text-align:right">$' + Math.round(gLabour).toLocaleString() + '</td></tr>';

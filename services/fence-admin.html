@@ -1888,7 +1888,8 @@ const DEFAULT_CONFIG = {
     horizontal: { enabled: false, perFoot: 0 },
     privacyInserts: { enabled: false, perFoot: 0 },
     designerCut: { enabled: false, perFoot: 0 },
-    doubleCover: { enabled: false, perFoot: 0 }
+    doubleCover: { enabled: false, perFoot: 0 },
+    gaplessBoardOnBoard: { enabled: false, perFoot: 0 }
   },
   hourlyPricing: {
     ratePerHour: 85,
@@ -4280,7 +4281,8 @@ const ADDON_ITEMS = [
   // duplicated the per-bag pricing. Single source of truth now lives
   // in config.materialPricing.chainlink.privacyInserts.
   { key: 'designerCut',    label: 'Designer Cut',     desc: 'When a designer cut is applied' },
-  { key: 'doubleCover',    label: 'Double Cover',     desc: 'When double cover boards on posts' }
+  { key: 'doubleCover',    label: 'Double Cover',     desc: 'When double cover boards on posts' },
+  { key: 'gaplessBoardOnBoard', label: 'Gapless Board on Board', desc: 'Extra labour for the gapless board-on-board infill style (20% more boards)' }
 ];
 
 function labourToggle(catKey) {

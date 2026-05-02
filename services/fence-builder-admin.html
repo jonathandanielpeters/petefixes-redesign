@@ -364,6 +364,7 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
         <div class="panel-tabs">
             <button class="panel-tab active" data-tab="parts">Custom parts</button>
             <button class="panel-tab" data-tab="labour">Per-quote labour</button>
+            <button class="panel-tab" data-tab="overrides">Force overrides</button>
             <button class="panel-tab" data-tab="postparts">Per-post parts</button>
             <button class="panel-tab" data-tab="aslist">Parts list (as built)</button>
             <button class="panel-tab" data-tab="notes">Admin notes</button>
@@ -407,6 +408,44 @@ textarea.notes:focus { outline: none; border-color: var(--admin); }
                 <div class="add-row"><button data-add="labour">+ Add labour line</button></div>
                 <div class="section-summary">
                     <span>Total labour add-on: <strong id="labourSum">$0</strong></span>
+                </div>
+            </div>
+
+            <div class="tab-pane" data-pane="overrides">
+                <p style="font-size:11px;color:var(--gray-400);margin:0 0 12px">Force engine values to specific numbers. Leave blank to use the engine's calculated value. Overrides apply to the customer total and persist with the quote. <em>Labour cost</em> is operator-only (used for profit math) — labour sell is the customer-facing labour charge.</p>
+                <table class="line-items">
+                    <thead>
+                        <tr>
+                            <th style="min-width:200px">Field</th>
+                            <th style="width:140px;text-align:right">Engine value</th>
+                            <th style="width:140px;text-align:right">Force to ($)</th>
+                            <th style="width:80px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Material sell</strong><div style="font-size:10px;color:var(--gray-400);margin-top:2px">What the customer pays for materials</div></td>
+                            <td style="text-align:right"><span id="ovrMatSellEngine">$0</span></td>
+                            <td style="text-align:right"><input type="number" id="ovrMatSellInput" step="0.01" min="0" placeholder="—" style="width:110px;text-align:right"></td>
+                            <td><button class="del-btn" data-ovr-reset="matSell" title="Clear override">×</button></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Labour cost</strong><div style="font-size:10px;color:var(--gray-400);margin-top:2px">Operator's labour cost (profit calc only — not customer-facing)</div></td>
+                            <td style="text-align:right"><span id="ovrLabCostEngine">$0</span></td>
+                            <td style="text-align:right"><input type="number" id="ovrLabCostInput" step="0.01" min="0" placeholder="—" style="width:110px;text-align:right"></td>
+                            <td><button class="del-btn" data-ovr-reset="labCost" title="Clear override">×</button></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Labour sell</strong><div style="font-size:10px;color:var(--gray-400);margin-top:2px">What the customer pays for labour</div></td>
+                            <td style="text-align:right"><span id="ovrLabSellEngine">$0</span></td>
+                            <td style="text-align:right"><input type="number" id="ovrLabSellInput" step="0.01" min="0" placeholder="—" style="width:110px;text-align:right"></td>
+                            <td><button class="del-btn" data-ovr-reset="labSell" title="Clear override">×</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="section-summary" style="margin-top:8px">
+                    <span>Removed SKU sell deduction: <strong id="ovrRemovedSell">$0</strong></span>
+                    <span>Net override delta: <strong id="ovrDelta">$0</strong></span>
                 </div>
             </div>
 
@@ -487,7 +526,11 @@ const state = {
     adminExtras: {
         customParts: [],   // each row may carry { ..., attachedToPost: <id> }
         customLabour: [],
-        adminNotes: ''
+        adminNotes: '',
+        removedSkus: [],            // array of SKU keys removed from the engine list
+        matSellOverride: null,      // null = use engine matSell
+        labCostOverride: null,      // null = use engine labCost (operator-only)
+        labSellOverride: null       // null = use engine labCharge
     },
     record: null,           // last loaded full quote record
     loadedDrawing: null,    // serialized drawing from the loaded quote
@@ -535,8 +578,59 @@ function labourTotal(rows) {
     return rows.reduce((s, r) => s + (Number(r.hours) || 0) * (Number(r.rate) || 0), 0);
 }
 
+// Cost (engine value) of all SKUs the operator marked removed.
+function removedSkuCost() {
+    const removed = new Set(state.adminExtras.removedSkus || []);
+    if (removed.size === 0) return 0;
+    let cost = 0;
+    // Consolidated material order (wood lumber + gate kits + privacy bags + etc.)
+    if (state.materialOrder && Array.isArray(state.materialOrder.items)) {
+        state.materialOrder.items.forEach(it => {
+            if (removed.has(it.key)) cost += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+        });
+    }
+    // Chainlink V3 SKU breakdown
+    if (state.v3Parts && Array.isArray(state.v3Parts.categories)) {
+        state.v3Parts.categories.forEach(cat => {
+            (cat.items || []).forEach(it => {
+                if (removed.has(it.code)) cost += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+            });
+        });
+    }
+    return cost;
+}
+
+// Sell-side equivalent — applies the engine's effective material markup.
+function removedSkuSell() {
+    const cost = removedSkuCost();
+    if (cost <= 0) return 0;
+    const bd = state.breakdown || {};
+    const markup = (bd.matCost > 0) ? (bd.matSell / bd.matCost) : 1;
+    return cost * markup;
+}
+
+// Net delta from engine total to final customer-facing quote total.
+// = customParts.sell + customLabour - removedSkuSell + (matSellOverride ?? 0 delta) + (labSellOverride ?? 0 delta).
+// labCostOverride does not affect the customer total, only profit math.
 function adminExtrasTotal() {
-    return Math.round(partsSell(state.adminExtras.customParts || []) + labourTotal(state.adminExtras.customLabour || []));
+    const bd = state.breakdown || {};
+    const customSell = partsSell(state.adminExtras.customParts || []);
+    const customLab  = labourTotal(state.adminExtras.customLabour || []);
+
+    // Effective material sell — override wins; otherwise engine value minus removed SKU sell.
+    const baseMatSell = (bd.matSell || 0) - removedSkuSell();
+    const effMatSell = (state.adminExtras.matSellOverride != null && !isNaN(state.adminExtras.matSellOverride))
+        ? Number(state.adminExtras.matSellOverride)
+        : baseMatSell;
+
+    // Effective labour sell — override wins; otherwise engine value.
+    const effLabSell = (state.adminExtras.labSellOverride != null && !isNaN(state.adminExtras.labSellOverride))
+        ? Number(state.adminExtras.labSellOverride)
+        : (bd.labCharge || 0);
+
+    const matDelta = effMatSell - (bd.matSell || 0);
+    const labDelta = effLabSell - (bd.labCharge || 0);
+    return Math.round(customSell + customLab + matDelta + labDelta);
 }
 
 // ── Renders ─────────────────────────────────────────────────────────
@@ -648,24 +742,34 @@ function updateSummary() {
     if ($('postPartsSellSum')) $('postPartsSellSum').textContent = fmtMoney(partsSell(onPosts));
     const grand = (state.breakdown.total || state.engineTotal || 0) + adminExtrasTotal();
     $('grandTotal').textContent = fmtMoney(grand);
-    // Header live breakdown (engine totals — admin extras are separate).
+    // Header live breakdown — show effective values with overrides applied.
     const bd = state.breakdown || {};
-    if ($('hdrMatSell'))   $('hdrMatSell').textContent   = fmtMoney(bd.matSell || 0);
-    if ($('hdrLabCharge')) $('hdrLabCharge').textContent = fmtMoney(bd.labCharge || 0);
+    const removedSell = removedSkuSell();
+    const baseMatSell = (bd.matSell || 0) - removedSell;
+    const effMatSell = (state.adminExtras.matSellOverride != null) ? Number(state.adminExtras.matSellOverride) : baseMatSell;
+    const effLabSell = (state.adminExtras.labSellOverride != null) ? Number(state.adminExtras.labSellOverride) : (bd.labCharge || 0);
+    if ($('hdrMatSell'))   $('hdrMatSell').textContent   = fmtMoney(effMatSell);
+    if ($('hdrLabCharge')) $('hdrLabCharge').textContent = fmtMoney(effLabSell);
     // Push the current admin-extras total into the iframe so its
     // customer-facing footer ($/+tax) reflects the same number the
     // admin overlay's "Quote total" shows.  Cheap postMessage; the
     // iframe ignores it if it's not running in admin-frame mode.
     try { iframe.contentWindow.postMessage({ type: 'admin:setExtrasTotal', total: adminExtrasTotal() }, '*'); } catch (e) {}
-    // Profit ≈ engine total − (mat cost + lab cost) + admin extras.  This
-    // is an OPERATOR view (true gross): customer pays grand total; we
-    // pay matCost + labCost.  Admin extras are pure margin minus their
-    // input cost, which is captured by partsSell − partsCost.
+    // Profit ≈ effective customer total − (mat cost + lab cost) + admin extras.
+    const removedCost = removedSkuCost();
+    const effMatCost = (bd.matCost || 0) - removedCost;
+    const effLabCost = (state.adminExtras.labCostOverride != null) ? Number(state.adminExtras.labCostOverride) : (bd.labCost || 0);
     const partsMargin = partsSell(state.adminExtras.customParts || []) - partsCost(state.adminExtras.customParts || []);
-    const labMargin   = labourTotal(state.adminExtras.customLabour || []);  // labour line items are pure charge
-    const profit = (bd.total || 0) - (bd.matCost || 0) - (bd.labCost || 0) + partsMargin + labMargin;
+    const labMargin   = labourTotal(state.adminExtras.customLabour || []);
+    const profit = grand - effMatCost - effLabCost - partsCost(state.adminExtras.customParts || []);
     if ($('hdrProfit')) $('hdrProfit').textContent = fmtMoney(profit);
     if ($('hdrTotal'))  $('hdrTotal').textContent  = fmtMoney(grand);
+    // Force-overrides pane: show engine values, removed-sell, net delta.
+    if ($('ovrMatSellEngine')) $('ovrMatSellEngine').textContent = fmtMoney(bd.matSell || 0);
+    if ($('ovrLabCostEngine')) $('ovrLabCostEngine').textContent = fmtMoney(bd.labCost || 0);
+    if ($('ovrLabSellEngine')) $('ovrLabSellEngine').textContent = fmtMoney(bd.labCharge || 0);
+    if ($('ovrRemovedSell')) $('ovrRemovedSell').textContent = fmtMoney(removedSell);
+    if ($('ovrDelta')) $('ovrDelta').textContent = fmtMoney(adminExtrasTotal());
 }
 
 // ── Per-post parts panel ───────────────────────────────────────────
@@ -960,28 +1064,80 @@ function renderPartsListPane() {
     const fmt = n => '$' + Math.round((n || 0) * 100) / 100;
     let html = '';
 
+    const removed = new Set(state.adminExtras.removedSkus || []);
+    const removedRowStyle = 'opacity:0.5;text-decoration:line-through;background:rgba(196,60,60,0.05)';
+    function actionBtn(skuKey) {
+        const isRemoved = removed.has(skuKey);
+        const label = isRemoved ? '↺' : '×';
+        const title = isRemoved ? 'Restore this SKU' : 'Remove this SKU from the quote';
+        const color = isRemoved ? 'var(--admin)' : '#c43c3c';
+        return '<button class="sku-toggle-btn" data-sku-toggle="' + escHtml(skuKey) + '" title="' + title + '" style="background:transparent;border:1px solid ' + color + ';color:' + color + ';width:22px;height:22px;border-radius:50%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1;padding:0">' + label + '</button>';
+    }
+
+    // ─ Consolidated material order (wood SKUs, gate kits, privacy, etc.) ─
+    // Filters out items already itemized in the V3 chainlink breakdown to
+    // avoid double-listing.
+    if (hasOrder) {
+        const v3Codes = new Set();
+        if (v3 && v3.categories) {
+            v3.categories.forEach(c => (c.items || []).forEach(it => { if (it.code) v3Codes.add(it.code); }));
+        }
+        const skuItems = (order.items || []).filter(it => !v3Codes.has(it.key));
+        if (skuItems.length > 0) {
+            html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🪵 Material SKUs</div>';
+            html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Wood lumber, gate hardware, post hardware, and other material SKUs from the consolidated order. Click × to remove a SKU from the quote — its sell value is deducted from the customer total.</div>';
+            html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
+            html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:120px">SKU</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
+            let skuSubtotal = 0;
+            skuItems.forEach(it => {
+                const total = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
+                const isRemoved = removed.has(it.key);
+                if (!isRemoved) skuSubtotal += total;
+                const rowStyle = isRemoved ? removedRowStyle : '';
+                html += '<tr style="border-bottom:1px solid var(--gray-100);' + rowStyle + '">' +
+                    '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.key || '') + '</td>' +
+                    '<td style="padding:4px 8px">' + escHtml(it.label || '') + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(total) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:center">' + actionBtn(it.key || '') + '</td>' +
+                    '</tr>';
+            });
+            html += '<tr style="background:rgba(0,0,0,0.04);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Material SKU subtotal (active)</td>' +
+                '<td style="padding:6px 8px;text-align:right">' + fmt(skuSubtotal) + '</td><td></td></tr>';
+            html += '</tbody></table>';
+        }
+    }
+
     // ─ V3 chainlink breakdown (when applicable) ────────────────
     if (v3 && v3.categories && v3.categories.length > 0) {
         html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🔩 Chainlink SKUs — by category</div>';
-        html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Itemized chainlink parts from the active recipe.  Use this to pull stock or build a purchase order.</div>';
+        html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Itemized chainlink parts from the active recipe.  Click × to remove a SKU from the quote.</div>';
         html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
-        html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th></tr></thead><tbody>';
+        html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
+        let activeGrandTotal = 0;
         v3.categories.forEach(cat => {
-            html += '<tr style="background:var(--gray-100)"><td colspan="5" style="padding:5px 8px;font-weight:700;font-size:10px;color:var(--gray-500);letter-spacing:0.05em">' + escHtml(cat.category) + '</td></tr>';
+            html += '<tr style="background:var(--gray-100)"><td colspan="6" style="padding:5px 8px;font-weight:700;font-size:10px;color:var(--gray-500);letter-spacing:0.05em">' + escHtml(cat.category) + '</td></tr>';
+            let activeSub = 0;
             (cat.items || []).forEach(it => {
-                html += '<tr style="border-bottom:1px solid var(--gray-100)">' +
+                const isRemoved = removed.has(it.code);
+                const rowStyle = isRemoved ? removedRowStyle : '';
+                if (!isRemoved) activeSub += (it.total || 0);
+                html += '<tr style="border-bottom:1px solid var(--gray-100);' + rowStyle + '">' +
                     '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.code || '') + '</td>' +
                     '<td style="padding:4px 8px">' + escHtml(it.description || '') + '</td>' +
                     '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
                     '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
                     '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td>' +
+                    '<td style="padding:4px 8px;text-align:center">' + actionBtn(it.code || '') + '</td>' +
                     '</tr>';
             });
-            html += '<tr style="background:#fafafa;font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--gray-500)">' + escHtml(cat.category) + ' subtotal</td>' +
-                '<td style="padding:5px 8px;text-align:right">' + fmt(cat.subtotal || 0) + '</td></tr>';
+            activeGrandTotal += activeSub;
+            html += '<tr style="background:#fafafa;font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--gray-500)">' + escHtml(cat.category) + ' subtotal (active)</td>' +
+                '<td style="padding:5px 8px;text-align:right">' + fmt(activeSub) + '</td><td></td></tr>';
         });
-        html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Chainlink SKU grand total</td>' +
-            '<td style="padding:6px 8px;text-align:right">' + fmt(v3.grandTotal || 0) + '</td></tr>';
+        html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Chainlink SKU active total</td>' +
+            '<td style="padding:6px 8px;text-align:right">' + fmt(activeGrandTotal) + '</td><td></td></tr>';
         html += '</tbody></table>';
     }
 
@@ -1024,6 +1180,23 @@ function renderPartsListPane() {
     html += '</div>';
 
     host.innerHTML = html;
+
+    // Wire SKU remove/restore buttons.  Clicking toggles the SKU's
+    // membership in adminExtras.removedSkus, which feeds back into
+    // adminExtrasTotal() (subtracts its sell value from the customer total).
+    host.querySelectorAll('button[data-sku-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const key = btn.dataset.skuToggle;
+            if (!key) return;
+            if (!Array.isArray(state.adminExtras.removedSkus)) state.adminExtras.removedSkus = [];
+            const idx = state.adminExtras.removedSkus.indexOf(key);
+            if (idx === -1) state.adminExtras.removedSkus.push(key);
+            else state.adminExtras.removedSkus.splice(idx, 1);
+            renderPartsListPane();
+            updateSummary();
+            markDirty();
+        });
+    });
 }
 
 // Polled alongside breakdown so the parts list refreshes as drawing
@@ -1043,6 +1216,39 @@ function pollBreakdown() {
     try { iframe.contentWindow.postMessage({ type: 'admin:getBreakdown' }, '*'); } catch (e) {}
 }
 setInterval(pollBreakdown, 800);
+
+// ── Force overrides ────────────────────────────────────────────────
+function bindOverrideInput(id, key) {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+        const v = el.value.trim();
+        state.adminExtras[key] = (v === '') ? null : (parseFloat(v) || 0);
+        updateSummary();
+        markDirty();
+    });
+}
+bindOverrideInput('ovrMatSellInput', 'matSellOverride');
+bindOverrideInput('ovrLabCostInput', 'labCostOverride');
+bindOverrideInput('ovrLabSellInput', 'labSellOverride');
+document.querySelectorAll('button[data-ovr-reset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const map = { matSell: ['matSellOverride', 'ovrMatSellInput'], labCost: ['labCostOverride', 'ovrLabCostInput'], labSell: ['labSellOverride', 'ovrLabSellInput'] };
+        const pair = map[btn.dataset.ovrReset];
+        if (!pair) return;
+        state.adminExtras[pair[0]] = null;
+        const inp = $(pair[1]);
+        if (inp) inp.value = '';
+        updateSummary();
+        markDirty();
+    });
+});
+// Reflect saved override values into inputs after a quote loads.
+function syncOverrideInputs() {
+    if ($('ovrMatSellInput')) $('ovrMatSellInput').value = (state.adminExtras.matSellOverride != null) ? state.adminExtras.matSellOverride : '';
+    if ($('ovrLabCostInput')) $('ovrLabCostInput').value = (state.adminExtras.labCostOverride != null) ? state.adminExtras.labCostOverride : '';
+    if ($('ovrLabSellInput')) $('ovrLabSellInput').value = (state.adminExtras.labSellOverride != null) ? state.adminExtras.labSellOverride : '';
+}
 
 // ── Add buttons ────────────────────────────────────────────────────
 document.querySelectorAll('button[data-add]').forEach(btn => {
@@ -1165,15 +1371,17 @@ async function loadQuote() {
         state.record = rec;
         state.loadedDrawing = rec.drawing || null;
         state.adminExtras = Object.assign(
-            { customParts: [], customLabour: [], adminNotes: '' },
+            { customParts: [], customLabour: [], adminNotes: '', removedSkus: [], matSellOverride: null, labCostOverride: null, labSellOverride: null },
             rec.adminExtras || {}
         );
+        if (!Array.isArray(state.adminExtras.removedSkus)) state.adminExtras.removedSkus = [];
         const name = ((rec.customer && rec.customer.firstName) || '') + ' ' + ((rec.customer && rec.customer.lastName) || '');
         $('quoteIdLabel').textContent = name.trim() || quoteId;
         $('quoteMeta').textContent = '· total ' + fmtMoney(rec.estimate && rec.estimate.total) + ' · created ' + (rec.createdAt ? new Date(rec.createdAt).toLocaleDateString() : '?');
         $('adminNotes').value = state.adminExtras.adminNotes || '';
         renderPartsTable();
         renderLabourTable();
+        syncOverrideInputs();
         updateSummary();
         // Push the saved drawing into the iframe once it's ready.
         pushDrawingToIframe();
