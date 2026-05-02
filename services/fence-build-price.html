@@ -4268,6 +4268,8 @@
                 });
             }
             showSec('mudRemovalSection', showMud);
+            // Apply admin Selection Map overrides after pills are populated.
+            if (typeof applyUiVisibility === 'function') applyUiVisibility();
         }
 
         function getPostMaxSpacing(style) {
@@ -4286,6 +4288,52 @@
             updateWoodSubOptions();
             updatePrivacyColorSection();
             updatePostDepthPills();
+            applyUiVisibility();
+        }
+
+        // Selection Map — admin-driven visibility map. Hides whole sections
+        // (uiVisibility.sections[id] === false) or individual pill choices
+        // (uiVisibility.choices['<sectionId>.<value>'] === false). Runs after
+        // every section/pill repopulation so it survives dynamic re-renders.
+        // Pill visibility checks every data-* attribute on the pill, since
+        // each section uses a different attr name (data-buildtype, data-rails,
+        // data-postinstall, etc.) and the Selection Map keys by value alone.
+        function applyUiVisibility() {
+            const vis = (PCFG && PCFG.uiVisibility) || {};
+            const sections = vis.sections || {};
+            const choices = vis.choices || {};
+            // Hide whole sections (or fence-type tiles) where the toggle is off.
+            Object.keys(sections).forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (sections[id] === false) {
+                    el.dataset._smForceHidden = '1';
+                    el.style.display = 'none';
+                } else if (el.dataset._smForceHidden === '1') {
+                    delete el.dataset._smForceHidden;
+                    el.style.display = '';
+                }
+            });
+            // Hide individual pills inside each section.  Re-show any pill
+            // that was hidden by us but is no longer in the choices map.
+            document.querySelectorAll('.config-pill, .config-tile, .config-toggle-btn').forEach(p => {
+                const parent = p.closest('.config-section, .fence-type-tiles, [id$="Section"], [id$="Tiles"]');
+                if (!parent || !parent.id) return;
+                let hideThis = false;
+                for (const attr of p.attributes) {
+                    if (!attr.name.startsWith('data-')) continue;
+                    if (attr.name === 'data-_sm-force-hidden') continue;
+                    const k = parent.id + '.' + attr.value;
+                    if (choices[k] === false) { hideThis = true; break; }
+                }
+                if (hideThis) {
+                    p.dataset._smForceHidden = '1';
+                    p.style.display = 'none';
+                } else if (p.dataset._smForceHidden === '1') {
+                    delete p.dataset._smForceHidden;
+                    p.style.display = '';
+                }
+            });
         }
         document.getElementById('fenceTypeTiles').addEventListener('click', updateConditionalSections);
         function onConfigChange() {

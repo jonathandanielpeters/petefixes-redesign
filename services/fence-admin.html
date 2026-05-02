@@ -287,6 +287,7 @@ a{color:var(--accent);text-decoration:none}
   <a class="sidebar-nav-item" href="fence-builder-admin.html" style="text-decoration:none"><span class="nav-icon">&#128296;</span>Admin Builder</a>
 
   <div class="sidebar-section-label">Extras</div>
+  <div class="sidebar-nav-item" data-section="selectionMap" onclick="showSection('selectionMap')"><span class="nav-icon">&#9745;</span>Selection Map</div>
   <div class="sidebar-nav-item" data-section="branding" onclick="showSection('branding')"><span class="nav-icon">&#127912;</span>Branding &amp; Email</div>
   <div class="sidebar-nav-item" data-section="importExport" onclick="showSection('importExport')"><span class="nav-icon">&#128230;</span>Import / Export</div>
 </nav>
@@ -1479,6 +1480,18 @@ a{color:var(--accent);text-decoration:none}
   </div>
 </div>
 
+<!-- ────── Selection Map — toggle which configurator pills appear ────── -->
+<div class="section" id="sec-selectionMap">
+  <h2 class="section-title">Selection Map</h2>
+  <p class="section-subtitle">Turn configurator categories and individual choices on/off for the customer-facing builder. The category toggle hides the whole section; individual choice toggles hide specific pills within a section.</p>
+
+  <div class="card">
+    <div class="card-title">Configurator visibility</div>
+    <div class="card-desc">Each row is a category in the build &amp; price tool. Toggle the category to hide its whole section, or expand it to disable individual choices.</div>
+    <div id="selectionMapHost" style="margin-top:12px"></div>
+  </div>
+</div>
+
 <!-- ────── 12. Branding & Email ────── -->
 <div class="section" id="sec-branding">
   <h2 class="section-title">Branding &amp; Email</h2>
@@ -1949,7 +1962,12 @@ const DEFAULT_CONFIG = {
   },
   fenceTypeVisibility: { chainlink: true, wood: true, ornamental: true, weldedWire: false, vinyl: false },
   fenceTypeSurcharges: { chainlink: 0, wood: 0, ornamental: 0, weldedWire: 0, vinyl: 0 },
-  optionExtras: { privacyInserts: 0, topCap: 0, cedar: 0, horizontalOrientation: 0 }
+  optionExtras: { privacyInserts: 0, topCap: 0, cedar: 0, horizontalOrientation: 0 },
+  // Selection Map — per-section / per-choice visibility for the customer-facing
+  // configurator. Empty defaults mean "show everything"; the admin Selection
+  // Map UI writes overrides here. uiVisibility.sections[id] = false hides a
+  // whole category; uiVisibility.choices['<id>.<value>'] = false hides a single pill.
+  uiVisibility: { sections: {}, choices: {} }
 };
 
 // ───── State ─────
@@ -4384,9 +4402,128 @@ function showSection(id) {
   document.querySelectorAll('.sidebar-nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`.sidebar-nav-item[data-section="${id}"]`).classList.add('active');
   updateAllPreviews();
+  if (id === 'selectionMap') renderSelectionMap();
   // Close mobile sidebar
   document.getElementById('adminSidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+// ═══════ SELECTION MAP ═══════
+// Catalog of every configurator section + its choices. Used by the Selection
+// Map admin UI and by the customer-facing builder's applyUiVisibility().
+// Static choices are listed inline; dynamic ones (per-fence-type post
+// installation methods, etc.) are filled at render time from the live config.
+const SELECTION_MAP = [
+  { id: 'fenceTypeSection',        label: 'Fence Type',           dynamic: 'fenceTypes' },
+  { id: 'heightSection',           label: 'Fence Height',         dynamic: 'heights' },
+  { id: 'chainlinkOptions',        label: 'Chain Link Colour',    choices: [{ value: 'galvanized', label: 'Galvanized' }, { value: 'black', label: 'Black' }] },
+  { id: 'chainlinkPostSizeSection',label: 'Chain Link Post Size', choices: [{ value: '2-3/8', label: '2 3/8"' }, { value: '1-7/8', label: '1 7/8"' }] },
+  { id: 'woodTypeSection',         label: 'Wood Type',            choices: [{ value: 'pressure-treated', label: 'Pressure Treated' }, { value: 'cedar', label: 'Cedar' }] },
+  { id: 'buildTypeSection',        label: 'Build Type',           choices: [{ value: 'posts-only', label: 'Posts Only' }, { value: 'full', label: 'Complete Fence Build' }] },
+  { id: 'picketOrientationSection',label: 'Picket Orientation',   choices: [{ value: 'vertical', label: 'Vertical Boards' }, { value: 'horizontal', label: 'Horizontal Boards' }] },
+  { id: 'postTypeSection',         label: 'Post Type',            dynamic: 'postTypes' },
+  { id: 'postSpacingSection',      label: 'Post Spacing',         dynamic: 'postSpacings' },
+  { id: 'boardSizeSection',        label: 'Board Size',           choices: [{ value: '1x4', label: '1×4' }, { value: '1x6', label: '1×6' }, { value: '2x6', label: '2×6' }] },
+  { id: 'railSection',             label: 'Rails',                choices: [{ value: '2', label: '2 Rail' }, { value: '3', label: '3 Rail' }] },
+  { id: 'railTopSizeSection',      label: 'Top Rail',             choices: [{ value: '2x4', label: '2×4' }, { value: '2x6', label: '2×6' }] },
+  { id: 'railBottomSizeSection',   label: 'Bottom Rail',          choices: [{ value: '2x4', label: '2×4' }, { value: '2x6', label: '2×6' }] },
+  { id: 'topCapSection',           label: 'Top Cap',              choices: [{ value: 'none', label: 'No Top Cap' }, { value: '2x4', label: '2×4 Top Cap' }] },
+  { id: 'trimBoardSection',        label: 'Trim Boards',          choices: [{ value: 'none', label: 'No Trim' }, { value: 'top', label: 'Top Only' }, { value: 'bottom', label: 'Bottom Only' }, { value: 'both', label: 'Top & Bottom' }] },
+  { id: 'infillStyleSection',      label: 'Infill Style',         choices: [{ value: 'standard', label: 'Standard' }, { value: 'friendlyNeighbor', label: 'Friendly Neighbor' }, { value: 'picketGap', label: 'Picket Gap' }, { value: 'gaplessBoardOnBoard', label: 'Gapless Board on Board' }] },
+  { id: 'postInstallSection',      label: 'Post Installation',    dynamic: 'postInstall' },
+  { id: 'mudRemovalSection',       label: 'Mud Removal',          choices: [{ value: 'false', label: 'No' }, { value: 'true', label: 'Yes' }] },
+  { id: 'privacyInsertSection',    label: 'Privacy Inserts',      choices: [{ value: 'false', label: 'No' }, { value: 'true', label: 'Yes' }] },
+  { id: 'privacyInstallSection',   label: 'Privacy Install',      choices: [{ value: 'true', label: 'Yes (install for me)' }, { value: 'false', label: 'No (supply only)' }] },
+  { id: 'privacyColorSection',     label: 'Privacy Colour',       choices: [{ value: 'grey', label: 'Grey' }, { value: 'beige', label: 'Beige' }, { value: 'green', label: 'Green' }, { value: 'brown', label: 'Brown' }] }
+];
+
+// Resolve dynamic choice lists from live config so the Selection Map can show
+// admin-defined heights, post types, post installation methods, etc.
+function selectionMapDynamicChoices(kind) {
+  const wb = config.woodBuild || {};
+  if (kind === 'fenceTypes') {
+    return [
+      { value: 'chainlink', label: 'Chain Link' },
+      { value: 'wood', label: 'Wood' },
+      { value: 'ornamental', label: 'Ornamental' },
+      { value: 'weldedWire', label: 'Welded Wire' },
+      { value: 'vinyl', label: 'Vinyl' }
+    ];
+  }
+  if (kind === 'heights') {
+    return [4, 5, 6, 7, 8, 10].map(h => ({ value: String(h), label: h + " ft" }));
+  }
+  if (kind === 'postTypes') {
+    const pm = wb.postMaterials || {};
+    return Object.keys(pm).map(k => ({ value: k, label: (pm[k].label || k) }));
+  }
+  if (kind === 'postSpacings') {
+    return [{ value: '6', label: "6 ft" }, { value: '8', label: "8 ft" }, { value: '10', label: "10 ft (commercial)" }];
+  }
+  if (kind === 'postInstall') {
+    const out = [];
+    const seen = {};
+    ['wood', 'chainlink', 'weldedWire'].forEach(ft => {
+      const sec = (wb.postInstallation && wb.postInstallation[ft]) || {};
+      const m = sec.methods || {};
+      Object.keys(m).forEach(k => {
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push({ value: k, label: m[k].label || k });
+      });
+    });
+    return out;
+  }
+  return [];
+}
+
+function renderSelectionMap() {
+  const host = document.getElementById('selectionMapHost');
+  if (!host) return;
+  if (!config.uiVisibility) config.uiVisibility = { sections: {}, choices: {} };
+  if (!config.uiVisibility.sections) config.uiVisibility.sections = {};
+  if (!config.uiVisibility.choices) config.uiVisibility.choices = {};
+  const vis = config.uiVisibility;
+  let html = '';
+  SELECTION_MAP.forEach(cat => {
+    const choices = cat.dynamic ? selectionMapDynamicChoices(cat.dynamic) : (cat.choices || []);
+    const catOn = vis.sections[cat.id] !== false;     // default: visible
+    html += '<div style="border:1px solid var(--gray-200);border-radius:8px;margin-bottom:8px;background:var(--white)">' +
+      '<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-weight:600;font-size:13px">' +
+        '<input type="checkbox" class="sm-cat-toggle" data-cat="' + cat.id + '"' + (catOn ? ' checked' : '') + ' style="width:18px;height:18px;accent-color:var(--accent)">' +
+        '<span style="flex:1">' + cat.label + '</span>' +
+        '<span style="font-size:11px;color:var(--gray-400);font-weight:500">' + (catOn ? 'Visible' : 'Hidden') + ' · ' + choices.length + ' choices</span>' +
+      '</label>';
+    if (choices.length > 0) {
+      html += '<div style="padding:0 14px 10px 38px;display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid var(--gray-100);background:var(--gray-50)">';
+      choices.forEach(c => {
+        const choiceKey = cat.id + '.' + c.value;
+        const choiceOn = vis.choices[choiceKey] !== false;
+        html += '<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:' + (catOn ? 'var(--gray-500)' : 'var(--gray-300)') + ';cursor:' + (catOn ? 'pointer' : 'not-allowed') + ';padding:6px 0">' +
+          '<input type="checkbox" class="sm-choice-toggle" data-cat="' + cat.id + '" data-value="' + c.value + '"' + (choiceOn ? ' checked' : '') + (catOn ? '' : ' disabled') + ' style="width:14px;height:14px;accent-color:var(--accent)">' +
+          '<span>' + c.label + '</span>' +
+        '</label>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  host.innerHTML = html;
+
+  host.querySelectorAll('input.sm-cat-toggle').forEach(el => {
+    el.addEventListener('change', () => {
+      config.uiVisibility.sections[el.dataset.cat] = el.checked;
+      renderSelectionMap();
+      markDirty();
+    });
+  });
+  host.querySelectorAll('input.sm-choice-toggle').forEach(el => {
+    el.addEventListener('change', () => {
+      const k = el.dataset.cat + '.' + el.dataset.value;
+      config.uiVisibility.choices[k] = el.checked;
+      markDirty();
+    });
+  });
 }
 
 function toggleSidebar() {
