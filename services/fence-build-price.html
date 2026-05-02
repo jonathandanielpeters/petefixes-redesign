@@ -3554,6 +3554,26 @@
                 }
             });
 
+            // Collect every fence-line endpoint point ID by fence type so we
+            // can detect when a gate's post is shared with a fence line and
+            // skip charging for it. This implements the rule:
+            //   - Gate alone     → 2 main posts charged
+            //   - Gate + 1 fence → 1 main post charged (shared post is already
+            //                       counted by the fence)
+            //   - Gate + 2 fences → 0 main posts charged (both shared)
+            const _fenceEndpointsByType = { chainlink: new Set(), wood: new Set(), ornamental: new Set(), weldedWire: new Set(), vinyl: new Set() };
+            state.lines.forEach(line => {
+                if (!isLineEnabled(line)) return;
+                const ft = getStyleForLine(line).fenceType;
+                if (_fenceEndpointsByType[ft]) {
+                    _fenceEndpointsByType[ft].add(line.p1);
+                    _fenceEndpointsByType[ft].add(line.p2);
+                }
+            });
+            // Track which gate-post point IDs we've already charged for, so
+            // adjacent gates sharing an endpoint don't double-bill.
+            const _gatePostsCounted = new Set();
+
             state.gates.forEach(g => {
                 const p1 = state.points.find(p => p.id === g.p1);
                 const p2 = state.points.find(p => p.id === g.p2);
@@ -3577,6 +3597,46 @@
                         trackPurchase(gs.woodType, item.dimension, item.length, Math.ceil((item.quantity || 1) * 2));
                     });
                 }
+
+                // Main posts for unshared gate endpoints. Skip when the
+                // endpoint is already a fence-line endpoint (the line already
+                // booked that post) or another gate already charged it.
+                const gFt = gs.fenceType;
+                const sharedSet = _fenceEndpointsByType[gFt];
+                [g.p1, g.p2].forEach(pid => {
+                    if (sharedSet && sharedSet.has(pid)) return;
+                    if (_gatePostsCounted.has(pid)) return;
+                    _gatePostsCounted.add(pid);
+                    if (gFt === 'chainlink') {
+                        // Chainlink end post — same SKU/key the fence-line path uses
+                        // so the dedup line above also catches gate-then-fence ordering.
+                        const cl = cfgChainlink();
+                        const ps = gs.chainlinkPostSize || '2-3/8';
+                        const color = gs.chainlinkColor || 'galvanized';
+                        const h = gs.height;
+                        const postPrices = cl.posts && cl.posts[ps];
+                        const clLenPrice = getPostLengthPrice('chainlink', h, gs);
+                        const clFallback = clLenPrice || cl.postCost || 25;
+                        const pp = postPrices && postPrices.end && postPrices.end[color];
+                        const price = pp || clFallback;
+                        const plLen = getEffectivePostLength(h, gs);
+                        const clPostLabel = plLen ? ' ' + plLen + "'" : '';
+                        addToOrder('cl-post-end-' + ps + '-' + color, 'CL ' + ps + '"' + clPostLabel + ' end post (' + color + ')', 1, price);
+                    } else if (gFt === 'wood') {
+                        // Wood post hardware — same SKU key as fence-line wood posts.
+                        const recipe = cfgWoodBuild();
+                        const pt = gs.woodPostType || 'postmaster';
+                        const postDef = findPostMatDef(recipe, pt);
+                        const woodLenPrice = getPostLengthPrice(pt, gs.height, gs);
+                        let hwPrice;
+                        if (woodLenPrice !== null) hwPrice = woodLenPrice;
+                        else if (postDef) hwPrice = postDef.hardware || 0;
+                        else hwPrice = cfgPostHW()[pt] || 49.99;
+                        const ptLabel = pt === 'postmaster' ? 'Postmaster' : (pt === 'metal-2x2' ? 'Metal 2x2' : pt);
+                        const woodPlLen = getEffectivePostLength(gs.height, gs);
+                        addToOrder('post-hw-' + pt, ptLabel + ' post' + (woodPlLen ? ' ' + woodPlLen + "'" : ''), 1, hwPrice);
+                    }
+                });
             });
 
             const items = Object.values(order).sort((a, b) => b.total - a.total);
@@ -7847,6 +7907,31 @@
                 }
             });
 
+            // Main posts for unshared gate endpoints. A gate drawn alone needs
+            // 2 main posts; if a fence connects to a gate endpoint, the line
+            // already booked that post via endIds/cornerIds and we skip it here.
+            // Picks the V3 mainAssembly post for the gate's height group.
+            const _v3FenceEndpoints = new Set();
+            clLines.forEach(line => { _v3FenceEndpoints.add(line.p1); _v3FenceEndpoints.add(line.p2); });
+            const _v3GatePostsCounted = new Set();
+            enabledGates.forEach(g => {
+                const gs = getStyleForLine(g);
+                const gHeightKey = gs.height + 'ft';
+                const gRecipe = cl3[tier][gHeightKey];
+                if (!gRecipe) return;
+                const gColor = gs.chainlinkColor || 'galvanized';
+                const mainOpts = (gRecipe.mainAssembly && gRecipe.mainAssembly.postOptions) || [];
+                const mainPick = mainOpts.find(o => o.isDefault) || mainOpts[0];
+                if (!mainPick) return;
+                [g.p1, g.p2].forEach(pid => {
+                    if (_v3FenceEndpoints.has(pid)) return;
+                    if (_v3GatePostsCounted.has(pid)) return;
+                    _v3GatePostsCounted.add(pid);
+                    add(pickColor(mainPick.galv, mainPick.black, gColor), 1);
+                    add(pickColor(mainPick.capGalv, mainPick.capBlack, gColor), 1);
+                });
+            });
+
             // Gates
             if (enabledGates.length > 0) {
                 const firstStyle = clLines.length > 0 ? getStyleForLine(clLines[0]) : activeStyle();
@@ -7893,6 +7978,82 @@
             categories.forEach(g => g.items.sort((a, b) => a.description.localeCompare(b.description)));
             const grandTotal = categories.reduce((s, g) => s + g.subtotal, 0);
             return { categories, grandTotal };
+        }
+
+        // Categorize a consolidated-material-order key into a SKU category.
+        // Used by generateUnifiedPartsList() so wood lumber, gate kits, post
+        // hardware, privacy bags, etc. show up in the same SKU-style breakdown
+        // as chainlink V3 items.
+        function _moCategoryFor(key, label) {
+            if (!key) return 'OTHER';
+            if (key.startsWith('p-') || key.startsWith('c-')) return 'LUMBER';
+            if (key.startsWith('post-hw-')) return 'POSTS';
+            if (key.startsWith('gate-')) return 'GATE KITS';
+            if (key.startsWith('cl-privacy-')) return 'PRIVACY INSERTS';
+            if (key.startsWith('cl-')) return 'CHAIN LINK';
+            if (key.startsWith('orn-')) return 'ORNAMENTAL';
+            if (key.startsWith('ww-')) return 'WELDED WIRE';
+            if (key.startsWith('vn-')) return 'VINYL';
+            if (key.startsWith('mud-')) return 'POST PREP';
+            if (key.startsWith('post-install-')) return 'POST PREP';
+            if (key.startsWith('designer-cut-')) return 'DESIGNER CUTS';
+            return 'OTHER';
+        }
+
+        // Unified parts list — V3 chainlink SKUs + wood lumber + other items
+        // (gate kits, post hardware, privacy, etc.) all rendered as a single
+        // categorised SKU breakdown. This is the single source of truth for
+        // the email "Parts List" section, the admin overlay, and the
+        // material-cost basis used by Pricing Math.
+        //
+        // De-duplication: when V3 is active for chainlink, we skip cl-*
+        // items from the consolidated material order so the same physical
+        // mesh/posts/fittings aren't counted twice.
+        function generateUnifiedPartsList() {
+            const v3 = (typeof generateV3PartsList === 'function') ? generateV3PartsList() : null;
+            let order = null;
+            try { order = generateMaterialOrder(); } catch (e) { order = null; }
+
+            const v3Active = !!(v3 && v3.categories && v3.categories.length > 0);
+            const grouped = {};
+            // Pre-seed with V3 chainlink categories
+            if (v3Active) {
+                v3.categories.forEach(cat => {
+                    grouped[cat.category] = {
+                        category: cat.category,
+                        items: (cat.items || []).map(it => ({ ...it })),
+                        subtotal: cat.subtotal || 0
+                    };
+                });
+            }
+            // Fold in consolidated material order items (wood lumber, gate kits,
+            // post hardware, etc.). Skip cl-* when V3 is active.
+            if (order && Array.isArray(order.items)) {
+                order.items.forEach(item => {
+                    if (v3Active && item.key && item.key.startsWith('cl-')) return;
+                    const catName = _moCategoryFor(item.key, item.label);
+                    if (!grouped[catName]) grouped[catName] = { category: catName, items: [], subtotal: 0 };
+                    const total = (Number(item.qty) || 0) * (Number(item.unitPrice) || 0);
+                    grouped[catName].items.push({
+                        code: (item.key || '').toUpperCase(),
+                        description: item.label || '',
+                        qty: item.qty || 0,
+                        unitPrice: item.unitPrice || 0,
+                        total: total
+                    });
+                    grouped[catName].subtotal += total;
+                });
+            }
+
+            const ORDER = ['POSTS', 'CHAIN LINK FABRIC', 'CHAIN LINK', 'RAILS', 'LUMBER', 'CHAIN LINK FITTINGS', 'GATE FITTINGS', 'GATE KITS', 'WIRE PRODUCTS', 'RES.GATE', 'IND.GATE', 'ORNAMENTAL', 'WELDED WIRE', 'VINYL', 'PRIVACY INSERTS', 'POST PREP', 'DESIGNER CUTS', 'MISC.', 'EXTRAS 2026', 'FASTENERS', 'OTHER'];
+            const categories = Object.values(grouped).sort((a, b) => {
+                const ia = ORDER.indexOf(a.category);
+                const ib = ORDER.indexOf(b.category);
+                return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+            });
+            categories.forEach(c => c.items.sort((a, b) => (a.description || '').localeCompare(b.description || '')));
+            const grandTotal = categories.reduce((s, c) => s + (c.subtotal || 0), 0);
+            return { categories, grandTotal, v3Active };
         }
 
         function calculateV3Project() {
@@ -8076,6 +8237,31 @@
                         });
                     }
                 }
+            });
+
+            // Main posts for unshared gate endpoints. A gate drawn alone needs
+            // 2 main posts; if a fence connects to a gate endpoint, the line
+            // already booked that post via endIds/cornerIds and we skip it here.
+            const _v3calcFenceEndpoints = new Set();
+            clLines.forEach(line => { _v3calcFenceEndpoints.add(line.p1); _v3calcFenceEndpoints.add(line.p2); });
+            const _v3calcGatePostsCounted = new Set();
+            enabledGates.forEach(g => {
+                const gs = getStyleForLine(g);
+                const gHeightKey = gs.height + 'ft';
+                const gRecipe = cl3[tier][gHeightKey];
+                if (!gRecipe) return;
+                const gColor = gs.chainlinkColor || 'galvanized';
+                const gMainOpts = (gRecipe.mainAssembly && gRecipe.mainAssembly.postOptions) || [];
+                const gMainPick = gMainOpts.find(o => o.isDefault) || gMainOpts[0];
+                if (!gMainPick) return;
+                [g.p1, g.p2].forEach(pid => {
+                    if (_v3calcFenceEndpoints.has(pid)) return;
+                    if (_v3calcGatePostsCounted.has(pid)) return;
+                    _v3calcGatePostsCounted.add(pid);
+                    materialCost += priceOf(pickColor(gMainPick.galv, gMainPick.black, gColor));
+                    materialCost += priceOf(pickColor(gMainPick.capGalv, gMainPick.capBlack, gColor));
+                    totalEndPosts += 1;
+                });
             });
 
             // Gates — match each customer gate to a recipe gate by widthFt
@@ -9301,15 +9487,15 @@
                     return;
                 }
                 if (msg.type === 'admin:getPartsList') {
-                    // "As built" parts list — what the engine pulled in
-                    // for the current drawing.  Includes the consolidated
-                    // material order (all fence types + gates + privacy
-                    // bags + etc.) plus the V3 chainlink itemized
-                    // breakdown by category for chainlink jobs.
-                    let order = null, v3Parts = null;
+                    // "As built" parts list — unified SKU breakdown that
+                    // combines V3 chain-link SKUs + wood lumber + gate kits +
+                    // post hardware + privacy bags etc. Single source of truth
+                    // for the admin overlay and the customer email.
+                    let order = null, v3Parts = null, unified = null;
                     try { order = (typeof generateMaterialOrder === 'function') ? generateMaterialOrder() : null; } catch (e) { order = null; }
                     try { v3Parts = (typeof generateV3PartsList === 'function') ? generateV3PartsList() : null; } catch (e) { v3Parts = null; }
-                    try { window.parent.postMessage({ type: 'admin:partsList', materialOrder: order, v3Parts: v3Parts }, '*'); } catch (err) {}
+                    try { unified = (typeof generateUnifiedPartsList === 'function') ? generateUnifiedPartsList() : null; } catch (e) { unified = null; }
+                    try { window.parent.postMessage({ type: 'admin:partsList', materialOrder: order, v3Parts: v3Parts, unified: unified }, '*'); } catch (err) {}
                     return;
                 }
                 if (msg.type === 'admin:getPostMeta') {
@@ -10717,6 +10903,7 @@
         function buildInternalEmailHtml(customerInfo, breakdown, editUrl, drawingDataUrl, estimateTitle) {
             const matOrder = generateMaterialOrder();
             const mk = matOrder.markup;
+            const unified = (typeof generateUnifiedPartsList === 'function') ? generateUnifiedPartsList() : { categories: [], grandTotal: 0 };
             let totalMaterial = 0;
             let totalRevenue = 0;
 
@@ -10755,8 +10942,8 @@
                 var pnlMat = breakdown.projectMaterial || (typeof calculateProjectMaterial === 'function' ? calculateProjectMaterial() : null);
                 var pnlLab = breakdown.projectLabour || (typeof calculateProjectLabour === 'function' ? calculateProjectLabour() : null);
                 var moneyFmt = function(n) { return '$' + Math.round(n || 0).toLocaleString(); };
-                var matCost  = pnlMat ? (pnlMat.totalMatCost || 0) : (matOrder.totalMaterial || 0);
-                var matSell  = pnlMat ? (pnlMat.totalMatSell || 0) : (matOrder.totalMaterial * (mk || 1));
+                var matCost  = pnlMat ? (pnlMat.totalMatCost || 0) : (unified.grandTotal || 0);
+                var matSell  = pnlMat ? (pnlMat.totalMatSell || 0) : ((unified.grandTotal || 0) * (mk || 1));
                 var matMkPnl = matSell - matCost;
                 var labCost  = pnlLab ? (pnlLab.totalCost || 0) : 0;
                 var labCharg = pnlLab ? (pnlLab.totalCharge || 0) : (breakdown.labourTotal || 0);
@@ -10850,81 +11037,62 @@
                 html += '<p style="font-size:11px;color:#c44;margin:0 0 16px"><em>P&amp;L snapshot unavailable: ' + escHtml(e.message || String(e)) + '</em></p>';
             }
 
-            // ── SECTION 1: Material Order (Shopping List) ──
-            html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">📋 Material Order</h3>';
-            html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Consolidated list — all lumber sizes needed to complete this job.</p>';
-            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px">';
-            html += '<tr style="background:#333;color:#fff"><th style="text-align:left;padding:6px 8px">Material</th><th style="text-align:right;padding:6px 8px">Qty</th><th style="text-align:right;padding:6px 8px">Unit $</th><th style="text-align:right;padding:6px 8px">Total</th></tr>';
-
-            matOrder.items.forEach(function(item) {
-                html += '<tr style="border-bottom:1px solid #e5e5e5">';
-                html += '<td style="padding:5px 8px">' + item.label + '</td>';
-                html += '<td style="padding:5px 8px;text-align:right">' + item.qty + '</td>';
-                html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + item.unitPrice.toFixed(2) + '</td>';
-                html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + item.total.toFixed(2) + '</td>';
+            // ── SECTION 1: Parts List — Unified SKU breakdown ──
+            // Single source of truth: V3 chain-link SKUs + wood lumber
+            // (imported from the lumber price chart) + gate kits, post
+            // hardware, privacy bags, etc., all in one categorised view.
+            // The grand total here is what Pricing Math marks up.
+            html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">🔩 Parts List — Exact SKUs (by Category)</h3>';
+            html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Every SKU the engine pulled in for this drawing — chain-link recipes, wood lumber from the price chart, gate kits, post hardware, privacy bags. Use this to pull stock / order materials.</p>';
+            html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
+            html += '<tr style="background:#333;color:#fff">';
+            html += '<th style="text-align:left;padding:6px 8px;width:120px">Code</th>';
+            html += '<th style="text-align:left;padding:6px 8px">Description</th>';
+            html += '<th style="text-align:right;padding:6px 8px;width:60px">Qty</th>';
+            html += '<th style="text-align:right;padding:6px 8px;width:80px">Unit $</th>';
+            html += '<th style="text-align:right;padding:6px 8px;width:90px">Total</th>';
+            html += '</tr>';
+            unified.categories.forEach(function(cat) {
+                html += '<tr style="background:#555;color:#fff">';
+                html += '<td colspan="5" style="padding:5px 8px;font-weight:700;letter-spacing:0.5px;font-size:11px">' + escHtml(cat.category) + '</td>';
+                html += '</tr>';
+                cat.items.forEach(function(it) {
+                    html += '<tr style="border-bottom:1px solid #e5e5e5">';
+                    html += '<td style="padding:5px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:#666">' + escHtml(it.code) + '</td>';
+                    html += '<td style="padding:5px 8px">' + escHtml(it.description) + '</td>';
+                    html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + it.qty + '</td>';
+                    html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + (Number(it.unitPrice) || 0).toFixed(2) + '</td>';
+                    html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + (Number(it.total) || 0).toFixed(2) + '</td>';
+                    html += '</tr>';
+                });
+                html += '<tr style="background:#f5f5f5;font-weight:600">';
+                html += '<td colspan="4" style="padding:5px 8px;text-align:right;color:#555">' + escHtml(cat.category) + ' subtotal</td>';
+                html += '<td style="padding:5px 8px;text-align:right">$' + (Number(cat.subtotal) || 0).toFixed(2) + '</td>';
                 html += '</tr>';
             });
-
             html += '<tr style="background:#f0ead6;font-weight:700">';
-            html += '<td colspan="3" style="padding:8px">Material Subtotal</td>';
-            html += '<td style="padding:8px;text-align:right">$' + matOrder.totalMaterial.toLocaleString() + '</td>';
-            html += '</tr></table>';
-
-            // ── SECTION 1b: V3 Parts List (chain-link itemized SKUs by category) ──
-            try {
-                var v3Parts = generateV3PartsList();
-                if (v3Parts && v3Parts.categories && v3Parts.categories.length > 0) {
-                    html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">🔩 Parts List — Exact SKUs (by Category)</h3>';
-                    html += '<p style="font-size:11px;color:#888;margin:0 0 8px">Itemized chain-link parts from current admin recipes. Use this to pull stock / order materials.</p>';
-                    html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11px">';
-                    html += '<tr style="background:#333;color:#fff">';
-                    html += '<th style="text-align:left;padding:6px 8px;width:90px">Code</th>';
-                    html += '<th style="text-align:left;padding:6px 8px">Description</th>';
-                    html += '<th style="text-align:right;padding:6px 8px;width:60px">Qty</th>';
-                    html += '<th style="text-align:right;padding:6px 8px;width:80px">Unit $</th>';
-                    html += '<th style="text-align:right;padding:6px 8px;width:90px">Total</th>';
-                    html += '</tr>';
-                    v3Parts.categories.forEach(function(cat) {
-                        html += '<tr style="background:#555;color:#fff">';
-                        html += '<td colspan="5" style="padding:5px 8px;font-weight:700;letter-spacing:0.5px;font-size:11px">' + escHtml(cat.category) + '</td>';
-                        html += '</tr>';
-                        cat.items.forEach(function(it) {
-                            html += '<tr style="border-bottom:1px solid #e5e5e5">';
-                            html += '<td style="padding:5px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:#666">' + escHtml(it.code) + '</td>';
-                            html += '<td style="padding:5px 8px">' + escHtml(it.description) + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:right;font-weight:600">' + it.qty + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:right;color:#888">$' + it.unitPrice.toFixed(2) + '</td>';
-                            html += '<td style="padding:5px 8px;text-align:right;font-weight:600">$' + it.total.toFixed(2) + '</td>';
-                            html += '</tr>';
-                        });
-                        html += '<tr style="background:#f5f5f5;font-weight:600">';
-                        html += '<td colspan="4" style="padding:5px 8px;text-align:right;color:#555">' + escHtml(cat.category) + ' subtotal</td>';
-                        html += '<td style="padding:5px 8px;text-align:right">$' + cat.subtotal.toFixed(2) + '</td>';
-                        html += '</tr>';
-                    });
-                    html += '<tr style="background:#f0ead6;font-weight:700">';
-                    html += '<td colspan="4" style="padding:8px;text-align:right">Parts List Grand Total</td>';
-                    html += '<td style="padding:8px;text-align:right">$' + v3Parts.grandTotal.toFixed(2) + '</td>';
-                    html += '</tr>';
-                    html += '</table>';
-                }
-            } catch (e) { /* swallow — fallback to legacy material order only */ }
+            html += '<td colspan="4" style="padding:8px;text-align:right">Parts List Grand Total</td>';
+            html += '<td style="padding:8px;text-align:right">$' + unified.grandTotal.toFixed(2) + '</td>';
+            html += '</tr>';
+            html += '</table>';
 
             // ── SECTION 2: Pricing Math ──
             html += '<h3 style="margin:0 0 8px;font-size:15px;border-top:2px solid ' + cfgAccent() + ';padding-top:16px">Pricing Math</h3>';
             html += '<table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:13px">';
-            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Total Material Cost</td><td style="padding:6px 8px;text-align:right;font-weight:600">$' + matOrder.totalMaterial.toLocaleString() + '</td></tr>';
+            // Material cost basis is the unified parts list grand total so the
+            // SKU view and the priced material match exactly.
+            var unifiedCost = Math.round(unified.grandTotal || 0);
+            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Total Material Cost <span style="font-size:11px;color:#aaa">(Parts List grand total)</span></td><td style="padding:6px 8px;text-align:right;font-weight:600">$' + unifiedCost.toLocaleString() + '</td></tr>';
 
-            // Markup tier description — use the correct basis value from matOrder (respects markupBasis setting)
-            var basisVal = matOrder.basisValue || matOrder.totalMaterial;
-            var basisLabel = matOrder.markupBasis === 'footage' ? 'footage' : 'material';
+            var basisVal = unifiedCost;
+            var basisLabel = 'material';
             // Markup is per fence type now \u2014 show effective project markup
             // here, then break out per type below.
             var pmEarly = breakdown.projectMaterial;
             var effectiveMk = (pmEarly && pmEarly.totalMatCost > 0) ? (pmEarly.totalMatSell / pmEarly.totalMatCost) : (mk || 1);
-            var markedUpCost = pmEarly ? Math.round(pmEarly.totalMatSell) : Math.round(matOrder.totalMaterial * effectiveMk);
+            var markedUpCost = Math.round(unifiedCost * effectiveMk);
             html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Effective Markup Rate <span style="font-size:11px;color:#aaa">(weighted across fence types)</span></td><td style="padding:6px 8px;text-align:right;font-weight:600">' + effectiveMk.toFixed(2) + '\u00d7</td></tr>';
-            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Materials sell ($' + matOrder.totalMaterial.toLocaleString() + ' \u00d7 ' + effectiveMk.toFixed(2) + ')</td><td style="padding:6px 8px;text-align:right;font-weight:600">= $' + markedUpCost.toLocaleString() + '</td></tr>';
+            html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Materials sell ($' + unifiedCost.toLocaleString() + ' \u00d7 ' + effectiveMk.toFixed(2) + ')</td><td style="padding:6px 8px;text-align:right;font-weight:600">= $' + markedUpCost.toLocaleString() + '</td></tr>';
 
             // Per-fence-type material markup breakdown
             try {
@@ -11219,7 +11387,7 @@
             } catch (e) { console.warn('[email-removal]', e); }
 
             var finalPrice = breakdown.total;
-            var grossProfit = finalPrice - matOrder.totalMaterial;
+            var grossProfit = finalPrice - (unified.grandTotal || 0);
             var margin = finalPrice > 0 ? Math.round((grossProfit / finalPrice) * 100) : 0;
             html += '<tr style="border-bottom:1px solid #e5e5e5"><td style="padding:6px 8px;color:#888">Gross Profit</td><td style="padding:6px 8px;text-align:right;color:#27ae60;font-weight:700">$' + grossProfit.toLocaleString() + '</td></tr>';
             html += '<tr style="background:#f0ead6"><td style="padding:8px;font-weight:700">Margin</td><td style="padding:8px;text-align:right;font-weight:700;color:#27ae60">' + margin + '%</td></tr>';
@@ -11351,7 +11519,7 @@
 
             // Final formula
             html += '<tr style="background:#f0ead6"><td colspan="4" style="padding:8px;font-weight:700;font-size:12px">';
-            html += 'Formula: ($' + matOrder.totalMaterial.toLocaleString() + ' material × ' + mk + '×)';
+            html += 'Formula: ($' + Math.round(unified.grandTotal || 0).toLocaleString() + ' material × ' + mk + '×)';
             if (labTotal > 0) html += ' + $' + labTotal.toLocaleString() + ' labour';
             if (aoTotal > 0) html += ' + $' + aoTotal.toLocaleString() + ' add-ons';
             html += ' = <span style="color:' + cfgAccent() + '">$' + finalPrice.toLocaleString() + '</span>';

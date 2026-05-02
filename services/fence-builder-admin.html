@@ -583,15 +583,9 @@ function removedSkuCost() {
     const removed = new Set(state.adminExtras.removedSkus || []);
     if (removed.size === 0) return 0;
     let cost = 0;
-    // Consolidated material order (wood lumber + gate kits + privacy bags + etc.)
-    if (state.materialOrder && Array.isArray(state.materialOrder.items)) {
-        state.materialOrder.items.forEach(it => {
-            if (removed.has(it.key)) cost += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
-        });
-    }
-    // Chainlink V3 SKU breakdown
-    if (state.v3Parts && Array.isArray(state.v3Parts.categories)) {
-        state.v3Parts.categories.forEach(cat => {
+    // Unified parts list (V3 chain-link + wood lumber + gate kits + ...)
+    if (state.unifiedParts && Array.isArray(state.unifiedParts.categories)) {
+        state.unifiedParts.categories.forEach(cat => {
             (cat.items || []).forEach(it => {
                 if (removed.has(it.code)) cost += (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
             });
@@ -1041,6 +1035,7 @@ window.addEventListener('message', (e) => {
     if (msg.type === 'admin:partsList') {
         state.materialOrder = msg.materialOrder || null;
         state.v3Parts = msg.v3Parts || null;
+        state.unifiedParts = msg.unified || null;
         renderPartsListPane();
         return;
     }
@@ -1050,14 +1045,10 @@ window.addEventListener('message', (e) => {
 function renderPartsListPane() {
     const host = $('aslistContainer');
     if (!host) return;
-    const order = state.materialOrder;
-    const v3 = state.v3Parts;
+    const unified = state.unifiedParts;
     const adminParts = state.adminExtras.customParts || [];
-    // Empty-state guard — show "draw a fence" hint when neither the
-    // consolidated order nor the V3 SKU breakdown has anything to show.
-    const hasOrder = order && order.items && order.items.length > 0;
-    const hasV3 = v3 && v3.categories && v3.categories.length > 0;
-    if (!hasOrder && !hasV3) {
+    const hasUnified = unified && unified.categories && unified.categories.length > 0;
+    if (!hasUnified) {
         host.innerHTML = '<div style="font-size:12px;color:var(--gray-400);padding:14px 16px;background:var(--gray-50);border-radius:6px;text-align:center">Draw a fence to see the parts list.</div>';
         return;
     }
@@ -1074,72 +1065,36 @@ function renderPartsListPane() {
         return '<button class="sku-toggle-btn" data-sku-toggle="' + escHtml(skuKey) + '" title="' + title + '" style="background:transparent;border:1px solid ' + color + ';color:' + color + ';width:22px;height:22px;border-radius:50%;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;line-height:1;padding:0">' + label + '</button>';
     }
 
-    // ─ Consolidated material order (wood SKUs, gate kits, privacy, etc.) ─
-    // Filters out items already itemized in the V3 chainlink breakdown to
-    // avoid double-listing.
-    if (hasOrder) {
-        const v3Codes = new Set();
-        if (v3 && v3.categories) {
-            v3.categories.forEach(c => (c.items || []).forEach(it => { if (it.code) v3Codes.add(it.code); }));
-        }
-        const skuItems = (order.items || []).filter(it => !v3Codes.has(it.key));
-        if (skuItems.length > 0) {
-            html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🪵 Material SKUs</div>';
-            html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Wood lumber, gate hardware, post hardware, and other material SKUs from the consolidated order. Click × to remove a SKU from the quote — its sell value is deducted from the customer total.</div>';
-            html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
-            html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:120px">SKU</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
-            let skuSubtotal = 0;
-            skuItems.forEach(it => {
-                const total = (Number(it.qty) || 0) * (Number(it.unitPrice) || 0);
-                const isRemoved = removed.has(it.key);
-                if (!isRemoved) skuSubtotal += total;
-                const rowStyle = isRemoved ? removedRowStyle : '';
-                html += '<tr style="border-bottom:1px solid var(--gray-100);' + rowStyle + '">' +
-                    '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.key || '') + '</td>' +
-                    '<td style="padding:4px 8px">' + escHtml(it.label || '') + '</td>' +
-                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
-                    '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
-                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(total) + '</td>' +
-                    '<td style="padding:4px 8px;text-align:center">' + actionBtn(it.key || '') + '</td>' +
-                    '</tr>';
-            });
-            html += '<tr style="background:rgba(0,0,0,0.04);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Material SKU subtotal (active)</td>' +
-                '<td style="padding:6px 8px;text-align:right">' + fmt(skuSubtotal) + '</td><td></td></tr>';
-            html += '</tbody></table>';
-        }
-    }
-
-    // ─ V3 chainlink breakdown (when applicable) ────────────────
-    if (v3 && v3.categories && v3.categories.length > 0) {
-        html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🔩 Chainlink SKUs — by category</div>';
-        html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Itemized chainlink parts from the active recipe.  Click × to remove a SKU from the quote.</div>';
-        html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
-        html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
-        let activeGrandTotal = 0;
-        v3.categories.forEach(cat => {
-            html += '<tr style="background:var(--gray-100)"><td colspan="6" style="padding:5px 8px;font-weight:700;font-size:10px;color:var(--gray-500);letter-spacing:0.05em">' + escHtml(cat.category) + '</td></tr>';
-            let activeSub = 0;
-            (cat.items || []).forEach(it => {
-                const isRemoved = removed.has(it.code);
-                const rowStyle = isRemoved ? removedRowStyle : '';
-                if (!isRemoved) activeSub += (it.total || 0);
-                html += '<tr style="border-bottom:1px solid var(--gray-100);' + rowStyle + '">' +
-                    '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.code || '') + '</td>' +
-                    '<td style="padding:4px 8px">' + escHtml(it.description || '') + '</td>' +
-                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
-                    '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
-                    '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td>' +
-                    '<td style="padding:4px 8px;text-align:center">' + actionBtn(it.code || '') + '</td>' +
-                    '</tr>';
-            });
-            activeGrandTotal += activeSub;
-            html += '<tr style="background:#fafafa;font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--gray-500)">' + escHtml(cat.category) + ' subtotal (active)</td>' +
-                '<td style="padding:5px 8px;text-align:right">' + fmt(activeSub) + '</td><td></td></tr>';
+    // ─ Unified Parts List — V3 chainlink + wood lumber + gate kits + ─
+    //   post hardware + privacy + etc. Single source of truth.
+    html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px">🔩 Parts List — Exact SKUs (by Category)</div>';
+    html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Every SKU the engine pulled in for this drawing — chain-link recipes, wood lumber from the price chart, gate kits, post hardware, privacy bags. Click × to remove a SKU from the quote.</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
+    html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:120px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:60px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
+    let activeGrandTotal = 0;
+    unified.categories.forEach(cat => {
+        html += '<tr style="background:var(--gray-100)"><td colspan="6" style="padding:5px 8px;font-weight:700;font-size:10px;color:var(--gray-500);letter-spacing:0.05em">' + escHtml(cat.category) + '</td></tr>';
+        let activeSub = 0;
+        (cat.items || []).forEach(it => {
+            const isRemoved = removed.has(it.code);
+            const rowStyle = isRemoved ? removedRowStyle : '';
+            if (!isRemoved) activeSub += (it.total || 0);
+            html += '<tr style="border-bottom:1px solid var(--gray-100);' + rowStyle + '">' +
+                '<td style="padding:4px 8px;font-family:Menlo,Consolas,monospace;font-size:10px;color:var(--gray-500)">' + escHtml(it.code || '') + '</td>' +
+                '<td style="padding:4px 8px">' + escHtml(it.description || '') + '</td>' +
+                '<td style="padding:4px 8px;text-align:right;font-weight:600">' + (it.qty || 0) + '</td>' +
+                '<td style="padding:4px 8px;text-align:right;color:var(--gray-400)">' + fmt(it.unitPrice || 0) + '</td>' +
+                '<td style="padding:4px 8px;text-align:right;font-weight:600">' + fmt(it.total || 0) + '</td>' +
+                '<td style="padding:4px 8px;text-align:center">' + actionBtn(it.code || '') + '</td>' +
+                '</tr>';
         });
-        html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Chainlink SKU active total</td>' +
-            '<td style="padding:6px 8px;text-align:right">' + fmt(activeGrandTotal) + '</td><td></td></tr>';
-        html += '</tbody></table>';
-    }
+        activeGrandTotal += activeSub;
+        html += '<tr style="background:#fafafa;font-weight:600"><td colspan="4" style="padding:5px 8px;text-align:right;color:var(--gray-500)">' + escHtml(cat.category) + ' subtotal (active)</td>' +
+            '<td style="padding:5px 8px;text-align:right">' + fmt(activeSub) + '</td><td></td></tr>';
+    });
+    html += '<tr style="background:rgba(74,144,217,0.06);font-weight:700"><td colspan="4" style="padding:6px 8px;text-align:right">Parts List active total</td>' +
+        '<td style="padding:6px 8px;text-align:right">' + fmt(activeGrandTotal) + '</td><td></td></tr>';
+    html += '</tbody></table>';
 
     // ─ Admin additions (custom parts) ──────────────────────────
     if (adminParts.length > 0) {
