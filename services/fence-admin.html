@@ -2230,6 +2230,7 @@ function populateAll() {
       ? [{ id: String(scan.storeId), name: 'Primary' }]
       : [{ id: '7056', name: 'Crossroads (default)' }];
   }
+  _ensureStoreKeys();
   if (document.getElementById('cfg-scan-postalCode')) {
     document.getElementById('cfg-scan-postalCode').value = scan.postalCode || 'R2M 3E8';
     document.getElementById('cfg-scan-taxPct').value = (scan.taxRate != null ? scan.taxRate : 0.12) * 100;
@@ -2552,16 +2553,20 @@ function collectAll() {
     // counts as configured if it has EITHER a store ID OR a postal code.
     // Mirror the primary into the legacy storeId field for back-compat.
     const stores = [];
-    document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach(row => {
+    document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach((row, i) => {
       const id = row.querySelector('[data-scan-store-id]').value.trim();
       const name = row.querySelector('[data-scan-store-name]').value.trim();
       const retailerEl = row.querySelector('[data-scan-store-retailer]');
       const retailer = (retailerEl ? retailerEl.value : 'homedepot') || 'homedepot';
       const pcEl = row.querySelector('[data-scan-store-postal]');
       const postalCode = pcEl ? pcEl.value.trim().toUpperCase() : '';
-      if (id || postalCode) stores.push({ id, name, retailer, postalCode });
+      // Preserve the stable per-store key so per-store lumber data
+      // (data[dim].byStore[key]) survives a save/reload cycle.
+      const existing = config.scanner.stores[i];
+      const key = (existing && existing.key) || _genStoreKey();
+      if (id || postalCode) stores.push({ id, name, retailer, postalCode, key });
     });
-    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)', retailer: 'homedepot', postalCode: 'R2C 4G3' }];
+    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)', retailer: 'homedepot', postalCode: 'R2C 4G3', key: _genStoreKey() }];
     config.scanner.storeId = config.scanner.stores[0].id || '';
   }
 
@@ -2696,21 +2701,87 @@ function collectAll() {
 function renderLumberTable(type) {
   const data = config.materialPricing.lumber[type];
   const dims = Object.keys(data);
-  // Collect all unique lengths
+  const sc = config.scanner || {};
+  const stores = Array.isArray(sc.stores) ? sc.stores : [];
+  // Make sure every store has a stable key, the active store key is valid,
+  // and we know which one is primary (top-level boards live there).
+  _ensureStoreKeys();
+  const activeKey = _activeLumberStoreKey(type);
+  const primaryKey = _primaryStoreKey();
+
+  // Collect all unique lengths from BOTH the primary slot and every per-store
+  // slot — non-primary tabs may have lengths the primary doesn't (or vice
+  // versa), and the table needs all of them across.
   const allLengths = new Set();
-  dims.forEach(d => Object.keys(data[d].boards).forEach(l => allLengths.add(l)));
+  dims.forEach(d => {
+    Object.keys(data[d].boards || {}).forEach(l => allLengths.add(l));
+    if (data[d].byStore) {
+      Object.keys(data[d].byStore).forEach(k => {
+        Object.keys((data[d].byStore[k] && data[d].byStore[k].boards) || {}).forEach(l => allLengths.add(l));
+      });
+    }
+  });
   const lengths = Array.from(allLengths).sort((a,b) => Number(a) - Number(b));
 
-  let html = '<table class="data-table"><thead><tr><th>Dimension</th><th>Width (in)</th>';
+  // Active-store boards/sources lookup helpers — slot is built lazily so
+  // an empty tab still renders cells.
+  const activeBoards = (dim) => {
+    const slot = _lumberSlot(type, dim, activeKey);
+    return slot ? slot.boards : {};
+  };
+  const activeSources = (dim) => {
+    const slot = _lumberSlot(type, dim, activeKey);
+    return slot ? slot.sources : {};
+  };
+
+  let html = '';
+  // Per-store tab strip — one tab per configured store, plus a primary star.
+  if (stores.length > 1) {
+    html += '<div style="display:flex;gap:4px;margin-bottom:10px;border-bottom:1px solid var(--gray-200,#e5e5e8);overflow-x:auto;flex-wrap:wrap">';
+    stores.forEach((s, i) => {
+      const isActive = s.key === activeKey;
+      const isPrimary = s.key === primaryKey;
+      const label = (isPrimary ? '★ ' : '') + (s.name || ('Store ' + (i + 1))) + (s.id ? ' #' + s.id : '');
+      html += '<button type="button" onclick="setActiveLumberStore(\'' + type + '\',\'' + s.key + '\')" style="' +
+        'background:' + (isActive ? '#fff' : 'transparent') + ';' +
+        'border:1px solid ' + (isActive ? 'var(--gray-200,#d8d8db)' : 'transparent') + ';' +
+        'border-bottom:' + (isActive ? '1px solid #fff' : '1px solid transparent') + ';' +
+        'margin-bottom:-1px;' +
+        'padding:6px 12px;' +
+        'border-radius:6px 6px 0 0;' +
+        'cursor:pointer;' +
+        'font-size:12px;' +
+        'font-weight:' + (isActive ? '700' : '500') + ';' +
+        'color:' + (isActive ? 'var(--admin,#222)' : 'var(--gray-500,#666)') + ';' +
+        'white-space:nowrap;' +
+        'font-family:inherit' +
+        '">' + escAttr(label) + '</button>';
+    });
+    html += '</div>';
+  }
+
+  // Active-store hint above the table — clarifies where edits land.
+  const activeStore = _storeByKey(activeKey);
+  if (activeStore) {
+    const isPrimary = activeKey === primaryKey;
+    html += '<div style="font-size:11px;color:var(--gray-500,#666);margin-bottom:8px">' +
+      'Editing prices for <strong>' + escAttr(activeStore.name || ('store ' + (activeStore.id || ''))) + '</strong>' +
+      ' (' + escAttr(_retailerLabel(activeStore.retailer || 'homedepot')) + ')' +
+      (isPrimary ? ' — <span style="color:var(--accent,#c8a55a)">primary store, used in quote calculations</span>' : ' — secondary store; quote calc uses the primary tab') +
+      '</div>';
+  }
+
+  html += '<table class="data-table"><thead><tr><th>Dimension</th><th>Width (in)</th>';
   lengths.forEach(l => html += `<th>${l} ft ($)</th>`);
   html += '</tr></thead><tbody>';
 
   dims.forEach(dim => {
     html += `<tr><td class="cell-label">${dim}</td>`;
     html += `<td><input type="number" class="lumber-width" data-type="${type}" data-dim="${dim}" value="${data[dim].widthIn}" min="0" step="0.5" style="width:70px" oninput="markDirty()"></td>`;
-    const sources = data[dim].sources || {};
+    const boards = activeBoards(dim);
+    const sources = activeSources(dim);
     lengths.forEach(l => {
-      const val = data[dim].boards[l] !== undefined ? data[dim].boards[l] : '';
+      const val = boards[l] !== undefined ? boards[l] : '';
       const src = sources[l] || null;
       const hasUrl = !!(src && src.url);
       const isManual = !!(src && src.manual);
@@ -2744,11 +2815,10 @@ function renderLumberTable(type) {
 // future scan won't blow it away. (No effect if there's no URL set.)
 function onLumberPriceManualEdit(inputEl) {
   const { type, dim, len } = inputEl.dataset;
-  const data = config.materialPricing.lumber[type];
-  if (!data || !data[dim]) return;
-  if (!data[dim].sources) data[dim].sources = {};
-  if (data[dim].sources[len] && data[dim].sources[len].url) {
-    data[dim].sources[len].manual = true;
+  const slot = _lumberSlot(type, dim);
+  if (!slot) return;
+  if (slot.sources[len] && slot.sources[len].url) {
+    slot.sources[len].manual = true;
   }
   markDirty();
 }
@@ -2757,8 +2827,8 @@ function onLumberPriceManualEdit(inputEl) {
 // the source-URL editor modal. Shift-click forces the editor either way.
 function onLumberSourceClick(ev, type, dim, len) {
   ev.preventDefault();
-  const data = config.materialPricing.lumber[type];
-  const src = (data && data[dim] && data[dim].sources && data[dim].sources[len]) || null;
+  const slot = _lumberSlot(type, dim);
+  const src = (slot && slot.sources[len]) || null;
   if (src && src.url && !ev.shiftKey) {
     window.open(src.url, '_blank', 'noopener');
     return;
@@ -2768,10 +2838,12 @@ function onLumberSourceClick(ev, type, dim, len) {
 
 let _lumberSrcEditing = null;
 function openLumberSourceModal(type, dim, len) {
-  _lumberSrcEditing = { type, dim, len };
-  const data = config.materialPricing.lumber[type];
-  const src = (data[dim].sources && data[dim].sources[len]) || {};
-  document.getElementById('lumberSourceTitle').textContent = `Source URL — ${type === 'pt' ? 'PT' : 'Cedar'} ${dim} × ${len} ft`;
+  _lumberSrcEditing = { type, dim, len, storeKey: _activeLumberStoreKey(type) };
+  const slot = _lumberSlot(type, dim);
+  const src = (slot && slot.sources[len]) || {};
+  const store = _storeByKey(_activeLumberStoreKey(type));
+  const storeLabel = store ? (store.name || ('Store ' + (store.id || ''))) : '';
+  document.getElementById('lumberSourceTitle').textContent = `Source URL — ${type === 'pt' ? 'PT' : 'Cedar'} ${dim} × ${len} ft` + (storeLabel ? ` · ${storeLabel}` : '');
   document.getElementById('lumberSourceUrl').value = src.url || '';
   const status = document.getElementById('lumberSourceStatus');
   if (src.lastScanned) {
@@ -2791,23 +2863,23 @@ function closeLumberSourceModal() {
 }
 function saveLumberSource() {
   if (!_lumberSrcEditing) return;
-  const { type, dim, len } = _lumberSrcEditing;
+  const { type, dim, len, storeKey } = _lumberSrcEditing;
   const url = document.getElementById('lumberSourceUrl').value.trim();
-  const data = config.materialPricing.lumber[type];
-  if (!data[dim].sources) data[dim].sources = {};
-  if (!data[dim].sources[len]) data[dim].sources[len] = {};
-  data[dim].sources[len].url = url;
+  const slot = _lumberSlot(type, dim, storeKey);
+  if (!slot) return;
+  if (!slot.sources[len]) slot.sources[len] = {};
+  slot.sources[len].url = url;
   // Re-saving the URL clears the manual flag — it's a fresh source.
-  if (url) data[dim].sources[len].manual = false;
+  if (url) slot.sources[len].manual = false;
   closeLumberSourceModal();
   renderLumberTable(type);
   markDirty();
 }
 function clearLumberSource() {
   if (!_lumberSrcEditing) return;
-  const { type, dim, len } = _lumberSrcEditing;
-  const data = config.materialPricing.lumber[type];
-  if (data[dim].sources) delete data[dim].sources[len];
+  const { type, dim, len, storeKey } = _lumberSrcEditing;
+  const slot = _lumberSlot(type, dim, storeKey);
+  if (slot) delete slot.sources[len];
   closeLumberSourceModal();
   renderLumberTable(type);
   markDirty();
@@ -2863,6 +2935,100 @@ function _allScannerStores(retailerId) {
     return [{ id: '', name: 'Default (no ' + _retailerLabel(retailerId) + ' store configured)', retailer: retailerId }];
   }
   return list;
+}
+
+// Stable per-store identifier for keying lumber tabs / per-store price data.
+// Generated when a store is first added; persisted with the store.  We never
+// derive it from id/name/postal because those can be edited and we'd lose
+// the link to that store's price slot.
+function _genStoreKey() {
+  return 'st-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+function _ensureStoreKeys() {
+  const sc = config.scanner || {};
+  if (!Array.isArray(sc.stores)) return;
+  sc.stores.forEach(s => { if (s && !s.key) s.key = _genStoreKey(); });
+}
+function _primaryStoreKey() {
+  const sc = config.scanner || {};
+  if (Array.isArray(sc.stores) && sc.stores.length > 0) {
+    if (!sc.stores[0].key) sc.stores[0].key = _genStoreKey();
+    return sc.stores[0].key;
+  }
+  return 'primary';
+}
+function _storeByKey(key) {
+  const sc = config.scanner || {};
+  if (!Array.isArray(sc.stores)) return null;
+  return sc.stores.find(s => s && s.key === key) || null;
+}
+
+// Active lumber tab state — which store the operator is currently editing
+// per lumber type (pt vs cedar). Defaults to primary.
+const _lumberActiveStore = { pt: null, cedar: null };
+function _activeLumberStoreKey(type) {
+  let k = _lumberActiveStore[type];
+  const sc = config.scanner || {};
+  const valid = Array.isArray(sc.stores) && sc.stores.some(s => s && s.key === k);
+  if (!valid) {
+    k = _primaryStoreKey();
+    _lumberActiveStore[type] = k;
+  }
+  return k;
+}
+function setActiveLumberStore(type, key) {
+  // Capture pending input edits into the OLD active slot before swapping
+  // tabs — otherwise they'd vanish on re-render.
+  if (typeof collectLumberPrices === 'function') {
+    try { collectLumberPrices(type); } catch (e) {}
+  }
+  _lumberActiveStore[type] = key;
+  renderLumberTable(type);
+}
+
+// Read/write slot for a given lumber dim in the active store.  Top-level
+// .boards/.sources holds the PRIMARY store's data; non-primary stores live
+// at .byStore[storeKey].  Returns a slot object guaranteed to have boards
+// and sources sub-objects (lazy-init).
+function _lumberSlot(type, dim, storeKey) {
+  const data = config.materialPricing && config.materialPricing.lumber && config.materialPricing.lumber[type];
+  if (!data || !data[dim]) return null;
+  const d = data[dim];
+  const primary = _primaryStoreKey();
+  const key = storeKey || _activeLumberStoreKey(type);
+  if (key === primary) {
+    if (!d.boards) d.boards = {};
+    if (!d.sources) d.sources = {};
+    return { boards: d.boards, sources: d.sources, isPrimary: true };
+  }
+  if (!d.byStore) d.byStore = {};
+  if (!d.byStore[key]) d.byStore[key] = { boards: {}, sources: {} };
+  if (!d.byStore[key].boards) d.byStore[key].boards = {};
+  if (!d.byStore[key].sources) d.byStore[key].sources = {};
+  return { boards: d.byStore[key].boards, sources: d.byStore[key].sources, isPrimary: false };
+}
+
+// When the operator promotes a different store to primary (reorder or
+// remove), swap top-level boards/sources with the corresponding byStore
+// entry so the legacy quote-calc path keeps reading the new primary.
+function _swapLumberPrimary(oldKey, newKey) {
+  if (!oldKey || !newKey || oldKey === newKey) return;
+  ['pt', 'cedar'].forEach(type => {
+    const lumber = config.materialPricing && config.materialPricing.lumber && config.materialPricing.lumber[type];
+    if (!lumber) return;
+    Object.keys(lumber).forEach(dim => {
+      const d = lumber[dim];
+      if (!d || typeof d !== 'object') return;
+      if (!d.byStore) d.byStore = {};
+      // park old primary's data into byStore under its key
+      d.byStore[oldKey] = { boards: d.boards || {}, sources: d.sources || {} };
+      // hoist new primary's data (or empty) into top-level
+      const newSlot = d.byStore[newKey] || { boards: {}, sources: {} };
+      d.boards = newSlot.boards || {};
+      d.sources = newSlot.sources || {};
+      delete d.byStore[newKey];
+    });
+  });
 }
 function _scanQueryParams(storeOverride) {
   const sc = config.scanner || {};
@@ -2938,8 +3104,13 @@ function addScannerStore() {
       if (pcEl) config.scanner.stores[i].postalCode = pcEl.value.trim().toUpperCase();
     }
   });
-  config.scanner.stores.push({ id: '', name: '', retailer: 'homedepot', postalCode: '' });
+  config.scanner.stores.push({ id: '', name: '', retailer: 'homedepot', postalCode: '', key: _genStoreKey() });
   renderScannerStores();
+  // Re-render lumber tabs so the new store gets a tab immediately.
+  if (typeof renderLumberTable === 'function') {
+    renderLumberTable('pt');
+    renderLumberTable('cedar');
+  }
   markDirty();
   // Focus the freshly-added empty name input.
   const last = document.querySelector('#cfg-scan-stores [data-scan-store-row]:last-child [data-scan-store-name]');
@@ -2962,8 +3133,32 @@ function removeScannerStore(idx) {
       if (pcEl) config.scanner.stores[i].postalCode = pcEl.value.trim().toUpperCase();
     }
   });
+  const wasPrimary = idx === 0;
+  const removedKey = config.scanner.stores[idx] && config.scanner.stores[idx].key;
   config.scanner.stores.splice(idx, 1);
+  // If the primary was removed, the new index-0 is now primary — swap top-
+  // level lumber data with the new primary's per-store slot, and drop the
+  // removed store's slot entirely so it doesn't accumulate.
+  if (wasPrimary && removedKey) {
+    const newPrimaryKey = config.scanner.stores[0] && config.scanner.stores[0].key;
+    if (newPrimaryKey) _swapLumberPrimary(removedKey, newPrimaryKey);
+  } else if (removedKey) {
+    // Non-primary removed — just drop its byStore slots.
+    ['pt', 'cedar'].forEach(t => {
+      const lumber = config.materialPricing && config.materialPricing.lumber && config.materialPricing.lumber[t];
+      if (!lumber) return;
+      Object.keys(lumber).forEach(dim => {
+        if (lumber[dim] && lumber[dim].byStore) delete lumber[dim].byStore[removedKey];
+      });
+    });
+  }
+  // Active tab might point at the removed store — reset to primary.
+  ['pt', 'cedar'].forEach(t => { if (_lumberActiveStore[t] === removedKey) _lumberActiveStore[t] = null; });
   renderScannerStores();
+  if (typeof renderLumberTable === 'function') {
+    renderLumberTable('pt');
+    renderLumberTable('cedar');
+  }
   markDirty();
 }
 function moveScannerStore(idx, dir) {
@@ -2981,10 +3176,21 @@ function moveScannerStore(idx, dir) {
       if (pcEl) config.scanner.stores[i].postalCode = pcEl.value.trim().toUpperCase();
     }
   });
+  const oldPrimaryKey = config.scanner.stores[0] && config.scanner.stores[0].key;
   const tmp = config.scanner.stores[idx];
   config.scanner.stores[idx] = config.scanner.stores[target];
   config.scanner.stores[target] = tmp;
+  // If the swap involved index 0, the primary changed — swap top-level
+  // lumber data so the quote-calc sees the new primary's prices.
+  const newPrimaryKey = config.scanner.stores[0] && config.scanner.stores[0].key;
+  if (oldPrimaryKey && newPrimaryKey && oldPrimaryKey !== newPrimaryKey) {
+    _swapLumberPrimary(oldPrimaryKey, newPrimaryKey);
+  }
   renderScannerStores();
+  if (typeof renderLumberTable === 'function') {
+    renderLumberTable('pt');
+    renderLumberTable('cedar');
+  }
   markDirty();
 }
 
@@ -3131,25 +3337,33 @@ function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').r
 
 async function scanLumberPrices(type, taskOverride) {
   const data = config.materialPricing.lumber[type];
+  // Scan against the ACTIVE tab's store — each tab has its own URL/price
+  // slot, so changing tabs scopes the scan to that store.
+  const activeKey = _activeLumberStoreKey(type);
+  const activeStore = _storeByKey(activeKey);
   // Either scan all configured cells (no override) or just the failed
   // ones (override = a list of {dim, len} from the failures panel).
   let tasks = [];
+  const slotFor = (dim) => _lumberSlot(type, dim, activeKey);
   if (taskOverride && Array.isArray(taskOverride)) {
     taskOverride.forEach(({ dim, len }) => {
-      const src = data[dim] && data[dim].sources && data[dim].sources[len];
-      if (src && src.url) tasks.push({ dim, len, src });
+      const slot = slotFor(dim);
+      const src = slot && slot.sources[len];
+      if (src && src.url) tasks.push({ dim, len, src, slot });
     });
   } else {
     Object.keys(data).forEach(dim => {
-      const sources = data[dim].sources || {};
-      Object.keys(sources).forEach(len => {
-        const src = sources[len];
-        if (src && src.url && !src.manual) tasks.push({ dim, len, src });
+      const slot = slotFor(dim);
+      if (!slot) return;
+      Object.keys(slot.sources).forEach(len => {
+        const src = slot.sources[len];
+        if (src && src.url && !src.manual) tasks.push({ dim, len, src, slot });
       });
     });
   }
   if (tasks.length === 0) {
-    toast(`No URLs configured for ${type === 'pt' ? 'PT' : 'Cedar'} — click 🔍 next to a price to set one.`, 'info');
+    const lbl = activeStore ? (activeStore.name || ('store ' + (activeStore.id || ''))) : (type === 'pt' ? 'PT' : 'Cedar');
+    toast(`No URLs configured for ${lbl} (${type === 'pt' ? 'PT' : 'Cedar'}) — click 🔍 next to a price to set one.`, 'info');
     return;
   }
 
@@ -3169,13 +3383,16 @@ async function scanLumberPrices(type, taskOverride) {
     if (attemptText) el.title = attemptText;
   };
 
-  const qs = _scanQueryParams();
+  // Use the active tab's store config so the worker localizes against
+  // that store's postal/storeId — different tabs hit different stores.
+  const qs = _scanQueryParams(activeStore || undefined);
   const total = tasks.length;
   let updated = 0, failed = 0, idx = 0;
   const failures = [];
   const setBtnLabel = (txt) => buttons.forEach(b => { b.textContent = txt; });
   const label = (type === 'pt' ? 'PT' : 'Cedar');
-  toast(`Scanning ${total} ${label} price${total === 1 ? '' : 's'}… (up to 3 attempts each)`, 'info');
+  const storeLbl = activeStore ? ` · ${activeStore.name || ('store ' + (activeStore.id || ''))}` : '';
+  toast(`Scanning ${total} ${label}${storeLbl} price${total === 1 ? '' : 's'}… (up to 3 attempts each)`, 'info');
 
   for (const t of tasks) {
     idx++;
@@ -3192,7 +3409,7 @@ async function scanLumberPrices(type, taskOverride) {
     });
     if (result.ok) {
       const json = result.json;
-      data[t.dim].boards[t.len] = Math.round(json.price * 100) / 100;
+      t.slot.boards[t.len] = Math.round(json.price * 100) / 100;
       t.src.lastScanned = Date.now();
       t.src.scannedPrice = json.price;
       t.src.basePrice = json.basePrice;
@@ -3200,7 +3417,7 @@ async function scanLumberPrices(type, taskOverride) {
       t.src.manual = false;
       const el = cellEl(t.dim, t.len);
       if (el) {
-        el.value = data[t.dim].boards[t.len];
+        el.value = t.slot.boards[t.len];
         el.title = `Scanned ${result.attempts} attempt${result.attempts === 1 ? '' : 's'} · ${new Date().toLocaleTimeString()}`;
       }
       setCellState(t.dim, t.len, 'ok');
@@ -3235,32 +3452,40 @@ async function scanLumberPrices(type, taskOverride) {
 
 function collectLumberPrices(type) {
   const data = config.materialPricing.lumber[type];
-  // Collect widths
+  const activeKey = _activeLumberStoreKey(type);
+  // Collect widths (shared across stores — width is a property of the dim)
   document.querySelectorAll(`.lumber-width[data-type="${type}"]`).forEach(el => {
     const dim = el.dataset.dim;
     if (data[dim]) data[dim].widthIn = parseFloat(el.value) || 0;
   });
-  // Collect prices
+  // Collect prices into the ACTIVE store's slot only — other tabs are
+  // untouched (their data lives in data[dim].byStore[otherKey]).
   document.querySelectorAll(`.lumber-price[data-type="${type}"]`).forEach(el => {
     const dim = el.dataset.dim;
     const len = el.dataset.len;
-    if (data[dim]) {
-      if (el.value === '') {
-        delete data[dim].boards[len];
-      } else {
-        data[dim].boards[len] = parseFloat(el.value) || 0;
-      }
+    const slot = _lumberSlot(type, dim, activeKey);
+    if (!slot) return;
+    if (el.value === '') {
+      delete slot.boards[len];
+    } else {
+      slot.boards[len] = parseFloat(el.value) || 0;
     }
   });
 }
 
+// Length/dim mutators operate on the active store's slot only.  Adding a
+// length in tab A creates an empty cell there; tabs B+C are untouched and
+// their cells render blank under the new column header until the operator
+// fills them in (or scans).
 function addBoardLength(type) {
   const len = prompt('Enter new board length in feet (e.g., 10):');
   if (!len || isNaN(Number(len))) return;
   const data = config.materialPricing.lumber[type];
+  const activeKey = _activeLumberStoreKey(type);
   Object.keys(data).forEach(dim => {
-    if (data[dim].boards[len] === undefined) {
-      data[dim].boards[len] = 0;
+    const slot = _lumberSlot(type, dim, activeKey);
+    if (slot && slot.boards[len] === undefined) {
+      slot.boards[len] = 0;
     }
   });
   collectLumberPrices(type);
@@ -3271,13 +3496,31 @@ function addBoardLength(type) {
 function removeBoardLength(type) {
   collectLumberPrices(type);
   const data = config.materialPricing.lumber[type];
+  // Show every length present anywhere — primary or per-store — so the
+  // operator can clean up across all stores at once.
   const allLengths = new Set();
-  Object.keys(data).forEach(d => Object.keys(data[d].boards).forEach(l => allLengths.add(l)));
+  Object.keys(data).forEach(d => {
+    Object.keys(data[d].boards || {}).forEach(l => allLengths.add(l));
+    if (data[d].byStore) {
+      Object.values(data[d].byStore).forEach(s => Object.keys((s && s.boards) || {}).forEach(l => allLengths.add(l)));
+    }
+  });
   const lengths = Array.from(allLengths).sort((a,b) => Number(a) - Number(b));
   if (lengths.length === 0) return;
   const len = prompt('Which board length to remove? Available: ' + lengths.join(', '));
   if (!len || !allLengths.has(len)) return;
-  Object.keys(data).forEach(dim => { delete data[dim].boards[len]; });
+  Object.keys(data).forEach(dim => {
+    delete (data[dim].boards || {})[len];
+    delete (data[dim].sources || {})[len];
+    if (data[dim].byStore) {
+      Object.values(data[dim].byStore).forEach(s => {
+        if (s) {
+          delete (s.boards || {})[len];
+          delete (s.sources || {})[len];
+        }
+      });
+    }
+  });
   renderLumberTable(type);
   markDirty();
 }
@@ -3289,11 +3532,19 @@ function addDimension(type) {
   if (data[dim]) { alert(dim + ' already exists'); return; }
   const width = prompt('Board width in inches for ' + dim + ' (e.g., 7.25 for a 2x8):');
   if (!width || isNaN(Number(width))) return;
-  data[dim] = { widthIn: parseFloat(width), boards: {} };
-  // Pre-populate with existing lengths at $0
+  data[dim] = { widthIn: parseFloat(width), boards: {}, sources: {} };
+  // Pre-populate the active tab with existing lengths at $0.  Other tabs
+  // remain blank for this new dim until the operator visits them.
+  const activeKey = _activeLumberStoreKey(type);
+  const slot = _lumberSlot(type, dim, activeKey);
   const allLengths = new Set();
-  Object.keys(data).forEach(d => Object.keys(data[d].boards).forEach(l => allLengths.add(l)));
-  allLengths.forEach(l => { data[dim].boards[l] = 0; });
+  Object.keys(data).forEach(d => {
+    Object.keys(data[d].boards || {}).forEach(l => allLengths.add(l));
+    if (data[d].byStore) {
+      Object.values(data[d].byStore).forEach(s => Object.keys((s && s.boards) || {}).forEach(l => allLengths.add(l)));
+    }
+  });
+  if (slot) allLengths.forEach(l => { slot.boards[l] = 0; });
   renderLumberTable(type);
   markDirty();
 }
