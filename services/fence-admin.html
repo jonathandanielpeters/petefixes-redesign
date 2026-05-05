@@ -441,11 +441,11 @@ a{color:var(--accent);text-decoration:none}
       <div class="field"><label>Tax rate (%)</label><input type="number" id="cfg-scan-taxPct" min="0" max="30" step="0.5" placeholder="12" oninput="markDirty()"></div>
     </div>
     <div style="margin-top:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Home Depot stores (drag-order = priority)</div>
+      <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Stores (drag-order = priority within each retailer)</div>
       <div id="cfg-scan-stores"></div>
       <button type="button" class="btn btn-outline btn-sm" style="margin-top:6px" onclick="addScannerStore()">+ Add store</button>
     </div>
-    <div style="font-size:11px;color:var(--gray-400);margin-top:10px">Default 12% = Manitoba PST 7% + GST 5%. Common Winnipeg HD store IDs: <strong>7056</strong> Crossroads, <strong>7080</strong> Regent Ave, <strong>7077</strong> McGillivray, <strong>7058</strong> Pembina, <strong>7079</strong> St James. The scanner uses Home Depot's localized productsvc API per store and pulls the regular ("Was") price so quotes don't anchor to a temporary sale.</div>
+    <div style="font-size:11px;color:var(--gray-400);margin-top:10px">Default 12% = Manitoba PST 7% + GST 5%. Common Winnipeg HD store IDs: <strong>7056</strong> Crossroads, <strong>7080</strong> Regent Ave, <strong>7077</strong> McGillivray, <strong>7058</strong> Pembina, <strong>7079</strong> St James. Each row's retailer determines which scanner the worker uses. Home Depot URLs route to HD's productsvc API (most reliable). Other retailers (Lowe's, Castle, Windsor, Rona, generic) fall through to HTML scraping — store ID is passed to the upstream as a hint but localization may be limited.</div>
   </div>
 
   <div id="lumberTabContent-pt">
@@ -2555,9 +2555,11 @@ function collectAll() {
     document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach(row => {
       const id = row.querySelector('[data-scan-store-id]').value.trim();
       const name = row.querySelector('[data-scan-store-name]').value.trim();
-      if (id) stores.push({ id, name });
+      const retailerEl = row.querySelector('[data-scan-store-retailer]');
+      const retailer = (retailerEl ? retailerEl.value : 'homedepot') || 'homedepot';
+      if (id) stores.push({ id, name, retailer });
     });
-    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)' }];
+    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)', retailer: 'homedepot' }];
     config.scanner.storeId = config.scanner.stores[0].id;
   }
 
@@ -2810,17 +2812,55 @@ function clearLumberSource() {
 }
 // Build the ?postalCode=&storeId=&tax= suffix that every scan call needs
 // from the admin's scanner config (with sensible Winnipeg / MB defaults).
-// First configured store wins; legacy single storeId is the fallback.
-function _primaryScannerStore() {
-  const sc = config.scanner || {};
-  if (Array.isArray(sc.stores) && sc.stores.length > 0 && sc.stores[0].id) return sc.stores[0];
-  if (sc.storeId) return { id: String(sc.storeId), name: '' };
-  return { id: '7056', name: 'Crossroads (default)' };
+// Known retailers + how they're matched against URLs.  When a URL maps
+// to a retailer, only stores tagged with that retailer are tried.
+const SCANNER_RETAILERS = [
+  { id: 'homedepot', label: 'Home Depot', match: /^https?:\/\/(?:www\.)?homedepot\.(ca|com)\b/i },
+  { id: 'lowes',     label: "Lowe's",     match: /^https?:\/\/(?:www\.)?lowes\.(ca|com)\b/i },
+  { id: 'castle',    label: 'Castle',     match: /^https?:\/\/(?:www\.)?castle\.ca\b/i },
+  { id: 'windsor',   label: 'Windsor Plywood', match: /^https?:\/\/(?:www\.)?windsorplywood\.com\b/i },
+  { id: 'rona',      label: 'Rona',       match: /^https?:\/\/(?:www\.)?rona\.ca\b/i },
+  { id: 'mcmunn',    label: 'McMunn & Yates', match: /^https?:\/\/(?:www\.)?mcmunnandyates\.com\b/i },
+  { id: 'sherwood',  label: 'Sherwood Co-op', match: /^https?:\/\/(?:www\.)?sherwoodcoop\.com\b/i },
+  { id: 'other',     label: 'Other / generic', match: null },
+];
+function _retailerForUrl(url) {
+  for (const r of SCANNER_RETAILERS) {
+    if (r.match && r.match.test(url || '')) return r.id;
+  }
+  return 'other';
 }
-function _allScannerStores() {
+function _retailerLabel(id) {
+  const r = SCANNER_RETAILERS.find(x => x.id === id);
+  return r ? r.label : id;
+}
+
+// First configured store wins; legacy single storeId is the fallback.
+// If a retailer hint is given, prefer the first store tagged with that
+// retailer; fall back to the global first if none match.
+function _primaryScannerStore(retailerId) {
   const sc = config.scanner || {};
-  if (Array.isArray(sc.stores) && sc.stores.length > 0) return sc.stores.filter(s => s && s.id);
-  return [_primaryScannerStore()];
+  if (Array.isArray(sc.stores) && sc.stores.length > 0) {
+    if (retailerId) {
+      const match = sc.stores.find(s => s && s.id && (s.retailer || 'homedepot') === retailerId);
+      if (match) return match;
+    }
+    if (sc.stores[0].id) return sc.stores[0];
+  }
+  if (sc.storeId) return { id: String(sc.storeId), name: '', retailer: 'homedepot' };
+  return { id: '7056', name: 'Crossroads (default)', retailer: 'homedepot' };
+}
+function _allScannerStores(retailerId) {
+  const sc = config.scanner || {};
+  let list = (Array.isArray(sc.stores) && sc.stores.length > 0) ? sc.stores.filter(s => s && s.id) : [_primaryScannerStore()];
+  if (retailerId) {
+    const filtered = list.filter(s => (s.retailer || 'homedepot') === retailerId);
+    if (filtered.length > 0) return filtered;
+    // No store configured for this retailer — pass through as a single
+    // generic entry so the scan still goes through (may not localize well).
+    return [{ id: '', name: 'Default (no ' + _retailerLabel(retailerId) + ' store configured)', retailer: retailerId }];
+  }
+  return list;
 }
 function _scanQueryParams(storeOverride) {
   const sc = config.scanner || {};
@@ -2838,13 +2878,27 @@ function renderScannerStores() {
   if (!host) return;
   if (!config.scanner) config.scanner = {};
   if (!Array.isArray(config.scanner.stores) || config.scanner.stores.length === 0) {
-    config.scanner.stores = [{ id: '7056', name: 'Crossroads (default)' }];
+    config.scanner.stores = [{ id: '7056', name: 'Crossroads (default)', retailer: 'homedepot' }];
   }
+  // Tag any legacy entries that didn't have a retailer field with the
+  // safe default — assumes Home Depot since that's all the v1 supported.
+  config.scanner.stores.forEach(s => { if (!s.retailer) s.retailer = 'homedepot'; });
+  // Group by retailer so the operator sees stores clustered by where
+  // they belong, with the cross-retailer "primary" still flagged.
+  const retailerSelect = (selected) => {
+    let opts = '';
+    SCANNER_RETAILERS.forEach(r => {
+      opts += '<option value="' + r.id + '"' + (r.id === selected ? ' selected' : '') + '>' + escAttr(r.label) + '</option>';
+    });
+    return opts;
+  };
   let html = '';
   config.scanner.stores.forEach((s, i) => {
     const primary = i === 0;
+    const retailer = s.retailer || 'homedepot';
     html += '<div data-scan-store-row="' + i + '" style="display:flex;gap:8px;align-items:center;padding:8px;background:' + (primary ? 'rgba(200,165,90,0.10)' : 'var(--gray-50,#f7f7f8)') + ';border:1px solid ' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-100,#ececef)') + ';border-radius:6px;margin-bottom:6px">' +
       '<span style="font-size:10px;font-weight:700;color:' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-400,#888)') + ';text-transform:uppercase;letter-spacing:0.05em;width:60px;flex-shrink:0">' + (primary ? '★ Primary' : '#' + (i + 1)) + '</span>' +
+      '<select data-scan-store-retailer onchange="markDirty()" style="width:130px;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:12px;background:#fff">' + retailerSelect(retailer) + '</select>' +
       '<input type="text" data-scan-store-id placeholder="7056" value="' + escAttr(s.id || '') + '" oninput="markDirty()" style="width:80px;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px;font-family:Menlo,monospace">' +
       '<input type="text" data-scan-store-name placeholder="Store name (optional)" value="' + escAttr(s.name || '') + '" oninput="markDirty()" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px">' +
       (i > 0 ? '<button type="button" title="Move up" onclick="moveScannerStore(' + i + ',-1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▲</button>' : '<span style="width:28px"></span>') +
@@ -2862,9 +2916,11 @@ function addScannerStore() {
     if (config.scanner.stores[i]) {
       config.scanner.stores[i].id = row.querySelector('[data-scan-store-id]').value.trim();
       config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
+      const rEl = row.querySelector('[data-scan-store-retailer]');
+      if (rEl) config.scanner.stores[i].retailer = rEl.value || 'homedepot';
     }
   });
-  config.scanner.stores.push({ id: '', name: '' });
+  config.scanner.stores.push({ id: '', name: '', retailer: 'homedepot' });
   renderScannerStores();
   markDirty();
   // Focus the freshly-added empty ID input.
@@ -2882,6 +2938,8 @@ function removeScannerStore(idx) {
     if (config.scanner.stores[i]) {
       config.scanner.stores[i].id = row.querySelector('[data-scan-store-id]').value.trim();
       config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
+      const rEl = row.querySelector('[data-scan-store-retailer]');
+      if (rEl) config.scanner.stores[i].retailer = rEl.value || 'homedepot';
     }
   });
   config.scanner.stores.splice(idx, 1);
@@ -2897,6 +2955,8 @@ function moveScannerStore(idx, dir) {
     if (config.scanner.stores[i]) {
       config.scanner.stores[i].id = row.querySelector('[data-scan-store-id]').value.trim();
       config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
+      const rEl = row.querySelector('[data-scan-store-retailer]');
+      if (rEl) config.scanner.stores[i].retailer = rEl.value || 'homedepot';
     }
   });
   const tmp = config.scanner.stores[idx];
@@ -2914,8 +2974,12 @@ async function testLumberSource() {
   const url = document.getElementById('lumberSourceUrl').value.trim();
   const status = document.getElementById('lumberSourceStatus');
   if (!url) { status.textContent = 'Paste a URL first.'; return; }
-  const stores = _allScannerStores();
-  status.innerHTML = '<span style="color:#888">Scanning ' + stores.length + ' store' + (stores.length === 1 ? '' : 's') + '…</span>';
+  // Match the URL's retailer first — only test stores tagged for the
+  // same retailer (otherwise we'd send a Lowe's store ID against an HD
+  // URL and waste 3 retries on a guaranteed failure).
+  const retailerId = _retailerForUrl(url);
+  const stores = _allScannerStores(retailerId);
+  status.innerHTML = '<span style="color:#888">Scanning ' + stores.length + ' ' + escAttr(_retailerLabel(retailerId)) + ' store' + (stores.length === 1 ? '' : 's') + '…</span>';
   const results = [];
   for (let i = 0; i < stores.length; i++) {
     const s = stores[i];
