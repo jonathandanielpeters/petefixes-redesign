@@ -621,18 +621,40 @@ async function handleScanPrice(request, env) {
   let taxRate = parseFloat(url.searchParams.get("tax"));
   if (!isFinite(taxRate) || taxRate < 0) taxRate = 0.12;
 
+  // Postal code → HD store ID fallback for when the admin didn't pin a
+  // store number. Keyed by the first 3 chars of the postal code (Forward
+  // Sortation Area) which is enough granularity for "which Winnipeg HD
+  // is closest". Defaults to Crossroads (7056).
+  function _hdStoreFromPostal(pc) {
+    const fsa = (pc || "").replace(/\s+/g, "").slice(0, 3).toUpperCase();
+    const map = {
+      // Winnipeg
+      R2C: "7056", R2L: "7056", R2M: "7080", R2N: "7080", R2J: "7080",
+      R2K: "7056", R2W: "7056", R2X: "7056", R2P: "7056",
+      R3T: "7077", R3V: "7077", R3R: "7077", R3Y: "7077", R3W: "7077",
+      R3J: "7079", R3K: "7079", R3H: "7079", R3G: "7079", R3E: "7079",
+      R3M: "7058", R3L: "7058", R3N: "7058", R3P: "7058",
+      R3A: "7079", R3B: "7079", R3C: "7079", R3X: "7079",
+    };
+    return map[fsa] || null;
+  }
+
   // Home Depot Canada — use the localized productsvc API instead of scraping
   // HTML. The store ID is baked into the URL path, so the response is the
-  // local-store price regardless of where the worker fetches from. The page
-  // HTML scrape cannot work for HD because their server returns a default-
-  // store placeholder ($3.98) and only swaps in the real price client-side.
-  // The API gives us optimizedPrice with .wasprice (regular) and
-  // .displayPrice (sale) cleanly. We prefer the wasprice so quotes don't
-  // anchor to a temporary promo that ends before purchase.
+  // local-store price regardless of where the worker fetches from.
   const hdMatch = target.match(/^https?:\/\/(?:www\.)?homedepot\.ca\/(?:[a-z]{2}\/)?(?:product|p|pip)\/[^?#]*?\/(\d{6,})/i);
   if (hdMatch) {
     const productId = hdMatch[1];
-    const storeId = (url.searchParams.get("storeId") || "7056").trim() || "7056";
+    // Resolve store ID: explicit param wins, then postal-code lookup, then
+    // Crossroads default. Tells the response which one was chosen so the
+    // admin UI can surface "we used the postal-code fallback".
+    let storeId = (url.searchParams.get("storeId") || "").trim();
+    let storeIdSource = storeId ? "explicit" : null;
+    if (!storeId) {
+      const fromPc = _hdStoreFromPostal(url.searchParams.get("postalCode") || "");
+      if (fromPc) { storeId = fromPc; storeIdSource = "postal-fallback"; }
+    }
+    if (!storeId) { storeId = "7056"; storeIdSource = "default-7056"; }
     const apiUrl = `https://www.homedepot.ca/api/productsvc/v1/products/${productId}/store/${storeId}?lang=en`;
     try {
       const r = await fetch(apiUrl, {
@@ -670,7 +692,7 @@ async function handleScanPrice(request, env) {
         currency: (op.wasprice && op.wasprice.currencyIso) || "CAD",
         productName: j.name || null,
         source: "hd-productsvc",
-        location: { storeId, storeName: j.aisleBay && j.aisleBay.storeDisplayName, postalCode: null },
+        location: { storeId, storeIdSource, storeName: j.aisleBay && j.aisleBay.storeDisplayName, postalCode: url.searchParams.get("postalCode") || null },
         stockLevel: j.storeStock && j.storeStock.stockLevel,
         percentSaving: op.percentSaving || null,
         fetchedAt: new Date().toISOString(),

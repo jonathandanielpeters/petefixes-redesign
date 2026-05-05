@@ -2548,19 +2548,21 @@ function collectAll() {
     config.scanner.postalCode = (document.getElementById('cfg-scan-postalCode').value || '').trim().toUpperCase() || 'R2M 3E8';
     const pct = parseFloat(document.getElementById('cfg-scan-taxPct').value);
     config.scanner.taxRate = (isFinite(pct) && pct >= 0) ? pct / 100 : 0.12;
-    // Pull stores from the rendered rows (drag order = priority).  Drop
-    // empty IDs.  Mirror the primary into the legacy storeId field for
-    // back-compat with anything still reading it.
+    // Pull stores from the rendered rows (drag order = priority).  A row
+    // counts as configured if it has EITHER a store ID OR a postal code.
+    // Mirror the primary into the legacy storeId field for back-compat.
     const stores = [];
     document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach(row => {
       const id = row.querySelector('[data-scan-store-id]').value.trim();
       const name = row.querySelector('[data-scan-store-name]').value.trim();
       const retailerEl = row.querySelector('[data-scan-store-retailer]');
       const retailer = (retailerEl ? retailerEl.value : 'homedepot') || 'homedepot';
-      if (id) stores.push({ id, name, retailer });
+      const pcEl = row.querySelector('[data-scan-store-postal]');
+      const postalCode = pcEl ? pcEl.value.trim().toUpperCase() : '';
+      if (id || postalCode) stores.push({ id, name, retailer, postalCode });
     });
-    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)', retailer: 'homedepot' }];
-    config.scanner.storeId = config.scanner.stores[0].id;
+    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)', retailer: 'homedepot', postalCode: 'R2C 4G3' }];
+    config.scanner.storeId = config.scanner.stores[0].id || '';
   }
 
   // Gate pricing
@@ -2864,10 +2866,14 @@ function _allScannerStores(retailerId) {
 }
 function _scanQueryParams(storeOverride) {
   const sc = config.scanner || {};
-  const postal = (sc.postalCode || 'R2M 3E8').trim();
-  const storeId = (storeOverride && storeOverride.id) || _primaryScannerStore().id;
+  // Per-store postal code wins over the global fallback.  Either store ID
+  // or postal code is sufficient — the worker resolves missing store ID
+  // from the postal code's FSA when scanning HD URLs.
+  const store = storeOverride || _primaryScannerStore();
+  const postal = (store && store.postalCode) || sc.postalCode || 'R2M 3E8';
+  const storeId = (store && store.id) || '';
   const tax = (sc.taxRate != null && isFinite(sc.taxRate)) ? sc.taxRate : 0.12;
-  return '&postalCode=' + encodeURIComponent(postal) + '&storeId=' + encodeURIComponent(storeId) + '&tax=' + encodeURIComponent(tax);
+  return '&postalCode=' + encodeURIComponent(postal.trim()) + '&storeId=' + encodeURIComponent(storeId) + '&tax=' + encodeURIComponent(tax);
 }
 
 // Stores list editor — each row is a separate box with id + name + remove.
@@ -2896,14 +2902,24 @@ function renderScannerStores() {
   config.scanner.stores.forEach((s, i) => {
     const primary = i === 0;
     const retailer = s.retailer || 'homedepot';
-    html += '<div data-scan-store-row="' + i + '" style="display:flex;gap:8px;align-items:center;padding:8px;background:' + (primary ? 'rgba(200,165,90,0.10)' : 'var(--gray-50,#f7f7f8)') + ';border:1px solid ' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-100,#ececef)') + ';border-radius:6px;margin-bottom:6px">' +
-      '<span style="font-size:10px;font-weight:700;color:' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-400,#888)') + ';text-transform:uppercase;letter-spacing:0.05em;width:60px;flex-shrink:0">' + (primary ? '★ Primary' : '#' + (i + 1)) + '</span>' +
-      '<select data-scan-store-retailer onchange="markDirty()" style="width:130px;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:12px;background:#fff">' + retailerSelect(retailer) + '</select>' +
-      '<input type="text" data-scan-store-id placeholder="7056" value="' + escAttr(s.id || '') + '" oninput="markDirty()" style="width:80px;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px;font-family:Menlo,monospace">' +
-      '<input type="text" data-scan-store-name placeholder="Store name (optional)" value="' + escAttr(s.name || '') + '" oninput="markDirty()" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px">' +
-      (i > 0 ? '<button type="button" title="Move up" onclick="moveScannerStore(' + i + ',-1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▲</button>' : '<span style="width:28px"></span>') +
-      (i < config.scanner.stores.length - 1 ? '<button type="button" title="Move down" onclick="moveScannerStore(' + i + ',1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▼</button>' : '<span style="width:28px"></span>') +
-      '<button type="button" title="Remove store" onclick="removeScannerStore(' + i + ')" style="background:transparent;border:1px solid #f3d0d0;color:#c00;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:700">×</button>' +
+    // 2-row layout: top = retailer + name + reorder/remove. bottom = store ID + postal code.
+    // Store ID is no longer required — postal code can stand in (worker maps FSA → HD store).
+    html += '<div data-scan-store-row="' + i + '" style="padding:8px;background:' + (primary ? 'rgba(200,165,90,0.10)' : 'var(--gray-50,#f7f7f8)') + ';border:1px solid ' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-100,#ececef)') + ';border-radius:6px;margin-bottom:6px">' +
+      '<div style="display:flex;gap:8px;align-items:center">' +
+        '<span style="font-size:10px;font-weight:700;color:' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-400,#888)') + ';text-transform:uppercase;letter-spacing:0.05em;width:60px;flex-shrink:0">' + (primary ? '★ Primary' : '#' + (i + 1)) + '</span>' +
+        '<select data-scan-store-retailer onchange="markDirty()" style="width:130px;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:12px;background:#fff">' + retailerSelect(retailer) + '</select>' +
+        '<input type="text" data-scan-store-name placeholder="Store name (e.g. Crossroads)" value="' + escAttr(s.name || '') + '" oninput="markDirty()" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px">' +
+        (i > 0 ? '<button type="button" title="Move up" onclick="moveScannerStore(' + i + ',-1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▲</button>' : '<span style="width:28px"></span>') +
+        (i < config.scanner.stores.length - 1 ? '<button type="button" title="Move down" onclick="moveScannerStore(' + i + ',1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▼</button>' : '<span style="width:28px"></span>') +
+        '<button type="button" title="Remove store" onclick="removeScannerStore(' + i + ')" style="background:transparent;border:1px solid #f3d0d0;color:#c00;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:700">×</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;padding-left:68px">' +
+        '<label style="font-size:10px;color:var(--gray-400);width:60px;flex-shrink:0;text-align:right">Store #</label>' +
+        '<input type="text" data-scan-store-id placeholder="optional — e.g. 7056" value="' + escAttr(s.id || '') + '" oninput="markDirty()" style="width:130px;padding:5px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:12px;font-family:Menlo,monospace">' +
+        '<label style="font-size:10px;color:var(--gray-400);width:60px;flex-shrink:0;text-align:right">Postal</label>' +
+        '<input type="text" data-scan-store-postal placeholder="R2C 4G3" value="' + escAttr(s.postalCode || '') + '" oninput="markDirty()" style="width:90px;padding:5px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:12px;text-transform:uppercase">' +
+        '<span style="font-size:10px;color:var(--gray-400);font-style:italic">Either is enough — postal code resolves to the closest HD store via FSA lookup.</span>' +
+      '</div>' +
       '</div>';
   });
   host.innerHTML = html;
@@ -2918,13 +2934,15 @@ function addScannerStore() {
       config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
       const rEl = row.querySelector('[data-scan-store-retailer]');
       if (rEl) config.scanner.stores[i].retailer = rEl.value || 'homedepot';
+      const pcEl = row.querySelector('[data-scan-store-postal]');
+      if (pcEl) config.scanner.stores[i].postalCode = pcEl.value.trim().toUpperCase();
     }
   });
-  config.scanner.stores.push({ id: '', name: '', retailer: 'homedepot' });
+  config.scanner.stores.push({ id: '', name: '', retailer: 'homedepot', postalCode: '' });
   renderScannerStores();
   markDirty();
-  // Focus the freshly-added empty ID input.
-  const last = document.querySelector('#cfg-scan-stores [data-scan-store-row]:last-child [data-scan-store-id]');
+  // Focus the freshly-added empty name input.
+  const last = document.querySelector('#cfg-scan-stores [data-scan-store-row]:last-child [data-scan-store-name]');
   if (last) last.focus();
 }
 function removeScannerStore(idx) {
@@ -2940,6 +2958,8 @@ function removeScannerStore(idx) {
       config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
       const rEl = row.querySelector('[data-scan-store-retailer]');
       if (rEl) config.scanner.stores[i].retailer = rEl.value || 'homedepot';
+      const pcEl = row.querySelector('[data-scan-store-postal]');
+      if (pcEl) config.scanner.stores[i].postalCode = pcEl.value.trim().toUpperCase();
     }
   });
   config.scanner.stores.splice(idx, 1);
@@ -2957,6 +2977,8 @@ function moveScannerStore(idx, dir) {
       config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
       const rEl = row.querySelector('[data-scan-store-retailer]');
       if (rEl) config.scanner.stores[i].retailer = rEl.value || 'homedepot';
+      const pcEl = row.querySelector('[data-scan-store-postal]');
+      if (pcEl) config.scanner.stores[i].postalCode = pcEl.value.trim().toUpperCase();
     }
   });
   const tmp = config.scanner.stores[idx];
