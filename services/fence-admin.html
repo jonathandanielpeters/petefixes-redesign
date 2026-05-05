@@ -2841,63 +2841,120 @@ async function testLumberSource() {
 // so the operator's hand-edits are preserved.
 // Run a single scan with auto-retry. Tries up to `attempts` times with
 // exponential backoff between failures (500ms, 1500ms, 3500ms…). Returns
-// either { ok: true, json } on success or { ok: false, error, lastJson }
-// after all attempts have failed. We retry on network errors, on 5xx /
-// 0 / 429 responses, and on { ok: false } results — but NOT on a
-// definitive "couldn't extract" since retrying that won't help.
-async function _scanOneWithRetry(url, qs, attempts = 3) {
+// either { ok: true, json, attempts } on success or { ok: false, error,
+// lastJson, attempts, retryable } after all attempts have failed.
+// We retry on network errors, on 5xx / 0 / 429 responses, and on
+// { ok: false } results — but NOT on a definitive "couldn't extract" or
+// "product not carried" since retrying that won't help. Caller is told
+// via .retryable so the failures panel can offer "Retry failed".
+// onProgress fires before each attempt so the caller can render
+// "attempt 2/3" feedback on the cell.
+async function _scanOneWithRetry(url, qs, attempts = 3, onProgress) {
   let lastErr = null, lastJson = null;
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await new Promise(r => setTimeout(r, 500 * Math.pow(3, i - 1)));
+    if (onProgress) onProgress(i + 1, attempts);
     try {
       const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url) + qs, { credentials: 'same-origin' });
       const json = await res.json();
       lastJson = json;
-      if (res.ok && json.ok && json.price > 0) return { ok: true, json };
-      // Non-retryable conditions
+      if (res.ok && json.ok && json.price > 0) return { ok: true, json, attempts: i + 1 };
       const err = (json && json.error) || ('HTTP ' + res.status);
       if (/couldn't extract|url must start|product may not be carried|product may be unavailable/i.test(err)) {
-        return { ok: false, error: err, lastJson: json };
+        return { ok: false, error: err, lastJson: json, attempts: i + 1, retryable: false };
       }
       lastErr = err;
     } catch (e) {
       lastErr = e.message || String(e);
     }
   }
-  return { ok: false, error: lastErr, lastJson };
+  return { ok: false, error: lastErr, lastJson, attempts, retryable: true };
 }
 
-async function scanLumberPrices(type) {
-  const data = config.materialPricing.lumber[type];
-  const tasks = [];
-  Object.keys(data).forEach(dim => {
-    const sources = data[dim].sources || {};
-    Object.keys(sources).forEach(len => {
-      const src = sources[len];
-      if (src && src.url && !src.manual) tasks.push({ dim, len, src });
-    });
+// Floating failures panel — appears bottom-right after a scan with any
+// failures. Lists each failure with its reason and offers "Retry failed
+// (N)" which re-runs only the retryable ones.
+function _showLumberScanFailures(type, failures, retryFn) {
+  const existing = document.getElementById('lumberScanFailPanel');
+  if (existing) existing.remove();
+  if (!failures || failures.length === 0) return;
+  const retryable = failures.filter(f => f.retryable !== false);
+  const panel = document.createElement('div');
+  panel.id = 'lumberScanFailPanel';
+  panel.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:1000;background:#fff;border:1px solid #ddd;border-radius:10px;box-shadow:0 12px 36px rgba(0,0,0,0.15);width:min(440px,92vw);max-height:60vh;overflow:hidden;display:flex;flex-direction:column;font-size:12px';
+  let html = '<div style="padding:12px 16px;background:#fdf3f3;border-bottom:1px solid #f3d0d0;display:flex;align-items:center;gap:10px">' +
+    '<span style="font-weight:700;color:#c00;flex:1">' + failures.length + ' scan failure' + (failures.length === 1 ? '' : 's') + ' — ' + (type === 'pt' ? 'PT' : 'Cedar') + '</span>' +
+    '<button onclick="document.getElementById(\'lumberScanFailPanel\').remove()" style="background:transparent;border:none;font-size:18px;cursor:pointer;color:#888;line-height:1">×</button>' +
+    '</div>';
+  html += '<div style="flex:1;overflow-y:auto;padding:8px 0">';
+  failures.forEach((f, i) => {
+    const errShort = (f.error || 'unknown error').slice(0, 200);
+    const trans = f.retryable !== false;
+    html += '<div style="padding:8px 16px;border-bottom:1px solid #f5f5f5;display:flex;gap:10px;align-items:flex-start">' +
+      '<div style="width:6px;height:6px;border-radius:50%;background:' + (trans ? '#e89120' : '#c00') + ';margin-top:6px;flex-shrink:0"></div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-weight:600">' + escAttr(f.dim) + ' × ' + escAttr(f.len) + 'ft <span style="color:#888;font-weight:400;font-size:11px">· ' + escAttr(f.attempts || '?') + ' attempt' + (f.attempts === 1 ? '' : 's') + ' · ' + (trans ? 'transient' : 'definitive') + '</span></div>' +
+        '<div style="color:#666;font-size:11px;margin-top:2px;word-break:break-word">' + escAttr(errShort) + '</div>' +
+        (f.url ? '<a href="' + escAttr(f.url) + '" target="_blank" rel="noopener" style="font-size:10px;color:var(--admin);text-decoration:none;display:inline-block;margin-top:3px">↗ Open product page</a>' : '') +
+      '</div></div>';
   });
+  html += '</div>';
+  if (retryable.length > 0) {
+    html += '<div style="padding:10px 16px;border-top:1px solid #eee;display:flex;gap:8px;align-items:center;background:#fafafa">' +
+      '<span style="flex:1;font-size:11px;color:#666">' + retryable.length + ' transient — worth retrying. ' + (failures.length - retryable.length > 0 ? (failures.length - retryable.length) + ' definitive — paste a different URL or accept "not carried at this store".' : '') + '</span>' +
+      '<button id="lumberRetryFailedBtn" style="background:var(--accent);color:#fff;border:none;padding:6px 14px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">↻ Retry ' + retryable.length + ' failed</button>' +
+      '</div>';
+  }
+  panel.innerHTML = html;
+  document.body.appendChild(panel);
+  const retryBtn = document.getElementById('lumberRetryFailedBtn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      panel.remove();
+      retryFn(retryable);
+    });
+  }
+}
+function escAttr(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+async function scanLumberPrices(type, taskOverride) {
+  const data = config.materialPricing.lumber[type];
+  // Either scan all configured cells (no override) or just the failed
+  // ones (override = a list of {dim, len} from the failures panel).
+  let tasks = [];
+  if (taskOverride && Array.isArray(taskOverride)) {
+    taskOverride.forEach(({ dim, len }) => {
+      const src = data[dim] && data[dim].sources && data[dim].sources[len];
+      if (src && src.url) tasks.push({ dim, len, src });
+    });
+  } else {
+    Object.keys(data).forEach(dim => {
+      const sources = data[dim].sources || {};
+      Object.keys(sources).forEach(len => {
+        const src = sources[len];
+        if (src && src.url && !src.manual) tasks.push({ dim, len, src });
+      });
+    });
+  }
   if (tasks.length === 0) {
     toast(`No URLs configured for ${type === 'pt' ? 'PT' : 'Cedar'} — click 🔍 next to a price to set one.`, 'info');
     return;
   }
 
-  // Disable the scan button while we go so the operator doesn't trigger
-  // a parallel run and overlap requests.
   const buttons = document.querySelectorAll('[onclick*="scanLumberPrices(\'' + type + '\')"]');
   buttons.forEach(b => { b.disabled = true; b.dataset._origText = b.textContent; });
 
-  // Per-cell visual feedback — highlight current cell, mark each row with
-  // its result as it completes. Uses a small overlay on the qty input.
   const cellEl = (dim, len) => document.querySelector(
     '.lumber-price[data-type="' + type + '"][data-dim="' + dim + '"][data-len="' + len + '"]'
   );
-  const setCellState = (dim, len, state) => {
+  const setCellState = (dim, len, state, attemptText) => {
     const el = cellEl(dim, len); if (!el) return;
     if (state === 'pending') el.style.boxShadow = '0 0 0 2px rgba(74,144,217,0.6) inset';
+    else if (state === 'retry') el.style.boxShadow = '0 0 0 2px rgba(232,145,32,0.7) inset';
     else if (state === 'ok') el.style.boxShadow = '0 0 0 2px rgba(42,138,63,0.6) inset';
     else if (state === 'fail') el.style.boxShadow = '0 0 0 2px rgba(196,60,60,0.6) inset';
     else el.style.boxShadow = '';
+    if (attemptText) el.title = attemptText;
   };
 
   const qs = _scanQueryParams();
@@ -2906,14 +2963,21 @@ async function scanLumberPrices(type) {
   const failures = [];
   const setBtnLabel = (txt) => buttons.forEach(b => { b.textContent = txt; });
   const label = (type === 'pt' ? 'PT' : 'Cedar');
-  toast(`Scanning ${total} ${label} price${total === 1 ? '' : 's'}…`, 'info');
+  toast(`Scanning ${total} ${label} price${total === 1 ? '' : 's'}… (up to 3 attempts each)`, 'info');
 
-  // Sequential — one at a time, polite delay between, retry inside.
   for (const t of tasks) {
     idx++;
-    setBtnLabel(`Scanning ${idx}/${total}…`);
     setCellState(t.dim, t.len, 'pending');
-    const result = await _scanOneWithRetry(t.src.url, qs, 3);
+    const result = await _scanOneWithRetry(t.src.url, qs, 3, (attempt, attemptsTotal) => {
+      // Live progress on the button + cell ring goes orange during retries
+      // so the operator can see the system is actually retrying.
+      if (attempt > 1) {
+        setBtnLabel(`Scanning ${idx}/${total} · retry ${attempt}/${attemptsTotal}…`);
+        setCellState(t.dim, t.len, 'retry', `Retry ${attempt}/${attemptsTotal}`);
+      } else {
+        setBtnLabel(`Scanning ${idx}/${total}…`);
+      }
+    });
     if (result.ok) {
       const json = result.json;
       data[t.dim].boards[t.len] = Math.round(json.price * 100) / 100;
@@ -2922,25 +2986,28 @@ async function scanLumberPrices(type) {
       t.src.basePrice = json.basePrice;
       t.src.taxRate = json.taxRate;
       t.src.manual = false;
-      // Update the input value live so the operator sees progress without
-      // waiting for the full re-render.
       const el = cellEl(t.dim, t.len);
-      if (el) el.value = data[t.dim].boards[t.len];
+      if (el) {
+        el.value = data[t.dim].boards[t.len];
+        el.title = `Scanned ${result.attempts} attempt${result.attempts === 1 ? '' : 's'} · ${new Date().toLocaleTimeString()}`;
+      }
       setCellState(t.dim, t.len, 'ok');
       updated++;
     } else {
       failed++;
-      failures.push({ dim: t.dim, len: t.len, error: result.error });
-      setCellState(t.dim, t.len, 'fail');
+      failures.push({
+        dim: t.dim, len: t.len, url: t.src.url,
+        error: result.error || 'unknown error',
+        attempts: result.attempts || 0,
+        retryable: result.retryable !== false,
+      });
+      setCellState(t.dim, t.len, 'fail', `Failed after ${result.attempts || 0} attempt(s): ${result.error || ''}`);
     }
-    // Polite delay between tasks so we don't hammer upstream.
     if (idx < total) await new Promise(r => setTimeout(r, 250));
   }
 
-  // Re-enable buttons and restore label.
   buttons.forEach(b => { b.disabled = false; b.textContent = b.dataset._origText || '🔄 Scan prices'; });
-  // Fade highlights after a moment so the table goes back to normal.
-  setTimeout(() => { tasks.forEach(t => setCellState(t.dim, t.len, '')); }, 4000);
+  setTimeout(() => { tasks.forEach(t => setCellState(t.dim, t.len, '')); }, 6000);
 
   renderLumberTable(type);
   updateAllPreviews && updateAllPreviews();
@@ -2949,8 +3016,8 @@ async function scanLumberPrices(type) {
   if (failed === 0) {
     toast(`Scan done — ${updated} updated.`, 'success');
   } else {
-    const sample = failures.slice(0, 2).map(f => `${f.dim}/${f.len}ft`).join(', ');
-    toast(`Scan done — ${updated} updated, ${failed} failed (${sample}${failures.length > 2 ? `, +${failures.length - 2}` : ''}). Click ✏️ on a failed cell to retry it.`, 'info');
+    toast(`Scan done — ${updated} updated, ${failed} failed. See panel for details.`, 'info');
+    _showLumberScanFailures(type, failures, (retryList) => scanLumberPrices(type, retryList));
   }
 }
 
