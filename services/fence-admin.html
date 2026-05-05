@@ -429,18 +429,23 @@ a{color:var(--accent);text-decoration:none}
     <div class="pill-tab" data-tab="cedar" onclick="showLumberTab('cedar')">Cedar</div>
   </div>
 
-  <!-- Scanner config — postal code + tax rate apply to every scan. Default
-       postal code = R2C 4G3 (Regent Ave / Transcona, Winnipeg) so retailers
-       like Home Depot Canada show local-store pricing instead of GTA defaults. -->
+  <!-- Scanner config — postal code + tax rate apply to every scan, plus
+       a list of stores. The first store is the primary (its scanned price
+       is what lands in each cell). The "Test scan" in the URL editor
+       fetches from every configured store so you can compare prices. -->
   <div class="card" style="margin-bottom:14px">
     <div class="card-title">Scanner location &amp; tax</div>
-    <div class="card-desc">The scanner sends these to the upstream retailer (as cookies + query params) so prices come back for your local store. Without them, Cloudflare's edge node defaults to whatever store the retailer chooses — usually GTA, not Winnipeg.</div>
-    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px">
-      <div class="field"><label>Postal code (local store)</label><input type="text" id="cfg-scan-postalCode" placeholder="R2C 4G3" oninput="markDirty()" style="text-transform:uppercase"></div>
-      <div class="field"><label>Home Depot store ID</label><input type="text" id="cfg-scan-storeId" placeholder="7056" oninput="markDirty()"></div>
+    <div class="card-desc">Configure the stores the scanner pulls prices from. The first store in the list is the primary — its price is what each lumber cell uses. Test-scanning a single URL shows prices from every store side-by-side so you can compare.</div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px">
+      <div class="field"><label>Postal code (local store fallback)</label><input type="text" id="cfg-scan-postalCode" placeholder="R2M 3E8" oninput="markDirty()" style="text-transform:uppercase"></div>
       <div class="field"><label>Tax rate (%)</label><input type="number" id="cfg-scan-taxPct" min="0" max="30" step="0.5" placeholder="12" oninput="markDirty()"></div>
     </div>
-    <div style="font-size:11px;color:var(--gray-400);margin-top:8px">Default 12% = Manitoba PST 7% + GST 5%. Set 5% for GST-only, 0 to skip tax. Home Depot Canada Crossroads (Winnipeg) is store ID <strong>7056</strong>. The scanner uses Home Depot's localized productsvc API and pulls the regular ("Was") price so quotes don't anchor to a temporary sale.</div>
+    <div style="margin-top:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">Home Depot stores (drag-order = priority)</div>
+      <div id="cfg-scan-stores"></div>
+      <button type="button" class="btn btn-outline btn-sm" style="margin-top:6px" onclick="addScannerStore()">+ Add store</button>
+    </div>
+    <div style="font-size:11px;color:var(--gray-400);margin-top:10px">Default 12% = Manitoba PST 7% + GST 5%. Common Winnipeg HD store IDs: <strong>7056</strong> Crossroads, <strong>7080</strong> Regent Ave, <strong>7077</strong> McGillivray, <strong>7058</strong> Pembina, <strong>7079</strong> St James. The scanner uses Home Depot's localized productsvc API per store and pulls the regular ("Was") price so quotes don't anchor to a temporary sale.</div>
   </div>
 
   <div id="lumberTabContent-pt">
@@ -2215,12 +2220,20 @@ function populateAll() {
   document.getElementById('cfg-vis-weldedWire').checked = vis.weldedWire !== false;
   document.getElementById('cfg-vis-vinyl').checked = vis.vinyl !== false;
 
-  // Lumber price scanner — postal code / store ID / tax rate
-  const scan = config.scanner || {};
+  // Lumber price scanner — postal code / stores list / tax rate
+  if (!config.scanner) config.scanner = {};
+  const scan = config.scanner;
+  // Migrate legacy single-store config → stores list (so old admins keep
+  // working). If no stores are configured at all, seed with Crossroads.
+  if (!Array.isArray(scan.stores) || scan.stores.length === 0) {
+    scan.stores = scan.storeId
+      ? [{ id: String(scan.storeId), name: 'Primary' }]
+      : [{ id: '7056', name: 'Crossroads (default)' }];
+  }
   if (document.getElementById('cfg-scan-postalCode')) {
     document.getElementById('cfg-scan-postalCode').value = scan.postalCode || 'R2M 3E8';
-    document.getElementById('cfg-scan-storeId').value = scan.storeId || '7056';
     document.getElementById('cfg-scan-taxPct').value = (scan.taxRate != null ? scan.taxRate : 0.12) * 100;
+    renderScannerStores();
   }
 
   // Gate Pricing
@@ -2533,9 +2546,19 @@ function collectAll() {
   if (!config.scanner) config.scanner = {};
   if (document.getElementById('cfg-scan-postalCode')) {
     config.scanner.postalCode = (document.getElementById('cfg-scan-postalCode').value || '').trim().toUpperCase() || 'R2M 3E8';
-    config.scanner.storeId = (document.getElementById('cfg-scan-storeId').value || '').trim() || '7056';
     const pct = parseFloat(document.getElementById('cfg-scan-taxPct').value);
     config.scanner.taxRate = (isFinite(pct) && pct >= 0) ? pct / 100 : 0.12;
+    // Pull stores from the rendered rows (drag order = priority).  Drop
+    // empty IDs.  Mirror the primary into the legacy storeId field for
+    // back-compat with anything still reading it.
+    const stores = [];
+    document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach(row => {
+      const id = row.querySelector('[data-scan-store-id]').value.trim();
+      const name = row.querySelector('[data-scan-store-name]').value.trim();
+      if (id) stores.push({ id, name });
+    });
+    config.scanner.stores = stores.length ? stores : [{ id: '7056', name: 'Crossroads (default)' }];
+    config.scanner.storeId = config.scanner.stores[0].id;
   }
 
   // Gate pricing
@@ -2787,54 +2810,157 @@ function clearLumberSource() {
 }
 // Build the ?postalCode=&storeId=&tax= suffix that every scan call needs
 // from the admin's scanner config (with sensible Winnipeg / MB defaults).
-function _scanQueryParams() {
+// First configured store wins; legacy single storeId is the fallback.
+function _primaryScannerStore() {
+  const sc = config.scanner || {};
+  if (Array.isArray(sc.stores) && sc.stores.length > 0 && sc.stores[0].id) return sc.stores[0];
+  if (sc.storeId) return { id: String(sc.storeId), name: '' };
+  return { id: '7056', name: 'Crossroads (default)' };
+}
+function _allScannerStores() {
+  const sc = config.scanner || {};
+  if (Array.isArray(sc.stores) && sc.stores.length > 0) return sc.stores.filter(s => s && s.id);
+  return [_primaryScannerStore()];
+}
+function _scanQueryParams(storeOverride) {
   const sc = config.scanner || {};
   const postal = (sc.postalCode || 'R2M 3E8').trim();
-  const storeId = (sc.storeId || '7056').trim();
+  const storeId = (storeOverride && storeOverride.id) || _primaryScannerStore().id;
   const tax = (sc.taxRate != null && isFinite(sc.taxRate)) ? sc.taxRate : 0.12;
   return '&postalCode=' + encodeURIComponent(postal) + '&storeId=' + encodeURIComponent(storeId) + '&tax=' + encodeURIComponent(tax);
 }
 
+// Stores list editor — each row is a separate box with id + name + remove.
+// Up/down buttons reorder so the operator can promote a different store
+// to "primary" without retyping. Order in the rendered list = priority.
+function renderScannerStores() {
+  const host = document.getElementById('cfg-scan-stores');
+  if (!host) return;
+  if (!config.scanner) config.scanner = {};
+  if (!Array.isArray(config.scanner.stores) || config.scanner.stores.length === 0) {
+    config.scanner.stores = [{ id: '7056', name: 'Crossroads (default)' }];
+  }
+  let html = '';
+  config.scanner.stores.forEach((s, i) => {
+    const primary = i === 0;
+    html += '<div data-scan-store-row="' + i + '" style="display:flex;gap:8px;align-items:center;padding:8px;background:' + (primary ? 'rgba(200,165,90,0.10)' : 'var(--gray-50,#f7f7f8)') + ';border:1px solid ' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-100,#ececef)') + ';border-radius:6px;margin-bottom:6px">' +
+      '<span style="font-size:10px;font-weight:700;color:' + (primary ? 'var(--accent,#c8a55a)' : 'var(--gray-400,#888)') + ';text-transform:uppercase;letter-spacing:0.05em;width:60px;flex-shrink:0">' + (primary ? '★ Primary' : '#' + (i + 1)) + '</span>' +
+      '<input type="text" data-scan-store-id placeholder="7056" value="' + escAttr(s.id || '') + '" oninput="markDirty()" style="width:80px;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px;font-family:Menlo,monospace">' +
+      '<input type="text" data-scan-store-name placeholder="Store name (optional)" value="' + escAttr(s.name || '') + '" oninput="markDirty()" style="flex:1;padding:6px 8px;border:1px solid var(--gray-200,#d8d8db);border-radius:4px;font-size:13px">' +
+      (i > 0 ? '<button type="button" title="Move up" onclick="moveScannerStore(' + i + ',-1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▲</button>' : '<span style="width:28px"></span>') +
+      (i < config.scanner.stores.length - 1 ? '<button type="button" title="Move down" onclick="moveScannerStore(' + i + ',1)" style="background:transparent;border:1px solid var(--gray-200,#d8d8db);width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:12px">▼</button>' : '<span style="width:28px"></span>') +
+      '<button type="button" title="Remove store" onclick="removeScannerStore(' + i + ')" style="background:transparent;border:1px solid #f3d0d0;color:#c00;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:14px;font-weight:700">×</button>' +
+      '</div>';
+  });
+  host.innerHTML = html;
+}
+function addScannerStore() {
+  if (!config.scanner) config.scanner = {};
+  if (!Array.isArray(config.scanner.stores)) config.scanner.stores = [];
+  // Save current edits before re-rendering so typed-but-unsaved values don't get lost.
+  document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach((row, i) => {
+    if (config.scanner.stores[i]) {
+      config.scanner.stores[i].id = row.querySelector('[data-scan-store-id]').value.trim();
+      config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
+    }
+  });
+  config.scanner.stores.push({ id: '', name: '' });
+  renderScannerStores();
+  markDirty();
+  // Focus the freshly-added empty ID input.
+  const last = document.querySelector('#cfg-scan-stores [data-scan-store-row]:last-child [data-scan-store-id]');
+  if (last) last.focus();
+}
+function removeScannerStore(idx) {
+  if (!config.scanner || !Array.isArray(config.scanner.stores)) return;
+  if (config.scanner.stores.length <= 1) {
+    toast('Keep at least one store — add another before removing this one.', 'info');
+    return;
+  }
+  // Save current edits first.
+  document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach((row, i) => {
+    if (config.scanner.stores[i]) {
+      config.scanner.stores[i].id = row.querySelector('[data-scan-store-id]').value.trim();
+      config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
+    }
+  });
+  config.scanner.stores.splice(idx, 1);
+  renderScannerStores();
+  markDirty();
+}
+function moveScannerStore(idx, dir) {
+  if (!config.scanner || !Array.isArray(config.scanner.stores)) return;
+  const target = idx + dir;
+  if (target < 0 || target >= config.scanner.stores.length) return;
+  // Save current edits first.
+  document.querySelectorAll('#cfg-scan-stores [data-scan-store-row]').forEach((row, i) => {
+    if (config.scanner.stores[i]) {
+      config.scanner.stores[i].id = row.querySelector('[data-scan-store-id]').value.trim();
+      config.scanner.stores[i].name = row.querySelector('[data-scan-store-name]').value.trim();
+    }
+  });
+  const tmp = config.scanner.stores[idx];
+  config.scanner.stores[idx] = config.scanner.stores[target];
+  config.scanner.stores[target] = tmp;
+  renderScannerStores();
+  markDirty();
+}
+
+// Fan out across every configured store and render a comparison table —
+// price-with-tax + per-store regular/sale breakdown so the operator can
+// see which store has stock and pick the cheapest. The primary store's
+// price is what would land in the cell during a bulk scan.
 async function testLumberSource() {
   const url = document.getElementById('lumberSourceUrl').value.trim();
   const status = document.getElementById('lumberSourceStatus');
   if (!url) { status.textContent = 'Paste a URL first.'; return; }
-  // Live progress: scanning … attempt 2 / 3 etc.
-  let attempt = 0;
-  status.innerHTML = '<span style="color:#888">Scanning…</span>';
-  // Wrap the retry helper so we can render progress between tries.
-  const tryOnce = async () => {
-    attempt++;
-    status.innerHTML = `<span style="color:#888">Scanning… (attempt ${attempt}/3)</span>`;
-    try {
-      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url) + _scanQueryParams(), { credentials: 'same-origin' });
-      const json = await res.json();
-      return { res, json };
-    } catch (e) { return { error: e.message || String(e) }; }
-  };
-  let result = null;
-  for (let i = 0; i < 3; i++) {
-    if (i > 0) await new Promise(r => setTimeout(r, 500 * Math.pow(3, i - 1)));
-    const out = await tryOnce();
-    if (out.json && out.json.ok && out.json.price > 0) { result = out.json; break; }
-    const err = (out.json && out.json.error) || out.error || 'scan failed';
-    if (/couldn't extract|url must start|product may not be carried|product may be unavailable/i.test(err)) {
-      result = { ok: false, error: err };
-      break;
+  const stores = _allScannerStores();
+  status.innerHTML = '<span style="color:#888">Scanning ' + stores.length + ' store' + (stores.length === 1 ? '' : 's') + '…</span>';
+  const results = [];
+  for (let i = 0; i < stores.length; i++) {
+    const s = stores[i];
+    status.innerHTML = `<span style="color:#888">Scanning ${i + 1}/${stores.length} — ${escAttr(s.name || s.id)}…</span>`;
+    const r = await _scanOneWithRetry(url, _scanQueryParams(s), 3, (att, total) => {
+      if (att > 1) status.innerHTML = `<span style="color:#888">Scanning ${i + 1}/${stores.length} — ${escAttr(s.name || s.id)} · retry ${att}/${total}…</span>`;
+    });
+    results.push({ store: s, ...r });
+  }
+  // Render a comparison table.
+  const taxRate = (config.scanner && isFinite(config.scanner.taxRate)) ? config.scanner.taxRate : 0.12;
+  let html = '<div style="font-size:11px;color:#888;margin-bottom:6px">Test scan across ' + stores.length + ' store' + (stores.length === 1 ? '' : 's') + ' — primary (★) is what the cell uses on a bulk scan.</div>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html += '<thead><tr style="background:var(--gray-50,#f7f7f8);text-align:left"><th style="padding:5px 8px">Store</th><th style="padding:5px 8px;text-align:right">Regular</th><th style="padding:5px 8px;text-align:right">Sale</th><th style="padding:5px 8px;text-align:right">+ tax</th></tr></thead><tbody>';
+  // Find lowest with-tax price for highlighting
+  const withTaxes = results.filter(r => r.ok && r.json && r.json.price > 0).map(r => r.json.price);
+  const lowest = withTaxes.length ? Math.min(...withTaxes) : null;
+  results.forEach((r, i) => {
+    const primary = i === 0;
+    const cells = primary ? '<strong>★ ' : '';
+    const closeCells = primary ? '</strong>' : '';
+    const storeLabel = (r.store.name || ('Store ' + r.store.id));
+    if (r.ok) {
+      const j = r.json;
+      const isLowest = lowest != null && Math.abs(j.price - lowest) < 0.005 && results.length > 1;
+      const rowBg = isLowest ? 'background:rgba(42,138,63,0.08)' : '';
+      html += '<tr style="border-bottom:1px solid var(--gray-100,#ececef);' + rowBg + '">' +
+        '<td style="padding:5px 8px">' + cells + escAttr(storeLabel) + closeCells + ' <span style="color:#888;font-size:10px">' + escAttr(r.store.id) + '</span></td>' +
+        '<td style="padding:5px 8px;text-align:right">' + (j.originalPrice ? '$' + j.originalPrice.toFixed(2) : '<span style="color:#bbb">—</span>') + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;color:' + (j.salePrice ? '#888' : '#bbb') + '">' + (j.salePrice ? '$' + j.salePrice.toFixed(2) : '—') + '</td>' +
+        '<td style="padding:5px 8px;text-align:right;font-weight:700;color:' + (isLowest ? '#2a8a3f' : 'inherit') + '">$' + j.price.toFixed(2) + (isLowest ? ' ✓' : '') + '</td>' +
+        '</tr>';
+    } else {
+      html += '<tr style="border-bottom:1px solid var(--gray-100,#ececef);color:#c00">' +
+        '<td style="padding:5px 8px">' + cells + escAttr(storeLabel) + closeCells + ' <span style="color:#888;font-size:10px">' + escAttr(r.store.id) + '</span></td>' +
+        '<td colspan="3" style="padding:5px 8px;font-size:11px">✗ ' + escAttr((r.error || 'failed').slice(0, 100)) + '</td>' +
+        '</tr>';
     }
-    if (i === 2) result = { ok: false, error: err };
-  }
-  if (result && result.ok) {
-    const json = result;
-    const breakdown = [];
-    if (json.originalPrice) breakdown.push(`Regular $${json.originalPrice.toFixed(2)}`);
-    if (json.salePrice && json.salePrice !== json.originalPrice) breakdown.push(`<span style="color:#888">Sale $${json.salePrice.toFixed(2)} (ignored)</span>`);
-    const taxLine = `+ ${(json.taxRate * 100).toFixed(1)}% tax = <strong>$${json.price.toFixed(2)}</strong>`;
-    const loc = json.location ? `<br><span style="color:#888;font-size:10px">Store ${json.location.storeId}${json.location.storeName ? ' · ' + json.location.storeName : ''} · via ${json.source}</span>` : '';
-    status.innerHTML = `<span style="color:#2a8a3f">✓ ${breakdown.join(' · ')} ${taxLine}</span>` + (json.productName ? `<br><span style="color:#888">${json.productName.slice(0, 80)}</span>` : '') + loc;
-  } else {
-    status.innerHTML = `<span style="color:#c00">✗ ${(result && result.error) || 'scan failed after 3 attempts'}</span>`;
-  }
+  });
+  html += '</tbody></table>';
+  // Product name + tax footnote
+  const firstOk = results.find(r => r.ok);
+  if (firstOk && firstOk.json.productName) html += '<div style="color:#888;font-size:11px;margin-top:6px">' + escAttr(firstOk.json.productName.slice(0, 100)) + '</div>';
+  html += '<div style="color:#888;font-size:10px;margin-top:4px">+ tax = base × (1 + ' + (taxRate * 100).toFixed(1) + '%) on the regular price.</div>';
+  status.innerHTML = html;
 }
 
 // Scan all cells in a lumber tab that have URLs. Skips cells with manual=true
