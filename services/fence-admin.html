@@ -437,10 +437,10 @@ a{color:var(--accent);text-decoration:none}
     <div class="card-desc">The scanner sends these to the upstream retailer (as cookies + query params) so prices come back for your local store. Without them, Cloudflare's edge node defaults to whatever store the retailer chooses — usually GTA, not Winnipeg.</div>
     <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px">
       <div class="field"><label>Postal code (local store)</label><input type="text" id="cfg-scan-postalCode" placeholder="R2C 4G3" oninput="markDirty()" style="text-transform:uppercase"></div>
-      <div class="field"><label>Home Depot store ID <span style="color:var(--gray-400);font-weight:400">(optional)</span></label><input type="text" id="cfg-scan-storeId" placeholder="7080" oninput="markDirty()"></div>
+      <div class="field"><label>Home Depot store ID</label><input type="text" id="cfg-scan-storeId" placeholder="7056" oninput="markDirty()"></div>
       <div class="field"><label>Tax rate (%)</label><input type="number" id="cfg-scan-taxPct" min="0" max="30" step="0.5" placeholder="12" oninput="markDirty()"></div>
     </div>
-    <div style="font-size:11px;color:var(--gray-400);margin-top:8px">Default 12% = Manitoba PST 7% + GST 5%. Set 5% for GST-only, 0 to skip tax. Home Depot Canada Regent Ave Winnipeg is store ID <strong>7080</strong>.</div>
+    <div style="font-size:11px;color:var(--gray-400);margin-top:8px">Default 12% = Manitoba PST 7% + GST 5%. Set 5% for GST-only, 0 to skip tax. Home Depot Canada Crossroads (Winnipeg) is store ID <strong>7056</strong>. The scanner uses Home Depot's localized productsvc API and pulls the regular ("Was") price so quotes don't anchor to a temporary sale.</div>
   </div>
 
   <div id="lumberTabContent-pt">
@@ -2218,8 +2218,8 @@ function populateAll() {
   // Lumber price scanner — postal code / store ID / tax rate
   const scan = config.scanner || {};
   if (document.getElementById('cfg-scan-postalCode')) {
-    document.getElementById('cfg-scan-postalCode').value = scan.postalCode || 'R2C 4G3';
-    document.getElementById('cfg-scan-storeId').value = scan.storeId || '7080';
+    document.getElementById('cfg-scan-postalCode').value = scan.postalCode || 'R2M 3E8';
+    document.getElementById('cfg-scan-storeId').value = scan.storeId || '7056';
     document.getElementById('cfg-scan-taxPct').value = (scan.taxRate != null ? scan.taxRate : 0.12) * 100;
   }
 
@@ -2532,8 +2532,8 @@ function collectAll() {
   // Lumber price scanner config
   if (!config.scanner) config.scanner = {};
   if (document.getElementById('cfg-scan-postalCode')) {
-    config.scanner.postalCode = (document.getElementById('cfg-scan-postalCode').value || '').trim().toUpperCase() || 'R2C 4G3';
-    config.scanner.storeId = (document.getElementById('cfg-scan-storeId').value || '').trim() || '7080';
+    config.scanner.postalCode = (document.getElementById('cfg-scan-postalCode').value || '').trim().toUpperCase() || 'R2M 3E8';
+    config.scanner.storeId = (document.getElementById('cfg-scan-storeId').value || '').trim() || '7056';
     const pct = parseFloat(document.getElementById('cfg-scan-taxPct').value);
     config.scanner.taxRate = (isFinite(pct) && pct >= 0) ? pct / 100 : 0.12;
   }
@@ -2789,8 +2789,8 @@ function clearLumberSource() {
 // from the admin's scanner config (with sensible Winnipeg / MB defaults).
 function _scanQueryParams() {
   const sc = config.scanner || {};
-  const postal = (sc.postalCode || 'R2C 4G3').trim();
-  const storeId = (sc.storeId || '7080').trim();
+  const postal = (sc.postalCode || 'R2M 3E8').trim();
+  const storeId = (sc.storeId || '7056').trim();
   const tax = (sc.taxRate != null && isFinite(sc.taxRate)) ? sc.taxRate : 0.12;
   return '&postalCode=' + encodeURIComponent(postal) + '&storeId=' + encodeURIComponent(storeId) + '&tax=' + encodeURIComponent(tax);
 }

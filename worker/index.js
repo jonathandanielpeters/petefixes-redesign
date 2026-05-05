@@ -621,6 +621,68 @@ async function handleScanPrice(request, env) {
   let taxRate = parseFloat(url.searchParams.get("tax"));
   if (!isFinite(taxRate) || taxRate < 0) taxRate = 0.12;
 
+  // Home Depot Canada — use the localized productsvc API instead of scraping
+  // HTML. The store ID is baked into the URL path, so the response is the
+  // local-store price regardless of where the worker fetches from. The page
+  // HTML scrape cannot work for HD because their server returns a default-
+  // store placeholder ($3.98) and only swaps in the real price client-side.
+  // The API gives us optimizedPrice with .wasprice (regular) and
+  // .displayPrice (sale) cleanly. We prefer the wasprice so quotes don't
+  // anchor to a temporary promo that ends before purchase.
+  const hdMatch = target.match(/^https?:\/\/(?:www\.)?homedepot\.ca\/(?:[a-z]{2}\/)?(?:product|p|pip)\/[^?#]*?\/(\d{6,})/i);
+  if (hdMatch) {
+    const productId = hdMatch[1];
+    const storeId = (url.searchParams.get("storeId") || "7056").trim() || "7056";
+    const apiUrl = `https://www.homedepot.ca/api/productsvc/v1/products/${productId}/store/${storeId}?lang=en`;
+    try {
+      const r = await fetch(apiUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+          "Accept": "application/json",
+          "Accept-Language": "en-CA,en;q=0.9",
+        },
+      });
+      if (!r.ok) {
+        return corsResponse({ ok: false, error: "HD productsvc HTTP " + r.status, status: r.status }, 200);
+      }
+      const j = await r.json();
+      const op = j && j.optimizedPrice;
+      if (!op) {
+        return corsResponse({ ok: false, error: "HD productsvc returned no optimizedPrice (product may not be carried at store " + storeId + ")", productId, storeId }, 200);
+      }
+      const num = (v) => { const n = Number(String(v || "").replace(/[^0-9.]/g, "")); return isFinite(n) && n > 0 ? n : null; };
+      const wasPrice = num(op.wasprice && op.wasprice.value);
+      const displayPrice = num(op.displayPrice && op.displayPrice.value);
+      const basePrice = wasPrice || displayPrice;
+      if (!basePrice) {
+        return corsResponse({ ok: false, error: "HD productsvc returned price=0 (product may be unavailable at store " + storeId + ")", productId, storeId }, 200);
+      }
+      const taxApplied = Math.round(basePrice * taxRate * 100) / 100;
+      const finalPrice = Math.round(basePrice * (1 + taxRate) * 100) / 100;
+      return corsResponse({
+        ok: true,
+        price: finalPrice,
+        basePrice,
+        originalPrice: wasPrice || null,
+        salePrice: (displayPrice && displayPrice !== wasPrice) ? displayPrice : null,
+        taxRate,
+        taxApplied,
+        currency: (op.wasprice && op.wasprice.currencyIso) || "CAD",
+        productName: j.name || null,
+        source: "hd-productsvc",
+        location: { storeId, storeName: j.aisleBay && j.aisleBay.storeDisplayName, postalCode: null },
+        stockLevel: j.storeStock && j.storeStock.stockLevel,
+        percentSaving: op.percentSaving || null,
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      return corsResponse({ ok: false, error: "HD productsvc fetch failed: " + (e.message || e) }, 200);
+    }
+  }
+  // Debug mode dumps every candidate the extractor saw + html snippets.
+  const debug = url.searchParams.get("debug") === "1";
+  const debugInfo = { candidates: { original: [], sale: [] }, snippets: {}, htmlLen: 0, fetchUrl: null, finalUrl: null, status: null };
+
   // Location passthrough — Cloudflare Workers fetch from edge DCs so the
   // upstream retailer otherwise shows GTA / closest-DC pricing, which can
   // differ wildly from local-store pricing. Send a postal code + store id
@@ -658,6 +720,7 @@ async function handleScanPrice(request, env) {
 
   let html = "";
   try {
+    debugInfo.fetchUrl = targetUrl;
     const res = await fetch(targetUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -667,12 +730,15 @@ async function handleScanPrice(request, env) {
       },
       redirect: "follow",
     });
+    debugInfo.status = res.status;
+    debugInfo.finalUrl = res.url || targetUrl;
     if (!res.ok) {
-      return corsResponse({ ok: false, error: "upstream HTTP " + res.status, status: res.status }, 200);
+      return corsResponse({ ok: false, error: "upstream HTTP " + res.status, status: res.status, debug: debug ? debugInfo : undefined }, 200);
     }
     html = await res.text();
+    debugInfo.htmlLen = html.length;
   } catch (e) {
-    return corsResponse({ ok: false, error: "fetch failed: " + (e.message || e) }, 200);
+    return corsResponse({ ok: false, error: "fetch failed: " + (e.message || e), debug: debug ? debugInfo : undefined }, 200);
   }
 
   const num = (v) => {
@@ -687,14 +753,28 @@ async function handleScanPrice(request, env) {
   let productName = null;
   let source = null;
 
+  // Capture every price candidate the extractor finds (kind, value, source,
+  // and a HTML snippet around the match) so debug mode can show why we
+  // picked what we picked.
+  const candidates = [];
+  const recordCand = (kind, value, src, matchIdx, sample) => {
+    candidates.push({ kind, value, source: src, matchIdx, sample: sample ? sample.slice(0, 240) : null });
+  };
+  const matchSnippet = (m, ctx = 80) => {
+    if (!m || m.index == null) return null;
+    const start = Math.max(0, m.index - ctx);
+    const end = Math.min(html.length, m.index + (m[0] ? m[0].length : 0) + ctx);
+    return html.slice(start, end).replace(/\s+/g, " ").trim();
+  };
+
   // 1. JSON-LD — most reliable when present
   const ldRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m;
-  while ((!originalPrice || !salePrice) && (m = ldRegex.exec(html)) !== null) {
+  while ((m = ldRegex.exec(html)) !== null) {
     try {
       const json = JSON.parse(m[1].trim());
-      const candidates = Array.isArray(json) ? json : (json["@graph"] ? json["@graph"] : [json]);
-      for (const node of candidates) {
+      const cands = Array.isArray(json) ? json : (json["@graph"] ? json["@graph"] : [json]);
+      for (const node of cands) {
         if (!node || typeof node !== "object") continue;
         const type = node["@type"];
         const isProduct = type === "Product" || (Array.isArray(type) && type.includes("Product"));
@@ -705,96 +785,126 @@ async function handleScanPrice(request, env) {
         for (const off of offerList) {
           if (!off) continue;
           currency = currency || off.priceCurrency || off.priceSpecification?.priceCurrency || null;
-          // Walk priceSpecification array for ListPrice / RegularPrice / MSRP
           const specs = Array.isArray(off.priceSpecification) ? off.priceSpecification : (off.priceSpecification ? [off.priceSpecification] : []);
           for (const spec of specs) {
             const t = String(spec.priceType || spec["@type"] || "").toLowerCase();
             const p = num(spec.price);
             if (!p) continue;
             if (t.includes("list") || t.includes("regular") || t.includes("msrp") || t.includes("strikethrough")) {
+              recordCand("original", p, "json-ld:" + (t || "spec"), m.index, JSON.stringify(spec).slice(0, 240));
               originalPrice = originalPrice || p;
             } else if (t.includes("sale")) {
+              recordCand("sale", p, "json-ld:sale", m.index, JSON.stringify(spec).slice(0, 240));
               salePrice = salePrice || p;
             } else {
+              recordCand("sale", p, "json-ld:spec", m.index, JSON.stringify(spec).slice(0, 240));
               salePrice = salePrice || p;
             }
           }
-          // AggregateOffer high/low — high is the "regular" anchor
-          if (!originalPrice && off.highPrice != null) originalPrice = num(off.highPrice);
-          // Direct offers.price → current/sale
-          if (!salePrice && off.price != null) salePrice = num(off.price);
+          if (off.highPrice != null) {
+            const p = num(off.highPrice);
+            if (p) { recordCand("original", p, "json-ld:highPrice", m.index, "highPrice=" + off.highPrice); if (!originalPrice) originalPrice = p; }
+          }
+          if (off.price != null) {
+            const p = num(off.price);
+            if (p) { recordCand("sale", p, "json-ld:price", m.index, "price=" + off.price); if (!salePrice) salePrice = p; }
+          }
         }
       }
-      if (originalPrice || salePrice) source = source || "json-ld";
+      if ((originalPrice || salePrice) && !source) source = "json-ld";
     } catch { /* keep scanning */ }
   }
 
-  // 2. Microdata — prefer highPrice over price
-  if (!originalPrice) {
+  // 2. Microdata
+  {
     const high = html.match(/<meta[^>]+itemprop=["']highPrice["'][^>]+content=["']([\d.]+)["']/i)
               || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+itemprop=["']highPrice["']/i);
-    if (high) { originalPrice = num(high[1]); source = source || "microdata-high"; }
-  }
-  if (!salePrice) {
+    if (high) {
+      const p = num(high[1]);
+      if (p) { recordCand("original", p, "microdata-high", high.index, matchSnippet(high)); if (!originalPrice) { originalPrice = p; source = source || "microdata-high"; } }
+    }
     const meta = html.match(/<meta[^>]+itemprop=["']price["'][^>]+content=["']([\d.]+)["']/i)
               || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+itemprop=["']price["']/i);
     if (meta) {
-      salePrice = num(meta[1]);
-      source = source || "microdata";
+      const p = num(meta[1]);
+      if (p) { recordCand("sale", p, "microdata", meta.index, matchSnippet(meta)); if (!salePrice) { salePrice = p; source = source || "microdata"; } }
       const cur = html.match(/<meta[^>]+itemprop=["']priceCurrency["'][^>]+content=["']([^"']+)["']/i);
       if (cur) currency = currency || cur[1];
     }
   }
 
-  // 3. Open Graph — original_price tag (rare but used by some retailers)
-  if (!originalPrice) {
+  // 3. Open Graph
+  {
     const ogo = html.match(/<meta[^>]+property=["']product:original_price:amount["'][^>]+content=["']([\d.]+)["']/i);
-    if (ogo) { originalPrice = num(ogo[1]); source = source || "open-graph-original"; }
-  }
-  if (!salePrice) {
+    if (ogo) {
+      const p = num(ogo[1]);
+      if (p) { recordCand("original", p, "open-graph-original", ogo.index, matchSnippet(ogo)); if (!originalPrice) { originalPrice = p; source = source || "open-graph-original"; } }
+    }
     const og = html.match(/<meta[^>]+property=["']product:price:amount["'][^>]+content=["']([\d.]+)["']/i)
             || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+property=["']product:price:amount["']/i);
     if (og) {
-      salePrice = num(og[1]);
-      source = source || "open-graph";
+      const p = num(og[1]);
+      if (p) { recordCand("sale", p, "open-graph", og.index, matchSnippet(og)); if (!salePrice) { salePrice = p; source = source || "open-graph"; } }
       const cur = html.match(/<meta[^>]+property=["']product:price:currency["'][^>]+content=["']([^"']+)["']/i);
       if (cur) currency = currency || cur[1];
     }
   }
 
-  // 4. Strikethrough markup — canonical "was" cue
-  if (!originalPrice) {
+  // 4. Strikethrough
+  {
     const strike = html.match(/<(?:s|del|strike)[^>]*>[^<]*\$\s?([\d,]+\.\d{2})/i);
-    if (strike) { originalPrice = num(strike[1]); source = source || "strikethrough"; }
+    if (strike) {
+      const p = num(strike[1].replace(/,/g, ""));
+      if (p) { recordCand("original", p, "strikethrough", strike.index, matchSnippet(strike)); if (!originalPrice) { originalPrice = p; source = source || "strikethrough"; } }
+    }
   }
 
-  // 5. Class hints — regular-price / list-price / was-price / msrp
-  if (!originalPrice) {
+  // 5. Class hints
+  {
     const cls = html.match(/class=["'][^"']*(?:regular[-_]?price|list[-_]?price|was[-_]?price|original[-_]?price|msrp|strikethrough|price[-_]?was)[^"']*["'][^>]*>[^<$]*\$?\s?([\d,]+\.\d{2})/i);
-    if (cls) { originalPrice = num(cls[1]); source = source || "css-class"; }
-  }
-  if (!salePrice) {
-    const cls = html.match(/class=["'][^"']*(?:sale[-_]?price|now[-_]?price|current[-_]?price|product[-_]?price|price[-_]?now)[^"']*["'][^>]*>[^<$]*\$?\s?([\d,]+\.\d{2})/i);
-    if (cls) { salePrice = num(cls[1]); source = source || "css-class"; }
+    if (cls) {
+      const p = num(cls[1].replace(/,/g, ""));
+      if (p) { recordCand("original", p, "css-class-original", cls.index, matchSnippet(cls)); if (!originalPrice) { originalPrice = p; source = source || "css-class"; } }
+    }
+    const cls2 = html.match(/class=["'][^"']*(?:sale[-_]?price|now[-_]?price|current[-_]?price|product[-_]?price|price[-_]?now)[^"']*["'][^>]*>[^<$]*\$?\s?([\d,]+\.\d{2})/i);
+    if (cls2) {
+      const p = num(cls2[1].replace(/,/g, ""));
+      if (p) { recordCand("sale", p, "css-class-sale", cls2.index, matchSnippet(cls2)); if (!salePrice) { salePrice = p; source = source || "css-class"; } }
+    }
   }
 
-  // 6. Twitter price meta — last-resort meta
+  // 6. Twitter price meta
   if (!salePrice && !originalPrice) {
     const tw = html.match(/<meta[^>]+name=["']twitter:data1["'][^>]+content=["']\$?([\d,.]+)["']/i);
-    if (tw) { salePrice = num(tw[1].replace(/,/g, "")); source = source || "twitter"; }
+    if (tw) {
+      const p = num(tw[1].replace(/,/g, ""));
+      if (p) { recordCand("sale", p, "twitter", tw.index, matchSnippet(tw)); salePrice = p; source = source || "twitter"; }
+    }
   }
 
-  // 7. Regex fallback — "Was/Reg./Regular: $X" labels, then any $X near
-  // the word price/sale (still unreliable but better than nothing).
-  if (!originalPrice) {
+  // 7. Regex fallback
+  {
     const wasReg = html.match(/(?:was|reg\.?|regular(?:\s+price)?)\s*[:|]?\s*\$\s?([\d,]+\.\d{2})/i);
-    if (wasReg) { originalPrice = num(wasReg[1].replace(/,/g, "")); source = source || "regex-was"; }
+    if (wasReg) {
+      const p = num(wasReg[1].replace(/,/g, ""));
+      if (p) { recordCand("original", p, "regex-was", wasReg.index, matchSnippet(wasReg)); if (!originalPrice) { originalPrice = p; source = source || "regex-was"; } }
+    }
+    if (!salePrice) {
+      const m1 = html.match(/data-price=["']\$?([\d,]+\.\d{2})["']/i)
+              || html.match(/(?:price|sale)[^<>$]{0,40}\$\s?([\d,]+\.\d{2})/i)
+              || html.match(/\$\s?([\d,]+\.\d{2})/);
+      if (m1) {
+        const p = num(m1[1].replace(/,/g, ""));
+        if (p) { recordCand("sale", p, "regex", m1.index, matchSnippet(m1)); salePrice = p; source = source || "regex"; }
+      }
+    }
   }
-  if (!salePrice) {
-    const m1 = html.match(/data-price=["']\$?([\d,]+\.\d{2})["']/i)
-            || html.match(/(?:price|sale)[^<>$]{0,40}\$\s?([\d,]+\.\d{2})/i)
-            || html.match(/\$\s?([\d,]+\.\d{2})/);
-    if (m1) { salePrice = num(m1[1].replace(/,/g, "")); source = source || "regex"; }
+
+  // Bucket all candidates for debug output.
+  if (debug) {
+    debugInfo.candidates.original = candidates.filter(c => c.kind === "original");
+    debugInfo.candidates.sale = candidates.filter(c => c.kind === "sale");
+    debugInfo.candidates.allDollarMatches = (html.match(/\$\s?[\d,]+\.\d{2}/g) || []).slice(0, 30);
   }
 
   // Product name fallback
@@ -812,7 +922,7 @@ async function handleScanPrice(request, env) {
   }
 
   if (!basePrice) {
-    return corsResponse({ ok: false, error: "couldn't extract a price from this page", productName, fetchedAt: new Date().toISOString() }, 200);
+    return corsResponse({ ok: false, error: "couldn't extract a price from this page", productName, fetchedAt: new Date().toISOString(), debug: debug ? debugInfo : undefined }, 200);
   }
   const taxApplied = Math.round(basePrice * taxRate * 100) / 100;
   const finalPrice = Math.round(basePrice * (1 + taxRate) * 100) / 100;
@@ -829,6 +939,7 @@ async function handleScanPrice(request, env) {
     source,
     location: { postalCode: postal, storeId },
     fetchedAt: new Date().toISOString(),
+    debug: debug ? debugInfo : undefined,
   });
 }
 
