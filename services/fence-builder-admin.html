@@ -1136,6 +1136,17 @@ function renderPartsListPane() {
     //   post hardware + privacy + etc. Single source of truth.
     html += '<div style="font-size:11px;font-weight:700;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.06em;margin:14px 0 6px;display:flex;align-items:center;gap:8px"><span>🔩 Parts List — Exact SKUs (by Category)</span><button id="addSkuBtn" style="margin-left:auto;background:var(--admin);color:#fff;border:none;padding:5px 12px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">+ Add SKU</button></div>';
     html += '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Every SKU the engine pulled in for this drawing. Edit qty to override the recipe count, click × to drop a SKU, or <b>+ Add SKU</b> to insert a new one.</div>';
+    // Search panel — toggled by the + Add SKU button. Hidden by default.
+    html += '<div id="addSkuSearchWrap" style="display:none;margin-bottom:10px;padding:10px;background:var(--admin-light);border:1px solid rgba(74,144,217,0.25);border-radius:8px">' +
+        '<div style="font-size:11px;font-weight:600;color:var(--admin);margin-bottom:6px">Search the chain-link parts catalog</div>' +
+        '<input type="search" id="addSkuSearchInput" placeholder="Type a code or description… e.g. tension band, brace, post cap" style="width:100%;padding:7px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:13px;font-family:inherit">' +
+        '<div id="addSkuSearchResults" style="max-height:220px;overflow-y:auto;border:1px solid var(--gray-100);border-radius:6px;margin-top:6px;display:none;background:var(--white)"></div>' +
+        '<div style="margin-top:8px;display:flex;gap:8px;align-items:center;font-size:11px;color:var(--gray-400)">' +
+            '<span>Or:</span>' +
+            '<button id="addSkuManualBtn" style="background:var(--white);color:var(--admin);border:1px solid var(--admin);padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">+ Manual entry (off-catalog)</button>' +
+            '<button id="addSkuCancelBtn" style="margin-left:auto;background:transparent;color:var(--gray-500);border:1px solid var(--gray-200);padding:4px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Cancel</button>' +
+        '</div>' +
+    '</div>';
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px">';
     html += '<thead><tr style="background:var(--gray-50)"><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:120px">Code</th><th style="text-align:left;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em">Description</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Qty</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:80px">Unit $</th><th style="text-align:right;padding:5px 8px;color:var(--gray-400);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;width:90px">Total</th><th style="width:34px"></th></tr></thead><tbody>';
     let activeGrandTotal = 0;
@@ -1315,18 +1326,127 @@ function renderPartsListPane() {
     });
 
     // + Add SKU — appends an empty custom SKU row that the admin can fill in.
+    // + Add SKU — opens an inline search panel over the chain-link parts
+    // catalog. Clicking a hit drops it into customSkus with the SKU code,
+    // description, and master price already filled in (the row stays editable
+    // so the operator can still tweak qty / price afterwards). "Manual entry"
+    // falls back to a blank row for off-catalog items.
+    function pushCustomSku(seed) {
+        if (!Array.isArray(state.adminExtras.customSkus)) state.adminExtras.customSkus = [];
+        state.adminExtras.customSkus.push(Object.assign({ code: '', description: '', qty: 1, unitPrice: 0 }, seed || {}));
+        renderPartsListPane();
+        updateSummary();
+        markDirty();
+        const last = state.adminExtras.customSkus.length - 1;
+        const focusField = (seed && seed.code) ? 'qty' : 'description';
+        const focusEl = host.querySelector('input[data-custom-sku-idx="' + last + '"][data-custom-sku-field="' + focusField + '"]');
+        if (focusEl) { focusEl.focus(); focusEl.select && focusEl.select(); }
+    }
+    function renderAddSkuResults(query) {
+        const resHost = host.querySelector('#addSkuSearchResults');
+        if (!resHost) return;
+        const q = (query || '').trim().toLowerCase();
+        if (q.length < 2) { resHost.style.display = 'none'; resHost.innerHTML = ''; return; }
+        // Lazy-fetch master items the first time the operator searches.
+        if (!state.masterFetched) {
+            try { iframe.contentWindow.postMessage({ type: 'admin:getMasterItems' }, '*'); state.masterFetched = true; } catch (e) {}
+        }
+        const items = state.masterItems || [];
+        if (items.length === 0) {
+            resHost.style.display = '';
+            resHost.innerHTML = '<div style="padding:10px 12px;color:var(--gray-400);font-size:12px">Loading parts catalog from the builder…</div>';
+            return;
+        }
+        const hits = items.filter(it => {
+            const blob = ((it.code || '') + ' ' + (it.description || '') + ' ' + (it.category || '') + ' ' + (it.material || '')).toLowerCase();
+            return blob.indexOf(q) !== -1;
+        }).slice(0, 30);
+        if (hits.length === 0) {
+            resHost.style.display = '';
+            resHost.innerHTML = '<div style="padding:10px 12px;color:var(--gray-400);font-size:12px">No parts match "' + escHtml(q) + '"</div>';
+            return;
+        }
+        let h = '';
+        hits.forEach((it, i) => {
+            const price = Number(it.priceAfterTax || it.price || it.cost || 0);
+            h += '<div class="add-sku-hit" data-add-sku-hit="' + i + '" style="padding:7px 10px;border-bottom:1px solid var(--gray-100);cursor:pointer;display:flex;gap:10px;align-items:center;font-size:12px">' +
+                '<div style="flex:1;min-width:0">' +
+                    '<div style="font-weight:600;color:var(--black);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(it.description || it.code || 'Part') + '</div>' +
+                    '<div style="font-size:10px;color:var(--gray-400);font-family:Menlo,monospace">' + escHtml(it.code || '') + (it.category ? ' · ' + escHtml(it.category) : '') + '</div>' +
+                '</div>' +
+                '<div style="font-weight:600;color:var(--admin);white-space:nowrap">' + fmtMoney(price) + '</div>' +
+                '<button data-add-sku-pick="' + i + '" style="background:var(--admin);color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add</button>' +
+            '</div>';
+        });
+        resHost.style.display = '';
+        resHost.innerHTML = h;
+        state._lastAddSkuHits = hits;
+        resHost.querySelectorAll('.add-sku-hit').forEach((row) => {
+            row.addEventListener('mouseenter', () => row.style.background = 'rgba(74,144,217,0.07)');
+            row.addEventListener('mouseleave', () => row.style.background = '');
+            row.addEventListener('click', () => {
+                const idx = parseInt(row.dataset.addSkuHit);
+                const it = (state._lastAddSkuHits || [])[idx];
+                if (!it) return;
+                pushCustomSku({
+                    code: it.code || '',
+                    description: it.description || it.code || 'Part',
+                    qty: 1,
+                    unitPrice: Number(it.priceAfterTax || it.price || it.cost || 0)
+                });
+                // Close the search panel after picking — the next add starts fresh.
+                const wrap = host.querySelector('#addSkuSearchWrap');
+                if (wrap) wrap.style.display = 'none';
+            });
+        });
+    }
     const addBtn = host.querySelector('#addSkuBtn');
-    if (addBtn) {
+    const searchWrap = host.querySelector('#addSkuSearchWrap');
+    const searchInput = host.querySelector('#addSkuSearchInput');
+    if (addBtn && searchWrap) {
         addBtn.addEventListener('click', () => {
-            if (!Array.isArray(state.adminExtras.customSkus)) state.adminExtras.customSkus = [];
-            state.adminExtras.customSkus.push({ code: '', description: '', qty: 1, unitPrice: 0 });
-            renderPartsListPane();
-            updateSummary();
-            markDirty();
-            // Focus the description field of the row we just added.
-            const last = state.adminExtras.customSkus.length - 1;
-            const focusEl = host.querySelector('input[data-custom-sku-idx="' + last + '"][data-custom-sku-field="description"]');
-            if (focusEl) focusEl.focus();
+            const open = searchWrap.style.display === 'none';
+            searchWrap.style.display = open ? '' : 'none';
+            if (open && searchInput) {
+                searchInput.value = '';
+                renderAddSkuResults('');
+                setTimeout(() => searchInput.focus(), 30);
+            }
+        });
+    }
+    if (searchInput) {
+        let _t = null;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(_t);
+            _t = setTimeout(() => renderAddSkuResults(searchInput.value), 100);
+        });
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && state._lastAddSkuHits && state._lastAddSkuHits.length > 0) {
+                e.preventDefault();
+                const it = state._lastAddSkuHits[0];
+                pushCustomSku({
+                    code: it.code || '',
+                    description: it.description || it.code || 'Part',
+                    qty: 1,
+                    unitPrice: Number(it.priceAfterTax || it.price || it.cost || 0)
+                });
+                if (searchWrap) searchWrap.style.display = 'none';
+            } else if (e.key === 'Escape') {
+                if (searchWrap) searchWrap.style.display = 'none';
+            }
+        });
+    }
+    const manualBtn = host.querySelector('#addSkuManualBtn');
+    if (manualBtn) {
+        manualBtn.addEventListener('click', () => {
+            pushCustomSku();
+            if (searchWrap) searchWrap.style.display = 'none';
+        });
+    }
+    const cancelBtn = host.querySelector('#addSkuCancelBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            if (searchWrap) searchWrap.style.display = 'none';
         });
     }
 }
