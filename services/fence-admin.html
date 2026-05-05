@@ -429,6 +429,20 @@ a{color:var(--accent);text-decoration:none}
     <div class="pill-tab" data-tab="cedar" onclick="showLumberTab('cedar')">Cedar</div>
   </div>
 
+  <!-- Scanner config — postal code + tax rate apply to every scan. Default
+       postal code = R2C 4G3 (Regent Ave / Transcona, Winnipeg) so retailers
+       like Home Depot Canada show local-store pricing instead of GTA defaults. -->
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-title">Scanner location &amp; tax</div>
+    <div class="card-desc">The scanner sends these to the upstream retailer (as cookies + query params) so prices come back for your local store. Without them, Cloudflare's edge node defaults to whatever store the retailer chooses — usually GTA, not Winnipeg.</div>
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:10px">
+      <div class="field"><label>Postal code (local store)</label><input type="text" id="cfg-scan-postalCode" placeholder="R2C 4G3" oninput="markDirty()" style="text-transform:uppercase"></div>
+      <div class="field"><label>Home Depot store ID <span style="color:var(--gray-400);font-weight:400">(optional)</span></label><input type="text" id="cfg-scan-storeId" placeholder="7080" oninput="markDirty()"></div>
+      <div class="field"><label>Tax rate (%)</label><input type="number" id="cfg-scan-taxPct" min="0" max="30" step="0.5" placeholder="12" oninput="markDirty()"></div>
+    </div>
+    <div style="font-size:11px;color:var(--gray-400);margin-top:8px">Default 12% = Manitoba PST 7% + GST 5%. Set 5% for GST-only, 0 to skip tax. Home Depot Canada Regent Ave Winnipeg is store ID <strong>7080</strong>.</div>
+  </div>
+
   <div id="lumberTabContent-pt">
     <div class="card" id="lumber-pt-card">
       <div class="card-title">Pressure Treated Lumber <button class="btn btn-outline btn-sm" style="float:right" onclick="scanLumberPrices('pt')">🔄 Scan prices</button></div>
@@ -2201,6 +2215,14 @@ function populateAll() {
   document.getElementById('cfg-vis-weldedWire').checked = vis.weldedWire !== false;
   document.getElementById('cfg-vis-vinyl').checked = vis.vinyl !== false;
 
+  // Lumber price scanner — postal code / store ID / tax rate
+  const scan = config.scanner || {};
+  if (document.getElementById('cfg-scan-postalCode')) {
+    document.getElementById('cfg-scan-postalCode').value = scan.postalCode || 'R2C 4G3';
+    document.getElementById('cfg-scan-storeId').value = scan.storeId || '7080';
+    document.getElementById('cfg-scan-taxPct').value = (scan.taxRate != null ? scan.taxRate : 0.12) * 100;
+  }
+
   // Gate Pricing
   renderGatePricingTable();
 
@@ -2507,6 +2529,15 @@ function collectAll() {
   config.fenceTypeVisibility.weldedWire = document.getElementById('cfg-vis-weldedWire').checked;
   config.fenceTypeVisibility.vinyl = document.getElementById('cfg-vis-vinyl').checked;
 
+  // Lumber price scanner config
+  if (!config.scanner) config.scanner = {};
+  if (document.getElementById('cfg-scan-postalCode')) {
+    config.scanner.postalCode = (document.getElementById('cfg-scan-postalCode').value || '').trim().toUpperCase() || 'R2C 4G3';
+    config.scanner.storeId = (document.getElementById('cfg-scan-storeId').value || '').trim() || '7080';
+    const pct = parseFloat(document.getElementById('cfg-scan-taxPct').value);
+    config.scanner.taxRate = (isFinite(pct) && pct >= 0) ? pct / 100 : 0.12;
+  }
+
   // Gate pricing
   collectGatePricing();
 
@@ -2656,16 +2687,23 @@ function renderLumberTable(type) {
       const src = sources[l] || null;
       const hasUrl = !!(src && src.url);
       const isManual = !!(src && src.manual);
-      // 🔗 = URL set, 🔍 = no URL yet. Filled-blue when scanned, gold when manually overridden.
-      const icon = hasUrl ? '🔗' : '🔍';
-      const iconColor = isManual ? 'var(--accent)' : (hasUrl ? '#4a90d9' : '#bbb');
-      const iconTitle = hasUrl
-        ? (isManual ? 'Manually overridden — click to view source page' : 'Scanned — click to view source page')
-        : 'Click to set a product URL for live price scanning';
+      // No URL: 🔍 to add. URL set: ✏️ to edit + 🔗 to open the page.
+      // ✏️ goes gold when admin has manually overridden the price since the
+      // last scan, blue otherwise.  🔗 stays blue.
+      let cellIcons;
+      if (hasUrl) {
+        const editColor = isManual ? 'var(--accent)' : '#4a90d9';
+        const editTitle = isManual ? 'Manually overridden — click to edit URL' : 'Edit source URL';
+        cellIcons =
+          `<button class="lumber-src-edit-btn" title="${editTitle}" onclick="openLumberSourceModal('${type}','${dim}','${l}')" style="background:transparent;border:1px solid #eee;color:${editColor};width:24px;height:24px;border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1">✏️</button>` +
+          `<button class="lumber-src-open-btn" title="Open source page in new tab" onclick="window.open(${JSON.stringify(src.url).replace(/"/g, '&quot;')},'_blank','noopener')" style="background:transparent;border:1px solid #eee;color:#4a90d9;width:24px;height:24px;border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1">🔗</button>`;
+      } else {
+        cellIcons = `<button class="lumber-src-add-btn" title="Click to set a product URL for live price scanning" onclick="openLumberSourceModal('${type}','${dim}','${l}')" style="background:transparent;border:1px solid #eee;color:#bbb;width:24px;height:24px;border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1">🔍</button>`;
+      }
       html += `<td>
         <div style="display:flex;gap:4px;align-items:center">
           <input type="number" class="lumber-price" data-type="${type}" data-dim="${dim}" data-len="${l}" value="${val}" min="0" step="0.01" oninput="onLumberPriceManualEdit(this)" style="flex:1;min-width:0">
-          <button class="lumber-src-btn" data-type="${type}" data-dim="${dim}" data-len="${l}" data-has-url="${hasUrl ? '1' : '0'}" title="${iconTitle}" onclick="onLumberSourceClick(event,'${type}','${dim}','${l}')" style="background:transparent;border:1px solid #eee;color:${iconColor};width:24px;height:24px;border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1">${icon}</button>
+          ${cellIcons}
         </div>
       </td>`;
     });
@@ -2747,16 +2785,31 @@ function clearLumberSource() {
   renderLumberTable(type);
   markDirty();
 }
+// Build the ?postalCode=&storeId=&tax= suffix that every scan call needs
+// from the admin's scanner config (with sensible Winnipeg / MB defaults).
+function _scanQueryParams() {
+  const sc = config.scanner || {};
+  const postal = (sc.postalCode || 'R2C 4G3').trim();
+  const storeId = (sc.storeId || '7080').trim();
+  const tax = (sc.taxRate != null && isFinite(sc.taxRate)) ? sc.taxRate : 0.12;
+  return '&postalCode=' + encodeURIComponent(postal) + '&storeId=' + encodeURIComponent(storeId) + '&tax=' + encodeURIComponent(tax);
+}
+
 async function testLumberSource() {
   const url = document.getElementById('lumberSourceUrl').value.trim();
   const status = document.getElementById('lumberSourceStatus');
   if (!url) { status.textContent = 'Paste a URL first.'; return; }
   status.textContent = 'Scanning…';
   try {
-    const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url), { credentials: 'same-origin' });
+    const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url) + _scanQueryParams(), { credentials: 'same-origin' });
     const json = await res.json();
     if (json.ok) {
-      status.innerHTML = `<span style="color:#2a8a3f">✓ Found $${json.price.toFixed(2)} ${json.currency || ''} via ${json.source}</span>` + (json.productName ? `<br><span style="color:#888">${json.productName.slice(0, 80)}</span>` : '');
+      const breakdown = [];
+      if (json.originalPrice) breakdown.push(`Regular $${json.originalPrice.toFixed(2)}`);
+      if (json.salePrice && json.salePrice !== json.originalPrice) breakdown.push(`<span style="color:#888">Sale $${json.salePrice.toFixed(2)} (ignored)</span>`);
+      const taxLine = `+ ${(json.taxRate * 100).toFixed(1)}% tax = <strong>$${json.price.toFixed(2)}</strong>`;
+      const loc = json.location ? `<br><span style="color:#888;font-size:10px">Store ${json.location.storeId} · ${json.location.postalCode} · via ${json.source}</span>` : '';
+      status.innerHTML = `<span style="color:#2a8a3f">✓ ${breakdown.join(' · ')} ${taxLine}</span>` + (json.productName ? `<br><span style="color:#888">${json.productName.slice(0, 80)}</span>` : '') + loc;
     } else {
       status.innerHTML = `<span style="color:#c00">✗ ${json.error || 'scan failed'}</span>`;
     }
@@ -2783,15 +2836,18 @@ async function scanLumberPrices(type) {
   }
   toast(`Scanning ${tasks.length} ${type === 'pt' ? 'PT' : 'Cedar'} price${tasks.length === 1 ? '' : 's'}…`, 'info');
   let updated = 0, failed = 0;
+  const qs = _scanQueryParams();
   // Sequential to be polite to upstream sites.
   for (const t of tasks) {
     try {
-      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(t.src.url), { credentials: 'same-origin' });
+      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(t.src.url) + qs, { credentials: 'same-origin' });
       const json = await res.json();
       if (json.ok && json.price > 0) {
         data[t.dim].boards[t.len] = Math.round(json.price * 100) / 100;
         t.src.lastScanned = Date.now();
         t.src.scannedPrice = json.price;
+        t.src.basePrice = json.basePrice;
+        t.src.taxRate = json.taxRate;
         t.src.manual = false;
         updated++;
       } else {

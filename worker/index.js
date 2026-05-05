@@ -586,18 +586,29 @@ async function handleQuotes(request, env, idFromPath) {
 }
 
 // ── /api/scan-price — pull a product page and extract its price ─────
-// Admin-side scraper for the lumber price chart.  Given a product URL,
-// fetch the page server-side (browsers can't cross-origin) and try a
-// chain of extractors:
-//   1. JSON-LD: <script type="application/ld+json"> with @type Product
-//      and offers.price (most reliable on modern e-commerce sites)
-//   2. Microdata: <meta itemprop="price">
-//   3. Open Graph product tags: <meta property="product:price:amount">
-//   4. Twitter price meta (some retailers use it as a fallback)
-//   5. Regex over $XX.XX patterns near "price" / "Sale" keywords
-// Returns { ok, price, currency, productName, source, fetchedAt } or
-// { ok:false, error }.  Auth-protected so the endpoint can't be used as
-// a free open scraper.
+// Admin-side scraper for the lumber price chart. Prefers the regular /
+// list / "was" price over a sale price (so a fence quote isn't anchored
+// to a temporary promo) and applies a configurable tax markup. Default
+// 12% (Manitoba PST + GST) — override with ?tax=0.07 for GST-only, etc.
+//
+// Extractor chain (each step looks for an "original" price first, falling
+// back to the current/sale price if no original is present):
+//   1. JSON-LD: <script type="application/ld+json"> with @type Product +
+//      offers — checks priceSpecification (priceType ListPrice / MSRP /
+//      RegularPrice), then highPrice on AggregateOffer, then offers.price
+//   2. Microdata: <meta itemprop="highPrice"> then itemprop="price"
+//   3. Open Graph: product:original_price:amount then product:price:amount
+//   4. Strikethrough markup: <s>$X</s>, <del>$X</del> (canonical "was" cue)
+//   5. Class hints: .regular-price / .list-price / .was-price /
+//      .original-price / .msrp / .strikethrough → "was" price markers
+//   6. Twitter twitter:data1 fallback
+//   7. Regex: "Was: $X" / "Reg.: $X" / "Regular price: $X" labels, then
+//      a $XX.XX near the word "price"/"sale"
+//
+// Returns { ok, price, basePrice, originalPrice, salePrice, taxRate,
+//   taxApplied, currency, productName, source, fetchedAt } or
+// { ok:false, error }. `price` is the value the admin UI should put into
+// the cell (basePrice × (1 + taxRate)).
 async function handleScanPrice(request, env) {
   if (!checkBasicAuth(request, env)) return unauthorized();
   const url = new URL(request.url);
@@ -605,13 +616,54 @@ async function handleScanPrice(request, env) {
   if (!/^https?:\/\//i.test(target)) {
     return corsResponse({ ok: false, error: "url must start with http:// or https://" }, 400);
   }
+  // Tax rate as a decimal — e.g. 0.12 for 12%.  Default tracks Manitoba
+  // (PST 7% + GST 5% = 12%).
+  let taxRate = parseFloat(url.searchParams.get("tax"));
+  if (!isFinite(taxRate) || taxRate < 0) taxRate = 0.12;
+
+  // Location passthrough — Cloudflare Workers fetch from edge DCs so the
+  // upstream retailer otherwise shows GTA / closest-DC pricing, which can
+  // differ wildly from local-store pricing. Send a postal code + store id
+  // as cookies + query params using the names the major Canadian retailers
+  // recognise, so Home Depot, Lowe's, Castle, etc. render the right store.
+  // Default to a Regent Ave Winnipeg postal code so the scanner always has
+  // a sensible local context.
+  const postal = (url.searchParams.get("postalCode") || "R2C 4G3").trim().toUpperCase();
+  const postalNoSpace = postal.replace(/\s+/g, "");
+  const storeId = url.searchParams.get("storeId") || "7080"; // Home Depot Regent Ave WPG
+  const cookieParts = [
+    // Home Depot Canada
+    "THD_PRESET_DESTINATION_STORE_ID=" + storeId,
+    "THD_PERSIST=1",
+    "THD_LOCALIZER=%7B%22USER_LOCATION_ID%22%3A%22" + storeId + "%22%2C%22USER_POSTAL_CODE%22%3A%22" + encodeURIComponent(postal) + "%22%7D",
+    "clientPostalCode=" + postalNoSpace,
+    // Lowe's Canada
+    "lwn_postalCode=" + postalNoSpace,
+    "lwn_storeNumber=" + storeId,
+    // Generic
+    "postalCode=" + postalNoSpace,
+    "zip=" + postalNoSpace,
+    "preferredStore=" + storeId,
+  ];
+  // Some retailers honour a postal code in the URL too — append it iff the
+  // target URL doesn't already have one.
+  let targetUrl = target;
+  try {
+    const t = new URL(target);
+    if (!t.searchParams.has("postalCode") && !t.searchParams.has("zipCode")) {
+      t.searchParams.set("postalCode", postalNoSpace);
+      targetUrl = t.toString();
+    }
+  } catch { /* keep raw target */ }
+
   let html = "";
   try {
-    const res = await fetch(target, {
+    const res = await fetch(targetUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "en-CA,en;q=0.9",
+        "Cookie": cookieParts.join("; "),
       },
       redirect: "follow",
     });
@@ -623,15 +675,22 @@ async function handleScanPrice(request, env) {
     return corsResponse({ ok: false, error: "fetch failed: " + (e.message || e) }, 200);
   }
 
-  let price = null;
+  const num = (v) => {
+    if (v == null) return null;
+    const n = Number(String(v).replace(/[^0-9.]/g, ""));
+    return isFinite(n) && n > 0 ? n : null;
+  };
+
+  let originalPrice = null;     // regular / list / "was" price
+  let salePrice = null;         // current / sale price (when distinct)
   let currency = null;
   let productName = null;
   let source = null;
 
-  // 1. JSON-LD
+  // 1. JSON-LD — most reliable when present
   const ldRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m;
-  while (!price && (m = ldRegex.exec(html)) !== null) {
+  while ((!originalPrice || !salePrice) && (m = ldRegex.exec(html)) !== null) {
     try {
       const json = JSON.parse(m[1].trim());
       const candidates = Array.isArray(json) ? json : (json["@graph"] ? json["@graph"] : [json]);
@@ -645,73 +704,132 @@ async function handleScanPrice(request, env) {
         const offerList = Array.isArray(offers) ? offers : (offers ? [offers] : []);
         for (const off of offerList) {
           if (!off) continue;
-          const p = off.price ?? off.lowPrice ?? off.priceSpecification?.price;
-          if (p != null) {
-            price = Number(String(p).replace(/[^0-9.]/g, ""));
-            currency = off.priceCurrency || off.priceSpecification?.priceCurrency || currency;
-            source = "json-ld";
-            break;
+          currency = currency || off.priceCurrency || off.priceSpecification?.priceCurrency || null;
+          // Walk priceSpecification array for ListPrice / RegularPrice / MSRP
+          const specs = Array.isArray(off.priceSpecification) ? off.priceSpecification : (off.priceSpecification ? [off.priceSpecification] : []);
+          for (const spec of specs) {
+            const t = String(spec.priceType || spec["@type"] || "").toLowerCase();
+            const p = num(spec.price);
+            if (!p) continue;
+            if (t.includes("list") || t.includes("regular") || t.includes("msrp") || t.includes("strikethrough")) {
+              originalPrice = originalPrice || p;
+            } else if (t.includes("sale")) {
+              salePrice = salePrice || p;
+            } else {
+              salePrice = salePrice || p;
+            }
           }
+          // AggregateOffer high/low — high is the "regular" anchor
+          if (!originalPrice && off.highPrice != null) originalPrice = num(off.highPrice);
+          // Direct offers.price → current/sale
+          if (!salePrice && off.price != null) salePrice = num(off.price);
         }
-        if (price != null) break;
       }
+      if (originalPrice || salePrice) source = source || "json-ld";
     } catch { /* keep scanning */ }
   }
 
-  // 2. Microdata
-  if (price == null) {
+  // 2. Microdata — prefer highPrice over price
+  if (!originalPrice) {
+    const high = html.match(/<meta[^>]+itemprop=["']highPrice["'][^>]+content=["']([\d.]+)["']/i)
+              || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+itemprop=["']highPrice["']/i);
+    if (high) { originalPrice = num(high[1]); source = source || "microdata-high"; }
+  }
+  if (!salePrice) {
     const meta = html.match(/<meta[^>]+itemprop=["']price["'][^>]+content=["']([\d.]+)["']/i)
               || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+itemprop=["']price["']/i);
     if (meta) {
-      price = Number(meta[1]);
-      source = "microdata";
+      salePrice = num(meta[1]);
+      source = source || "microdata";
       const cur = html.match(/<meta[^>]+itemprop=["']priceCurrency["'][^>]+content=["']([^"']+)["']/i);
-      if (cur) currency = cur[1];
+      if (cur) currency = currency || cur[1];
     }
   }
 
-  // 3. Open Graph product tags
-  if (price == null) {
+  // 3. Open Graph — original_price tag (rare but used by some retailers)
+  if (!originalPrice) {
+    const ogo = html.match(/<meta[^>]+property=["']product:original_price:amount["'][^>]+content=["']([\d.]+)["']/i);
+    if (ogo) { originalPrice = num(ogo[1]); source = source || "open-graph-original"; }
+  }
+  if (!salePrice) {
     const og = html.match(/<meta[^>]+property=["']product:price:amount["'][^>]+content=["']([\d.]+)["']/i)
             || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+property=["']product:price:amount["']/i);
     if (og) {
-      price = Number(og[1]);
-      source = "open-graph";
+      salePrice = num(og[1]);
+      source = source || "open-graph";
       const cur = html.match(/<meta[^>]+property=["']product:price:currency["'][^>]+content=["']([^"']+)["']/i);
-      if (cur) currency = cur[1];
+      if (cur) currency = currency || cur[1];
     }
   }
 
-  // 4. Twitter price meta
-  if (price == null) {
+  // 4. Strikethrough markup — canonical "was" cue
+  if (!originalPrice) {
+    const strike = html.match(/<(?:s|del|strike)[^>]*>[^<]*\$\s?([\d,]+\.\d{2})/i);
+    if (strike) { originalPrice = num(strike[1]); source = source || "strikethrough"; }
+  }
+
+  // 5. Class hints — regular-price / list-price / was-price / msrp
+  if (!originalPrice) {
+    const cls = html.match(/class=["'][^"']*(?:regular[-_]?price|list[-_]?price|was[-_]?price|original[-_]?price|msrp|strikethrough|price[-_]?was)[^"']*["'][^>]*>[^<$]*\$?\s?([\d,]+\.\d{2})/i);
+    if (cls) { originalPrice = num(cls[1]); source = source || "css-class"; }
+  }
+  if (!salePrice) {
+    const cls = html.match(/class=["'][^"']*(?:sale[-_]?price|now[-_]?price|current[-_]?price|product[-_]?price|price[-_]?now)[^"']*["'][^>]*>[^<$]*\$?\s?([\d,]+\.\d{2})/i);
+    if (cls) { salePrice = num(cls[1]); source = source || "css-class"; }
+  }
+
+  // 6. Twitter price meta — last-resort meta
+  if (!salePrice && !originalPrice) {
     const tw = html.match(/<meta[^>]+name=["']twitter:data1["'][^>]+content=["']\$?([\d,.]+)["']/i);
-    if (tw) {
-      price = Number(tw[1].replace(/,/g, ""));
-      source = "twitter";
-    }
+    if (tw) { salePrice = num(tw[1].replace(/,/g, "")); source = source || "twitter"; }
   }
 
-  // 5. Regex fallback — look for a "Sale" / "price" anchor with a $XX.XX
-  if (price == null) {
-    const m1 = html.match(/(?:price|sale)[^<>$]{0,40}\$\s?([\d,]+\.\d{2})/i)
-            || html.match(/data-price=["']\$?([\d,]+\.\d{2})["']/i)
+  // 7. Regex fallback — "Was/Reg./Regular: $X" labels, then any $X near
+  // the word price/sale (still unreliable but better than nothing).
+  if (!originalPrice) {
+    const wasReg = html.match(/(?:was|reg\.?|regular(?:\s+price)?)\s*[:|]?\s*\$\s?([\d,]+\.\d{2})/i);
+    if (wasReg) { originalPrice = num(wasReg[1].replace(/,/g, "")); source = source || "regex-was"; }
+  }
+  if (!salePrice) {
+    const m1 = html.match(/data-price=["']\$?([\d,]+\.\d{2})["']/i)
+            || html.match(/(?:price|sale)[^<>$]{0,40}\$\s?([\d,]+\.\d{2})/i)
             || html.match(/\$\s?([\d,]+\.\d{2})/);
-    if (m1) {
-      price = Number(m1[1].replace(/,/g, ""));
-      source = "regex";
-    }
+    if (m1) { salePrice = num(m1[1].replace(/,/g, "")); source = source || "regex"; }
   }
 
-  // Product name fallback — <title> or <h1>
+  // Product name fallback
   if (!productName) {
     const title = html.match(/<title[^>]*>([^<]+)<\/title>/i);
     if (title) productName = title[1].trim().slice(0, 160);
   }
 
-  if (price == null || !isFinite(price) || price <= 0) {
+  // Choose: original price wins, sale price falls back. If original ≤ sale
+  // (i.e. there was no real sale, or our extractors got crossed), defer to
+  // the larger of the two so we never *under*-anchor a quote on a promo.
+  let basePrice = originalPrice || salePrice;
+  if (originalPrice && salePrice && salePrice > originalPrice) {
+    basePrice = salePrice;
+  }
+
+  if (!basePrice) {
     return corsResponse({ ok: false, error: "couldn't extract a price from this page", productName, fetchedAt: new Date().toISOString() }, 200);
   }
-  return corsResponse({ ok: true, price, currency: currency || "CAD", productName: productName || null, source, fetchedAt: new Date().toISOString() });
+  const taxApplied = Math.round(basePrice * taxRate * 100) / 100;
+  const finalPrice = Math.round(basePrice * (1 + taxRate) * 100) / 100;
+  return corsResponse({
+    ok: true,
+    price: finalPrice,
+    basePrice,
+    originalPrice: originalPrice || null,
+    salePrice: salePrice || null,
+    taxRate,
+    taxApplied,
+    currency: currency || "CAD",
+    productName: productName || null,
+    source,
+    location: { postalCode: postal, storeId },
+    fetchedAt: new Date().toISOString(),
+  });
 }
 
 export default {
