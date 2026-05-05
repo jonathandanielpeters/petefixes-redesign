@@ -487,9 +487,10 @@ a{color:var(--accent);text-decoration:none}
         <h3 style="margin:0;font-size:16px;flex:1">✨ Bulk import URLs — auto-classify into PT &amp; Cedar</h3>
         <button onclick="closeLumberBulkModal()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
       </div>
-      <p style="font-size:12px;color:#666;margin:0 0 10px">Paste one product URL per line.  Each is scanned through the active store, then sorted into <strong>PT</strong> or <strong>Cedar</strong> by parsing the product name (e.g., <em>"Pressure Treated 1 x 6 x 8' Premium Fence Board"</em> → PT, dim <code>1x6</code>, length <code>8</code>).  New dimensions get a sensible default width that you can edit later.</p>
-      <textarea id="lumberBulkUrls" rows="6" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Menlo,monospace;resize:vertical" placeholder="https://www.homedepot.ca/product/pressure-treated-1-x-6-x-8-...
-https://www.homedepot.ca/product/pressure-treated-1-x-6-x-6-...
+      <p style="font-size:12px;color:#666;margin:0 0 10px">Paste a <strong>category / search page URL</strong> (we'll auto-discover product links on it), or a list of <strong>product URLs</strong> — one per line.  Each product is scanned through the active store and sorted into PT or Cedar by parsing the product name (e.g., <em>"Pressure Treated 1 x 6 x 8' Premium Fence Board"</em> → PT, dim <code>1x6</code>, length <code>8</code>).  New dimensions get a sensible default width you can edit later.</p>
+      <textarea id="lumberBulkUrls" rows="6" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Menlo,monospace;resize:vertical" placeholder="https://www.homedepot.ca/category/lumber-and-composites/pressure-treated-lumber/...
+   — or —
+https://www.homedepot.ca/product/pressure-treated-1-x-6-x-8-...
 https://www.homedepot.ca/product/cedar-1-x-6-x-6-..."></textarea>
       <div style="display:flex;gap:14px;margin-top:8px;font-size:12px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="lumberBulkOverwrite"> Overwrite cells that already have a URL</label>
@@ -3655,10 +3656,47 @@ function closeLumberBulkModal() {
   document.getElementById('lumberBulkModal').style.display = 'none';
 }
 
+// A URL "looks like a product page" when it ends in a 6+ digit numeric
+// segment matching the canonical /product/<slug>/<id> shape.  Anything
+// else (category/search/listing pages) gets sent through /api/scan-site
+// for product-link extraction.
+function _looksLikeProductUrl(u) {
+  return /\/(?:product|p|pip)\/[\w%/.-]+?\/\d{6,}(?:[/?#]|$)/i.test(u || '')
+      || /\.\d{6,}\.html(?:[?#]|$)/i.test(u || '');
+}
+
+async function _expandLumberBulkUrls(urls, progressEl) {
+  const expanded = [];
+  for (let i = 0; i < urls.length; i++) {
+    const u = urls[i];
+    if (_looksLikeProductUrl(u)) {
+      expanded.push(u);
+      continue;
+    }
+    if (progressEl) progressEl.textContent = `Discovering products on ${u.slice(0, 90)}…`;
+    try {
+      const res = await fetch('/api/scan-site?url=' + encodeURIComponent(u), { credentials: 'same-origin' });
+      const json = await res.json();
+      if (json && json.ok && Array.isArray(json.products) && json.products.length > 0) {
+        json.products.forEach(p => { if (p && p.url) expanded.push(p.url); });
+      } else {
+        // Discovery returned nothing — keep the URL itself; scan-price will
+        // tell the operator clearly if the URL isn't a product page.
+        expanded.push(u);
+      }
+    } catch {
+      expanded.push(u);
+    }
+  }
+  // De-dupe preserving order.
+  const seen = new Set();
+  return expanded.filter(u => (seen.has(u) ? false : (seen.add(u), true)));
+}
+
 async function runLumberBulkScan() {
   const raw = document.getElementById('lumberBulkUrls').value || '';
-  const urls = raw.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
-  if (urls.length === 0) { toast('Paste at least one product URL.', 'info'); return; }
+  const initialUrls = raw.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
+  if (initialUrls.length === 0) { toast('Paste at least one URL — product or listing page.', 'info'); return; }
   const scanBtn = document.getElementById('lumberBulkScanBtn');
   const applyBtn = document.getElementById('lumberBulkApplyBtn');
   const progress = document.getElementById('lumberBulkProgress');
@@ -3668,9 +3706,13 @@ async function runLumberBulkScan() {
   resultsEl.style.display = 'block';
   resultsEl.innerHTML = '<div style="padding:12px;color:#888">Starting…</div>';
 
-  // Each URL routes via its own retailer (pasted Lowe's URL → Lowe's store
-  // config).  Falls back to the active PT-tab store if no match (matches the
-  // testLumberSource behaviour).
+  // Expand any listing/category URLs into product URLs.  Each URL routes
+  // via its own retailer (HD URL → HD store, Lowe's URL → Lowe's store).
+  const urls = await _expandLumberBulkUrls(initialUrls, progress);
+  if (urls.length === 0) { toast('No URLs to scan.', 'info'); scanBtn.disabled = false; return; }
+  const expanded = urls.length > initialUrls.length;
+  if (expanded) progress.textContent = `Expanded ${initialUrls.length} URL${initialUrls.length === 1 ? '' : 's'} → ${urls.length} product page${urls.length === 1 ? '' : 's'}.`;
+
   _lumberBulkResults = urls.map(url => ({ url, status: 'pending' }));
   const total = urls.length;
 

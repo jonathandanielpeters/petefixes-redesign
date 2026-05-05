@@ -965,6 +965,99 @@ async function handleScanPrice(request, env) {
   });
 }
 
+// ── /api/scan-site — discover product URLs on a listing/category page ──
+// Admin-side helper for the bulk-import flow.  Fetches the given URL once,
+// extracts product permalinks from the HTML, and returns a deduplicated
+// list of { url, productId } so the admin UI can run scan-price against
+// each one without the operator having to copy/paste links manually.
+//
+// Currently optimized for Home Depot Canada — their category and search
+// pages emit product anchors with the canonical /product/<slug>/<id>
+// pattern in the server-rendered HTML.  Other retailers fall through to
+// a generic "looks like a product URL" regex; if that misses, the
+// operator can still paste product URLs directly.
+async function handleScanSite(request, env) {
+  if (!checkBasicAuth(request, env)) return unauthorized();
+  const url = new URL(request.url);
+  const target = url.searchParams.get("url") || "";
+  if (!/^https?:\/\//i.test(target)) {
+    return corsResponse({ ok: false, error: "url must start with http:// or https://" }, 400);
+  }
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "60", 10) || 60, 200);
+
+  let html;
+  try {
+    const r = await fetch(target, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-CA,en;q=0.9",
+      },
+      redirect: "follow",
+    });
+    if (!r.ok) {
+      return corsResponse({ ok: false, error: `Listing page returned HTTP ${r.status}` }, 502);
+    }
+    html = await r.text();
+  } catch (e) {
+    return corsResponse({ ok: false, error: e && e.message ? e.message : String(e) }, 502);
+  }
+
+  const products = extractProductLinks(html, target);
+  return corsResponse({
+    ok: true,
+    sourceUrl: target,
+    count: products.length,
+    products: products.slice(0, limit),
+    truncated: products.length > limit,
+  });
+}
+
+// Best-effort product-link extractor.  Runs several patterns over the
+// HTML and dedupes by product ID.  Falls back to relative-URL resolution
+// for path-only matches.
+function extractProductLinks(html, baseUrl) {
+  const found = new Map();
+  const add = (rawUrl, productId) => {
+    if (!productId || found.has(productId)) return;
+    let resolved = rawUrl;
+    if (!/^https?:\/\//i.test(resolved)) {
+      try { resolved = new URL(resolved, baseUrl).toString(); } catch { return; }
+    }
+    // Strip query/hash — they're session/tracking params, not part of
+    // the canonical product page.
+    resolved = resolved.replace(/[?#].*$/, "");
+    found.set(productId, { url: resolved, productId });
+  };
+
+  // 1. Home Depot Canada — canonical /product/<slug>/<productId>
+  //    Captures both absolute (https://www.homedepot.ca/product/...)
+  //    and relative (/product/...) hrefs.
+  const hdRe = /\/(?:[a-z]{2}\/)?(?:product|p|pip)\/[^"'\s<>]*?\/(\d{6,})\b/gi;
+  let m;
+  while ((m = hdRe.exec(html)) !== null) {
+    const path = m[0];
+    add(path, m[1]);
+  }
+
+  // 2. Generic "<retailer>.com/.../productId" — last numeric segment
+  //    Looks for href="..." with a 6+ digit ID at the end.  Picks up
+  //    Lowe's, Rona, generic carts.
+  const genRe = /href=["'](https?:\/\/[^"']*?\/(\d{6,})(?:\/[^"']*)?\/?)["']/gi;
+  while ((m = genRe.exec(html)) !== null) {
+    add(m[1], m[2]);
+  }
+
+  // 3. Embedded JSON: "productId":12345 or "id":"12345" alongside
+  //    "url"/"link"/"canonicalUrl" — common in Next.js / React state.
+  const jsonRe = /"(?:url|link|canonicalUrl|productUrl)"\s*:\s*"([^"]+\/(\d{6,}))[^"]*"/gi;
+  while ((m = jsonRe.exec(html)) !== null) {
+    add(m[1], m[2]);
+  }
+
+  return Array.from(found.values());
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -984,6 +1077,9 @@ export default {
     }
     if (url.pathname === "/api/scan-price") {
       return handleScanPrice(request, env);
+    }
+    if (url.pathname === "/api/scan-site") {
+      return handleScanSite(request, env);
     }
     // Quotes dashboard — exact "/api/quotes" or "/api/quotes/<id>"
     if (url.pathname === "/api/quotes") {
