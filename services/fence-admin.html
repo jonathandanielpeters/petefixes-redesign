@@ -2799,27 +2799,74 @@ async function testLumberSource() {
   const url = document.getElementById('lumberSourceUrl').value.trim();
   const status = document.getElementById('lumberSourceStatus');
   if (!url) { status.textContent = 'Paste a URL first.'; return; }
-  status.textContent = 'Scanning…';
-  try {
-    const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url) + _scanQueryParams(), { credentials: 'same-origin' });
-    const json = await res.json();
-    if (json.ok) {
-      const breakdown = [];
-      if (json.originalPrice) breakdown.push(`Regular $${json.originalPrice.toFixed(2)}`);
-      if (json.salePrice && json.salePrice !== json.originalPrice) breakdown.push(`<span style="color:#888">Sale $${json.salePrice.toFixed(2)} (ignored)</span>`);
-      const taxLine = `+ ${(json.taxRate * 100).toFixed(1)}% tax = <strong>$${json.price.toFixed(2)}</strong>`;
-      const loc = json.location ? `<br><span style="color:#888;font-size:10px">Store ${json.location.storeId} · ${json.location.postalCode} · via ${json.source}</span>` : '';
-      status.innerHTML = `<span style="color:#2a8a3f">✓ ${breakdown.join(' · ')} ${taxLine}</span>` + (json.productName ? `<br><span style="color:#888">${json.productName.slice(0, 80)}</span>` : '') + loc;
-    } else {
-      status.innerHTML = `<span style="color:#c00">✗ ${json.error || 'scan failed'}</span>`;
+  // Live progress: scanning … attempt 2 / 3 etc.
+  let attempt = 0;
+  status.innerHTML = '<span style="color:#888">Scanning…</span>';
+  // Wrap the retry helper so we can render progress between tries.
+  const tryOnce = async () => {
+    attempt++;
+    status.innerHTML = `<span style="color:#888">Scanning… (attempt ${attempt}/3)</span>`;
+    try {
+      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url) + _scanQueryParams(), { credentials: 'same-origin' });
+      const json = await res.json();
+      return { res, json };
+    } catch (e) { return { error: e.message || String(e) }; }
+  };
+  let result = null;
+  for (let i = 0; i < 3; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 500 * Math.pow(3, i - 1)));
+    const out = await tryOnce();
+    if (out.json && out.json.ok && out.json.price > 0) { result = out.json; break; }
+    const err = (out.json && out.json.error) || out.error || 'scan failed';
+    if (/couldn't extract|url must start|product may not be carried|product may be unavailable/i.test(err)) {
+      result = { ok: false, error: err };
+      break;
     }
-  } catch (e) {
-    status.innerHTML = `<span style="color:#c00">✗ ${e.message || 'network error'}</span>`;
+    if (i === 2) result = { ok: false, error: err };
+  }
+  if (result && result.ok) {
+    const json = result;
+    const breakdown = [];
+    if (json.originalPrice) breakdown.push(`Regular $${json.originalPrice.toFixed(2)}`);
+    if (json.salePrice && json.salePrice !== json.originalPrice) breakdown.push(`<span style="color:#888">Sale $${json.salePrice.toFixed(2)} (ignored)</span>`);
+    const taxLine = `+ ${(json.taxRate * 100).toFixed(1)}% tax = <strong>$${json.price.toFixed(2)}</strong>`;
+    const loc = json.location ? `<br><span style="color:#888;font-size:10px">Store ${json.location.storeId}${json.location.storeName ? ' · ' + json.location.storeName : ''} · via ${json.source}</span>` : '';
+    status.innerHTML = `<span style="color:#2a8a3f">✓ ${breakdown.join(' · ')} ${taxLine}</span>` + (json.productName ? `<br><span style="color:#888">${json.productName.slice(0, 80)}</span>` : '') + loc;
+  } else {
+    status.innerHTML = `<span style="color:#c00">✗ ${(result && result.error) || 'scan failed after 3 attempts'}</span>`;
   }
 }
 
 // Scan all cells in a lumber tab that have URLs. Skips cells with manual=true
 // so the operator's hand-edits are preserved.
+// Run a single scan with auto-retry. Tries up to `attempts` times with
+// exponential backoff between failures (500ms, 1500ms, 3500ms…). Returns
+// either { ok: true, json } on success or { ok: false, error, lastJson }
+// after all attempts have failed. We retry on network errors, on 5xx /
+// 0 / 429 responses, and on { ok: false } results — but NOT on a
+// definitive "couldn't extract" since retrying that won't help.
+async function _scanOneWithRetry(url, qs, attempts = 3) {
+  let lastErr = null, lastJson = null;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 500 * Math.pow(3, i - 1)));
+    try {
+      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url) + qs, { credentials: 'same-origin' });
+      const json = await res.json();
+      lastJson = json;
+      if (res.ok && json.ok && json.price > 0) return { ok: true, json };
+      // Non-retryable conditions
+      const err = (json && json.error) || ('HTTP ' + res.status);
+      if (/couldn't extract|url must start|product may not be carried|product may be unavailable/i.test(err)) {
+        return { ok: false, error: err, lastJson: json };
+      }
+      lastErr = err;
+    } catch (e) {
+      lastErr = e.message || String(e);
+    }
+  }
+  return { ok: false, error: lastErr, lastJson };
+}
+
 async function scanLumberPrices(type) {
   const data = config.materialPricing.lumber[type];
   const tasks = [];
@@ -2834,31 +2881,77 @@ async function scanLumberPrices(type) {
     toast(`No URLs configured for ${type === 'pt' ? 'PT' : 'Cedar'} — click 🔍 next to a price to set one.`, 'info');
     return;
   }
-  toast(`Scanning ${tasks.length} ${type === 'pt' ? 'PT' : 'Cedar'} price${tasks.length === 1 ? '' : 's'}…`, 'info');
-  let updated = 0, failed = 0;
+
+  // Disable the scan button while we go so the operator doesn't trigger
+  // a parallel run and overlap requests.
+  const buttons = document.querySelectorAll('[onclick*="scanLumberPrices(\'' + type + '\')"]');
+  buttons.forEach(b => { b.disabled = true; b.dataset._origText = b.textContent; });
+
+  // Per-cell visual feedback — highlight current cell, mark each row with
+  // its result as it completes. Uses a small overlay on the qty input.
+  const cellEl = (dim, len) => document.querySelector(
+    '.lumber-price[data-type="' + type + '"][data-dim="' + dim + '"][data-len="' + len + '"]'
+  );
+  const setCellState = (dim, len, state) => {
+    const el = cellEl(dim, len); if (!el) return;
+    if (state === 'pending') el.style.boxShadow = '0 0 0 2px rgba(74,144,217,0.6) inset';
+    else if (state === 'ok') el.style.boxShadow = '0 0 0 2px rgba(42,138,63,0.6) inset';
+    else if (state === 'fail') el.style.boxShadow = '0 0 0 2px rgba(196,60,60,0.6) inset';
+    else el.style.boxShadow = '';
+  };
+
   const qs = _scanQueryParams();
-  // Sequential to be polite to upstream sites.
+  const total = tasks.length;
+  let updated = 0, failed = 0, idx = 0;
+  const failures = [];
+  const setBtnLabel = (txt) => buttons.forEach(b => { b.textContent = txt; });
+  const label = (type === 'pt' ? 'PT' : 'Cedar');
+  toast(`Scanning ${total} ${label} price${total === 1 ? '' : 's'}…`, 'info');
+
+  // Sequential — one at a time, polite delay between, retry inside.
   for (const t of tasks) {
-    try {
-      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(t.src.url) + qs, { credentials: 'same-origin' });
-      const json = await res.json();
-      if (json.ok && json.price > 0) {
-        data[t.dim].boards[t.len] = Math.round(json.price * 100) / 100;
-        t.src.lastScanned = Date.now();
-        t.src.scannedPrice = json.price;
-        t.src.basePrice = json.basePrice;
-        t.src.taxRate = json.taxRate;
-        t.src.manual = false;
-        updated++;
-      } else {
-        failed++;
-      }
-    } catch (e) { failed++; }
+    idx++;
+    setBtnLabel(`Scanning ${idx}/${total}…`);
+    setCellState(t.dim, t.len, 'pending');
+    const result = await _scanOneWithRetry(t.src.url, qs, 3);
+    if (result.ok) {
+      const json = result.json;
+      data[t.dim].boards[t.len] = Math.round(json.price * 100) / 100;
+      t.src.lastScanned = Date.now();
+      t.src.scannedPrice = json.price;
+      t.src.basePrice = json.basePrice;
+      t.src.taxRate = json.taxRate;
+      t.src.manual = false;
+      // Update the input value live so the operator sees progress without
+      // waiting for the full re-render.
+      const el = cellEl(t.dim, t.len);
+      if (el) el.value = data[t.dim].boards[t.len];
+      setCellState(t.dim, t.len, 'ok');
+      updated++;
+    } else {
+      failed++;
+      failures.push({ dim: t.dim, len: t.len, error: result.error });
+      setCellState(t.dim, t.len, 'fail');
+    }
+    // Polite delay between tasks so we don't hammer upstream.
+    if (idx < total) await new Promise(r => setTimeout(r, 250));
   }
+
+  // Re-enable buttons and restore label.
+  buttons.forEach(b => { b.disabled = false; b.textContent = b.dataset._origText || '🔄 Scan prices'; });
+  // Fade highlights after a moment so the table goes back to normal.
+  setTimeout(() => { tasks.forEach(t => setCellState(t.dim, t.len, '')); }, 4000);
+
   renderLumberTable(type);
   updateAllPreviews && updateAllPreviews();
   markDirty();
-  toast(`Scan done — ${updated} updated${failed > 0 ? `, ${failed} failed` : ''}.`, failed === 0 ? 'success' : 'info');
+
+  if (failed === 0) {
+    toast(`Scan done — ${updated} updated.`, 'success');
+  } else {
+    const sample = failures.slice(0, 2).map(f => `${f.dim}/${f.len}ft`).join(', ');
+    toast(`Scan done — ${updated} updated, ${failed} failed (${sample}${failures.length > 2 ? `, +${failures.length - 2}` : ''}). Click ✏️ on a failed cell to retry it.`, 'info');
+  }
 }
 
 function collectLumberPrices(type) {
