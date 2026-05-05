@@ -431,8 +431,8 @@ a{color:var(--accent);text-decoration:none}
 
   <div id="lumberTabContent-pt">
     <div class="card" id="lumber-pt-card">
-      <div class="card-title">Pressure Treated Lumber</div>
-      <div class="card-desc">Price per board at each available length (ft). Width shown for reference.</div>
+      <div class="card-title">Pressure Treated Lumber <button class="btn btn-outline btn-sm" style="float:right" onclick="scanLumberPrices('pt')">🔄 Scan prices</button></div>
+      <div class="card-desc">Price per board at each available length (ft). Click the 🔗 icon next to a price to set a product URL — the scanner pulls live prices from those pages. Click the 🔗 again to open the source page.</div>
       <div class="table-scroll" id="lumber-pt-table-wrap"></div>
       <div class="btn-row">
         <button class="btn btn-outline btn-sm" onclick="addBoardLength('pt')">+ Add Board Length</button>
@@ -445,14 +445,33 @@ a{color:var(--accent);text-decoration:none}
 
   <div id="lumberTabContent-cedar" style="display:none">
     <div class="card" id="lumber-cedar-card">
-      <div class="card-title">Cedar Lumber</div>
-      <div class="card-desc">Price per board at each available length (ft). Width shown for reference.</div>
+      <div class="card-title">Cedar Lumber <button class="btn btn-outline btn-sm" style="float:right" onclick="scanLumberPrices('cedar')">🔄 Scan prices</button></div>
+      <div class="card-desc">Price per board at each available length (ft). Click the 🔗 icon next to a price to set a product URL — the scanner pulls live prices from those pages. Click the 🔗 again to open the source page.</div>
       <div class="table-scroll" id="lumber-cedar-table-wrap"></div>
       <div class="btn-row">
         <button class="btn btn-outline btn-sm" onclick="addBoardLength('cedar')">+ Add Board Length</button>
         <button class="btn btn-outline btn-sm" onclick="removeBoardLength('cedar')">- Remove Board Length</button>
         <button class="btn btn-outline btn-sm" onclick="addDimension('cedar')">+ Add Dimension</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger,#c00)" onclick="removeDimension('cedar')">- Remove Dimension</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lumber price source URL editor — opens when admin clicks a 🔗 icon
+       on a cell with no URL set, or via the 🔗 button on a configured cell. -->
+  <div id="lumberSourceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeLumberSourceModal()">
+    <div style="background:#fff;border-radius:12px;padding:20px 24px;width:min(520px,92vw);box-shadow:0 16px 48px rgba(0,0,0,0.2)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <h3 style="margin:0;font-size:16px;flex:1" id="lumberSourceTitle">Source URL</h3>
+        <button onclick="closeLumberSourceModal()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+      </div>
+      <p style="font-size:12px;color:#666;margin:0 0 12px">Paste a product page URL. The scanner will fetch the page and extract the price (Home Depot, Lowe's, Castle, Windsor, and most retailers with structured product markup).</p>
+      <input type="url" id="lumberSourceUrl" placeholder="https://www.homedepot.ca/product/..." style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:6px">
+      <div id="lumberSourceStatus" style="font-size:11px;color:#888;min-height:16px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline btn-sm" onclick="testLumberSource()">Test scan</button>
+        <button class="btn btn-outline btn-sm" style="color:#c00" onclick="clearLumberSource()">Clear URL</button>
+        <button class="btn btn-sm" style="margin-left:auto;background:var(--accent);color:#fff;border:none;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer" onclick="saveLumberSource()">Save</button>
       </div>
     </div>
   </div>
@@ -2631,14 +2650,159 @@ function renderLumberTable(type) {
   dims.forEach(dim => {
     html += `<tr><td class="cell-label">${dim}</td>`;
     html += `<td><input type="number" class="lumber-width" data-type="${type}" data-dim="${dim}" value="${data[dim].widthIn}" min="0" step="0.5" style="width:70px" oninput="markDirty()"></td>`;
+    const sources = data[dim].sources || {};
     lengths.forEach(l => {
       const val = data[dim].boards[l] !== undefined ? data[dim].boards[l] : '';
-      html += `<td><input type="number" class="lumber-price" data-type="${type}" data-dim="${dim}" data-len="${l}" value="${val}" min="0" step="0.01" oninput="markDirty()"></td>`;
+      const src = sources[l] || null;
+      const hasUrl = !!(src && src.url);
+      const isManual = !!(src && src.manual);
+      // 🔗 = URL set, 🔍 = no URL yet. Filled-blue when scanned, gold when manually overridden.
+      const icon = hasUrl ? '🔗' : '🔍';
+      const iconColor = isManual ? 'var(--accent)' : (hasUrl ? '#4a90d9' : '#bbb');
+      const iconTitle = hasUrl
+        ? (isManual ? 'Manually overridden — click to view source page' : 'Scanned — click to view source page')
+        : 'Click to set a product URL for live price scanning';
+      html += `<td>
+        <div style="display:flex;gap:4px;align-items:center">
+          <input type="number" class="lumber-price" data-type="${type}" data-dim="${dim}" data-len="${l}" value="${val}" min="0" step="0.01" oninput="onLumberPriceManualEdit(this)" style="flex:1;min-width:0">
+          <button class="lumber-src-btn" data-type="${type}" data-dim="${dim}" data-len="${l}" data-has-url="${hasUrl ? '1' : '0'}" title="${iconTitle}" onclick="onLumberSourceClick(event,'${type}','${dim}','${l}')" style="background:transparent;border:1px solid #eee;color:${iconColor};width:24px;height:24px;border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1">${icon}</button>
+        </div>
+      </td>`;
     });
     html += '</tr>';
   });
   html += '</tbody></table>';
   document.getElementById(`lumber-${type}-table-wrap`).innerHTML = html;
+}
+
+// When admin types a price directly, mark that cell's source as manual so a
+// future scan won't blow it away. (No effect if there's no URL set.)
+function onLumberPriceManualEdit(inputEl) {
+  const { type, dim, len } = inputEl.dataset;
+  const data = config.materialPricing.lumber[type];
+  if (!data || !data[dim]) return;
+  if (!data[dim].sources) data[dim].sources = {};
+  if (data[dim].sources[len] && data[dim].sources[len].url) {
+    data[dim].sources[len].manual = true;
+  }
+  markDirty();
+}
+
+// 🔗 click — if URL already set, opens the product page; otherwise opens
+// the source-URL editor modal. Shift-click forces the editor either way.
+function onLumberSourceClick(ev, type, dim, len) {
+  ev.preventDefault();
+  const data = config.materialPricing.lumber[type];
+  const src = (data && data[dim] && data[dim].sources && data[dim].sources[len]) || null;
+  if (src && src.url && !ev.shiftKey) {
+    window.open(src.url, '_blank', 'noopener');
+    return;
+  }
+  openLumberSourceModal(type, dim, len);
+}
+
+let _lumberSrcEditing = null;
+function openLumberSourceModal(type, dim, len) {
+  _lumberSrcEditing = { type, dim, len };
+  const data = config.materialPricing.lumber[type];
+  const src = (data[dim].sources && data[dim].sources[len]) || {};
+  document.getElementById('lumberSourceTitle').textContent = `Source URL — ${type === 'pt' ? 'PT' : 'Cedar'} ${dim} × ${len} ft`;
+  document.getElementById('lumberSourceUrl').value = src.url || '';
+  const status = document.getElementById('lumberSourceStatus');
+  if (src.lastScanned) {
+    const ts = new Date(src.lastScanned).toLocaleString();
+    status.innerHTML = `Last scanned: ${ts} — pulled $${(src.scannedPrice || 0).toFixed(2)}` + (src.manual ? ' <span style="color:var(--accent)">(manually overridden since)</span>' : '');
+  } else if (src.url) {
+    status.textContent = 'URL set — click Test scan to pull a price.';
+  } else {
+    status.textContent = '';
+  }
+  document.getElementById('lumberSourceModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('lumberSourceUrl').focus(), 50);
+}
+function closeLumberSourceModal() {
+  document.getElementById('lumberSourceModal').style.display = 'none';
+  _lumberSrcEditing = null;
+}
+function saveLumberSource() {
+  if (!_lumberSrcEditing) return;
+  const { type, dim, len } = _lumberSrcEditing;
+  const url = document.getElementById('lumberSourceUrl').value.trim();
+  const data = config.materialPricing.lumber[type];
+  if (!data[dim].sources) data[dim].sources = {};
+  if (!data[dim].sources[len]) data[dim].sources[len] = {};
+  data[dim].sources[len].url = url;
+  // Re-saving the URL clears the manual flag — it's a fresh source.
+  if (url) data[dim].sources[len].manual = false;
+  closeLumberSourceModal();
+  renderLumberTable(type);
+  markDirty();
+}
+function clearLumberSource() {
+  if (!_lumberSrcEditing) return;
+  const { type, dim, len } = _lumberSrcEditing;
+  const data = config.materialPricing.lumber[type];
+  if (data[dim].sources) delete data[dim].sources[len];
+  closeLumberSourceModal();
+  renderLumberTable(type);
+  markDirty();
+}
+async function testLumberSource() {
+  const url = document.getElementById('lumberSourceUrl').value.trim();
+  const status = document.getElementById('lumberSourceStatus');
+  if (!url) { status.textContent = 'Paste a URL first.'; return; }
+  status.textContent = 'Scanning…';
+  try {
+    const res = await fetch('/api/scan-price?url=' + encodeURIComponent(url), { credentials: 'same-origin' });
+    const json = await res.json();
+    if (json.ok) {
+      status.innerHTML = `<span style="color:#2a8a3f">✓ Found $${json.price.toFixed(2)} ${json.currency || ''} via ${json.source}</span>` + (json.productName ? `<br><span style="color:#888">${json.productName.slice(0, 80)}</span>` : '');
+    } else {
+      status.innerHTML = `<span style="color:#c00">✗ ${json.error || 'scan failed'}</span>`;
+    }
+  } catch (e) {
+    status.innerHTML = `<span style="color:#c00">✗ ${e.message || 'network error'}</span>`;
+  }
+}
+
+// Scan all cells in a lumber tab that have URLs. Skips cells with manual=true
+// so the operator's hand-edits are preserved.
+async function scanLumberPrices(type) {
+  const data = config.materialPricing.lumber[type];
+  const tasks = [];
+  Object.keys(data).forEach(dim => {
+    const sources = data[dim].sources || {};
+    Object.keys(sources).forEach(len => {
+      const src = sources[len];
+      if (src && src.url && !src.manual) tasks.push({ dim, len, src });
+    });
+  });
+  if (tasks.length === 0) {
+    toast(`No URLs configured for ${type === 'pt' ? 'PT' : 'Cedar'} — click 🔍 next to a price to set one.`, 'info');
+    return;
+  }
+  toast(`Scanning ${tasks.length} ${type === 'pt' ? 'PT' : 'Cedar'} price${tasks.length === 1 ? '' : 's'}…`, 'info');
+  let updated = 0, failed = 0;
+  // Sequential to be polite to upstream sites.
+  for (const t of tasks) {
+    try {
+      const res = await fetch('/api/scan-price?url=' + encodeURIComponent(t.src.url), { credentials: 'same-origin' });
+      const json = await res.json();
+      if (json.ok && json.price > 0) {
+        data[t.dim].boards[t.len] = Math.round(json.price * 100) / 100;
+        t.src.lastScanned = Date.now();
+        t.src.scannedPrice = json.price;
+        t.src.manual = false;
+        updated++;
+      } else {
+        failed++;
+      }
+    } catch (e) { failed++; }
+  }
+  renderLumberTable(type);
+  updateAllPreviews && updateAllPreviews();
+  markDirty();
+  toast(`Scan done — ${updated} updated${failed > 0 ? `, ${failed} failed` : ''}.`, failed === 0 ? 'success' : 'info');
 }
 
 function collectLumberPrices(type) {

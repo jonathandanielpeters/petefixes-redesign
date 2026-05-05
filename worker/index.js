@@ -585,6 +585,135 @@ async function handleQuotes(request, env, idFromPath) {
   return corsResponse({ ok: false, error: "method not allowed" }, 405);
 }
 
+// ── /api/scan-price — pull a product page and extract its price ─────
+// Admin-side scraper for the lumber price chart.  Given a product URL,
+// fetch the page server-side (browsers can't cross-origin) and try a
+// chain of extractors:
+//   1. JSON-LD: <script type="application/ld+json"> with @type Product
+//      and offers.price (most reliable on modern e-commerce sites)
+//   2. Microdata: <meta itemprop="price">
+//   3. Open Graph product tags: <meta property="product:price:amount">
+//   4. Twitter price meta (some retailers use it as a fallback)
+//   5. Regex over $XX.XX patterns near "price" / "Sale" keywords
+// Returns { ok, price, currency, productName, source, fetchedAt } or
+// { ok:false, error }.  Auth-protected so the endpoint can't be used as
+// a free open scraper.
+async function handleScanPrice(request, env) {
+  if (!checkBasicAuth(request, env)) return unauthorized();
+  const url = new URL(request.url);
+  const target = url.searchParams.get("url") || "";
+  if (!/^https?:\/\//i.test(target)) {
+    return corsResponse({ ok: false, error: "url must start with http:// or https://" }, 400);
+  }
+  let html = "";
+  try {
+    const res = await fetch(target, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-CA,en;q=0.9",
+      },
+      redirect: "follow",
+    });
+    if (!res.ok) {
+      return corsResponse({ ok: false, error: "upstream HTTP " + res.status, status: res.status }, 200);
+    }
+    html = await res.text();
+  } catch (e) {
+    return corsResponse({ ok: false, error: "fetch failed: " + (e.message || e) }, 200);
+  }
+
+  let price = null;
+  let currency = null;
+  let productName = null;
+  let source = null;
+
+  // 1. JSON-LD
+  const ldRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  while (!price && (m = ldRegex.exec(html)) !== null) {
+    try {
+      const json = JSON.parse(m[1].trim());
+      const candidates = Array.isArray(json) ? json : (json["@graph"] ? json["@graph"] : [json]);
+      for (const node of candidates) {
+        if (!node || typeof node !== "object") continue;
+        const type = node["@type"];
+        const isProduct = type === "Product" || (Array.isArray(type) && type.includes("Product"));
+        if (!isProduct) continue;
+        productName = productName || node.name || null;
+        const offers = node.offers;
+        const offerList = Array.isArray(offers) ? offers : (offers ? [offers] : []);
+        for (const off of offerList) {
+          if (!off) continue;
+          const p = off.price ?? off.lowPrice ?? off.priceSpecification?.price;
+          if (p != null) {
+            price = Number(String(p).replace(/[^0-9.]/g, ""));
+            currency = off.priceCurrency || off.priceSpecification?.priceCurrency || currency;
+            source = "json-ld";
+            break;
+          }
+        }
+        if (price != null) break;
+      }
+    } catch { /* keep scanning */ }
+  }
+
+  // 2. Microdata
+  if (price == null) {
+    const meta = html.match(/<meta[^>]+itemprop=["']price["'][^>]+content=["']([\d.]+)["']/i)
+              || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+itemprop=["']price["']/i);
+    if (meta) {
+      price = Number(meta[1]);
+      source = "microdata";
+      const cur = html.match(/<meta[^>]+itemprop=["']priceCurrency["'][^>]+content=["']([^"']+)["']/i);
+      if (cur) currency = cur[1];
+    }
+  }
+
+  // 3. Open Graph product tags
+  if (price == null) {
+    const og = html.match(/<meta[^>]+property=["']product:price:amount["'][^>]+content=["']([\d.]+)["']/i)
+            || html.match(/<meta[^>]+content=["']([\d.]+)["'][^>]+property=["']product:price:amount["']/i);
+    if (og) {
+      price = Number(og[1]);
+      source = "open-graph";
+      const cur = html.match(/<meta[^>]+property=["']product:price:currency["'][^>]+content=["']([^"']+)["']/i);
+      if (cur) currency = cur[1];
+    }
+  }
+
+  // 4. Twitter price meta
+  if (price == null) {
+    const tw = html.match(/<meta[^>]+name=["']twitter:data1["'][^>]+content=["']\$?([\d,.]+)["']/i);
+    if (tw) {
+      price = Number(tw[1].replace(/,/g, ""));
+      source = "twitter";
+    }
+  }
+
+  // 5. Regex fallback — look for a "Sale" / "price" anchor with a $XX.XX
+  if (price == null) {
+    const m1 = html.match(/(?:price|sale)[^<>$]{0,40}\$\s?([\d,]+\.\d{2})/i)
+            || html.match(/data-price=["']\$?([\d,]+\.\d{2})["']/i)
+            || html.match(/\$\s?([\d,]+\.\d{2})/);
+    if (m1) {
+      price = Number(m1[1].replace(/,/g, ""));
+      source = "regex";
+    }
+  }
+
+  // Product name fallback — <title> or <h1>
+  if (!productName) {
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (title) productName = title[1].trim().slice(0, 160);
+  }
+
+  if (price == null || !isFinite(price) || price <= 0) {
+    return corsResponse({ ok: false, error: "couldn't extract a price from this page", productName, fetchedAt: new Date().toISOString() }, 200);
+  }
+  return corsResponse({ ok: true, price, currency: currency || "CAD", productName: productName || null, source, fetchedAt: new Date().toISOString() });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -601,6 +730,9 @@ export default {
     }
     if (url.pathname === "/api/config") {
       return handleConfig(request, env);
+    }
+    if (url.pathname === "/api/scan-price") {
+      return handleScanPrice(request, env);
     }
     // Quotes dashboard — exact "/api/quotes" or "/api/quotes/<id>"
     if (url.pathname === "/api/quotes") {
