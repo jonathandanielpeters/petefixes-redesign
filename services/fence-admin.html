@@ -427,6 +427,7 @@ a{color:var(--accent);text-decoration:none}
   <div class="pill-tabs" id="lumberTabs">
     <div class="pill-tab active" data-tab="pt" onclick="showLumberTab('pt')">Pressure Treated</div>
     <div class="pill-tab" data-tab="cedar" onclick="showLumberTab('cedar')">Cedar</div>
+    <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center" onclick="openLumberBulkModal()">✨ Bulk import URLs</button>
   </div>
 
   <!-- Scanner config — postal code + tax rate apply to every scan, plus
@@ -472,6 +473,35 @@ a{color:var(--accent);text-decoration:none}
         <button class="btn btn-outline btn-sm" onclick="removeBoardLength('cedar')">- Remove Board Length</button>
         <button class="btn btn-outline btn-sm" onclick="addDimension('cedar')">+ Add Dimension</button>
         <button class="btn btn-outline btn-sm" style="color:var(--danger,#c00)" onclick="removeDimension('cedar')">- Remove Dimension</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk URL import — paste many product URLs at once.  Each is scanned
+       and the product name is parsed to detect material (PT vs Cedar),
+       dimension (1x6, 2x4, 5/4x6…) and length (6, 8, 12 ft).  Confirm
+       step shows what auto-classified, with overrides, before applying. -->
+  <div id="lumberBulkModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeLumberBulkModal()">
+    <div style="background:#fff;border-radius:12px;padding:20px 24px;width:min(820px,94vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,0.2)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <h3 style="margin:0;font-size:16px;flex:1">✨ Bulk import URLs — auto-classify into PT &amp; Cedar</h3>
+        <button onclick="closeLumberBulkModal()" style="background:transparent;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+      </div>
+      <p style="font-size:12px;color:#666;margin:0 0 10px">Paste one product URL per line.  Each is scanned through the active store, then sorted into <strong>PT</strong> or <strong>Cedar</strong> by parsing the product name (e.g., <em>"Pressure Treated 1 x 6 x 8' Premium Fence Board"</em> → PT, dim <code>1x6</code>, length <code>8</code>).  New dimensions get a sensible default width that you can edit later.</p>
+      <textarea id="lumberBulkUrls" rows="6" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:Menlo,monospace;resize:vertical" placeholder="https://www.homedepot.ca/product/pressure-treated-1-x-6-x-8-...
+https://www.homedepot.ca/product/pressure-treated-1-x-6-x-6-...
+https://www.homedepot.ca/product/cedar-1-x-6-x-6-..."></textarea>
+      <div style="display:flex;gap:14px;margin-top:8px;font-size:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="lumberBulkOverwrite"> Overwrite cells that already have a URL</label>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="lumberBulkAddDims" checked> Create missing dimensions / length columns</label>
+      </div>
+      <div id="lumberBulkProgress" style="font-size:11px;color:#666;margin-top:10px;min-height:16px"></div>
+      <div id="lumberBulkResults" style="margin-top:10px;flex:1;overflow-y:auto;border:1px solid #eee;border-radius:6px;display:none"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button class="btn btn-outline btn-sm" onclick="closeLumberBulkModal()">Cancel</button>
+        <button id="lumberBulkScanBtn" class="btn btn-sm" style="background:var(--admin,#222);color:#fff;border:none;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer" onclick="runLumberBulkScan()">Scan &amp; classify</button>
+        <span style="flex:1"></span>
+        <button id="lumberBulkApplyBtn" class="btn btn-sm" style="display:none;background:var(--accent);color:#fff;border:none;padding:6px 16px;border-radius:6px;font-weight:600;cursor:pointer" onclick="applyLumberBulkResults()">Apply matches</button>
       </div>
     </div>
   </div>
@@ -3566,6 +3596,233 @@ function showLumberTab(tab) {
   document.querySelectorAll('#lumberTabs .pill-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.getElementById('lumberTabContent-pt').style.display = tab === 'pt' ? '' : 'none';
   document.getElementById('lumberTabContent-cedar').style.display = tab === 'cedar' ? '' : 'none';
+}
+
+// ───── Lumber bulk URL import ─────
+// Paste a list of product URLs; the system runs each through the existing
+// scan-price endpoint, then parses the returned product name to detect:
+//   • material  (pt | cedar)
+//   • dimension (1x6 / 2x4 / 5/4x6 / …)
+//   • length    (the third "x N" in "1 x 6 x 8'")
+// Operator confirms (with per-row overrides) before any cells are filled.
+
+// Standard dimensional-lumber actual widths used when a new dim is created.
+function _stdLumberWidth(dim) {
+  const m = String(dim || '').match(/^(\d+(?:\/\d+)?)x(\d+)$/);
+  if (!m) return 5.5;
+  const map = { 2: 1.5, 3: 2.5, 4: 3.5, 5: 4.5, 6: 5.5, 8: 7.25, 10: 9.25, 12: 11.25 };
+  const nominal = parseInt(m[2], 10);
+  return map[nominal] || Math.max(0.5, nominal - 0.75);
+}
+
+// Parse a product name into { type, dim, length }.  Returns nulls for
+// fields that couldn't be detected — operator can override in the table.
+function _classifyLumberProduct(name) {
+  const n = String(name || '').toLowerCase().trim();
+  let type = null;
+  if (/\bpressure[-\s]?treated\b|\btreated\s+(?:wood|lumber|board|deck|fence)\b|^pt\b|\bp[\.\s]?t[\.\s]/.test(n)) type = 'pt';
+  else if (/\b(?:western\s+)?(?:red\s+|white\s+|eastern\s+)?cedar\b/.test(n)) type = 'cedar';
+  let dim = null, length = null;
+  // Match "1 x 6 x 8" (with optional separators / units)
+  const m3 = n.match(/(\d+(?:\/\d+)?)\s*[x×]\s*(\d+)\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:'|"|ft|foot|feet|in|inch)?/);
+  if (m3) {
+    dim = m3[1] + 'x' + m3[2];
+    length = String(parseInt(m3[3], 10));
+  } else {
+    const m2 = n.match(/(\d+(?:\/\d+)?)\s*[x×]\s*(\d+)/);
+    if (m2) dim = m2[1] + 'x' + m2[2];
+  }
+  return { type, dim, length };
+}
+
+let _lumberBulkResults = [];
+
+function openLumberBulkModal() {
+  _lumberBulkResults = [];
+  document.getElementById('lumberBulkUrls').value = '';
+  document.getElementById('lumberBulkOverwrite').checked = false;
+  document.getElementById('lumberBulkAddDims').checked = true;
+  document.getElementById('lumberBulkProgress').textContent = '';
+  document.getElementById('lumberBulkResults').style.display = 'none';
+  document.getElementById('lumberBulkResults').innerHTML = '';
+  document.getElementById('lumberBulkApplyBtn').style.display = 'none';
+  document.getElementById('lumberBulkScanBtn').disabled = false;
+  document.getElementById('lumberBulkScanBtn').textContent = 'Scan & classify';
+  document.getElementById('lumberBulkModal').style.display = 'flex';
+  setTimeout(() => document.getElementById('lumberBulkUrls').focus(), 50);
+}
+function closeLumberBulkModal() {
+  document.getElementById('lumberBulkModal').style.display = 'none';
+}
+
+async function runLumberBulkScan() {
+  const raw = document.getElementById('lumberBulkUrls').value || '';
+  const urls = raw.split(/\r?\n/).map(s => s.trim()).filter(s => /^https?:\/\//i.test(s));
+  if (urls.length === 0) { toast('Paste at least one product URL.', 'info'); return; }
+  const scanBtn = document.getElementById('lumberBulkScanBtn');
+  const applyBtn = document.getElementById('lumberBulkApplyBtn');
+  const progress = document.getElementById('lumberBulkProgress');
+  const resultsEl = document.getElementById('lumberBulkResults');
+  scanBtn.disabled = true;
+  applyBtn.style.display = 'none';
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:12px;color:#888">Starting…</div>';
+
+  // Each URL routes via its own retailer (pasted Lowe's URL → Lowe's store
+  // config).  Falls back to the active PT-tab store if no match (matches the
+  // testLumberSource behaviour).
+  _lumberBulkResults = urls.map(url => ({ url, status: 'pending' }));
+  const total = urls.length;
+
+  for (let i = 0; i < total; i++) {
+    const r = _lumberBulkResults[i];
+    r.status = 'scanning';
+    progress.textContent = `Scanning ${i + 1}/${total} — ${r.url.slice(0, 80)}…`;
+    scanBtn.textContent = `Scanning ${i + 1}/${total}…`;
+    const retailerId = _retailerForUrl(r.url);
+    const store = _primaryScannerStore(retailerId);
+    const qs = _scanQueryParams(store);
+    const out = await _scanOneWithRetry(r.url, qs, 3);
+    if (out.ok) {
+      const cls = _classifyLumberProduct(out.json.productName || '');
+      r.scan = out.json;
+      r.type = cls.type;
+      r.dim = cls.dim;
+      r.length = cls.length;
+      r.store = store;
+      r.status = (cls.type && cls.dim && cls.length) ? 'ok' : 'unmatched';
+    } else {
+      r.error = out.error || 'failed';
+      r.retryable = out.retryable !== false;
+      r.status = 'failed';
+    }
+    _renderLumberBulkResults();
+  }
+
+  progress.textContent = '';
+  scanBtn.disabled = false;
+  scanBtn.textContent = 'Re-scan';
+  const okCount = _lumberBulkResults.filter(r => r.status === 'ok' || r.status === 'unmatched').length;
+  if (okCount > 0) {
+    applyBtn.style.display = 'inline-block';
+    _updateLumberBulkApplyLabel();
+  }
+}
+
+function _renderLumberBulkResults() {
+  const host = document.getElementById('lumberBulkResults');
+  if (!host) return;
+  const dimOptionsByType = (type) => {
+    const lumber = (config.materialPricing && config.materialPricing.lumber && config.materialPricing.lumber[type]) || {};
+    return Object.keys(lumber);
+  };
+  const lengthOptions = (type) => {
+    const lumber = (config.materialPricing && config.materialPricing.lumber && config.materialPricing.lumber[type]) || {};
+    const set = new Set();
+    Object.keys(lumber).forEach(d => {
+      Object.keys(lumber[d].boards || {}).forEach(l => set.add(l));
+      if (lumber[d].byStore) {
+        Object.values(lumber[d].byStore).forEach(s => Object.keys((s && s.boards) || {}).forEach(l => set.add(l)));
+      }
+    });
+    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+  };
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#f7f7f8;text-align:left;position:sticky;top:0">' +
+    '<th style="padding:6px 8px;width:30px"></th>' +
+    '<th style="padding:6px 8px">Product</th>' +
+    '<th style="padding:6px 8px">Type</th>' +
+    '<th style="padding:6px 8px">Dim</th>' +
+    '<th style="padding:6px 8px">Length</th>' +
+    '<th style="padding:6px 8px;text-align:right">Price</th>' +
+    '</tr></thead><tbody>';
+  _lumberBulkResults.forEach((r, i) => {
+    const dot = r.status === 'ok' ? '<span style="color:#2a8a3f">●</span>'
+      : r.status === 'unmatched' ? '<span style="color:#e89120" title="Couldn\'t auto-classify — fill in dropdowns to apply">⚠</span>'
+      : r.status === 'failed' ? '<span style="color:#c00" title="' + escAttr(r.error || '') + '">✗</span>'
+      : r.status === 'scanning' ? '<span style="color:#4a90d9">⟳</span>'
+      : '<span style="color:#bbb">·</span>';
+    const productName = (r.scan && r.scan.productName) ? r.scan.productName : (r.error || '—');
+    const typeSel = '<select onchange="_lumberBulkOverride(' + i + ',\'type\',this.value)" style="font-size:11px;padding:2px 4px;border:1px solid #ddd;border-radius:3px"><option value=""' + (!r.type ? ' selected' : '') + '>—</option><option value="pt"' + (r.type === 'pt' ? ' selected' : '') + '>PT</option><option value="cedar"' + (r.type === 'cedar' ? ' selected' : '') + '>Cedar</option></select>';
+    const dimsForType = r.type ? dimOptionsByType(r.type) : [];
+    const dimInList = r.dim && dimsForType.indexOf(r.dim) >= 0;
+    const dimSel = '<input type="text" value="' + escAttr(r.dim || '') + '" placeholder="1x6" oninput="_lumberBulkOverride(' + i + ',\'dim\',this.value)" style="width:60px;font-size:11px;padding:2px 4px;border:1px solid ' + (r.dim && !dimInList ? '#e89120' : '#ddd') + ';border-radius:3px;font-family:Menlo,monospace" title="' + (r.dim && !dimInList ? 'New dimension — will be created on apply' : '') + '">';
+    const lenSel = '<input type="text" value="' + escAttr(r.length || '') + '" placeholder="8" oninput="_lumberBulkOverride(' + i + ',\'length\',this.value)" style="width:50px;font-size:11px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;text-align:center">';
+    const priceTxt = r.scan && r.scan.price ? '$' + r.scan.price.toFixed(2) : (r.status === 'failed' ? '—' : '…');
+    const productLine = '<div style="line-height:1.3"><div style="font-weight:500">' + escAttr(productName.slice(0, 80)) + (productName.length > 80 ? '…' : '') + '</div>' +
+      '<div style="color:#888;font-size:10px"><a href="' + escAttr(r.url) + '" target="_blank" rel="noopener" style="color:#888;text-decoration:none">' + escAttr(r.url.slice(0, 80)) + '↗</a>' + (r.store ? ' · via ' + escAttr(r.store.name || r.store.id || '') : '') + '</div></div>';
+    html += '<tr style="border-top:1px solid #f0f0f0">' +
+      '<td style="padding:6px 8px;text-align:center">' + dot + '</td>' +
+      '<td style="padding:6px 8px">' + productLine + '</td>' +
+      '<td style="padding:6px 8px">' + typeSel + '</td>' +
+      '<td style="padding:6px 8px">' + dimSel + '</td>' +
+      '<td style="padding:6px 8px">' + lenSel + '</td>' +
+      '<td style="padding:6px 8px;text-align:right;font-weight:500">' + priceTxt + '</td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  host.innerHTML = html;
+  _updateLumberBulkApplyLabel();
+}
+
+function _lumberBulkOverride(i, field, value) {
+  if (!_lumberBulkResults[i]) return;
+  _lumberBulkResults[i][field] = (value || '').trim() || null;
+  // Re-evaluate row's "ready" state based on whether all three slots are filled.
+  const r = _lumberBulkResults[i];
+  if (r.status !== 'failed' && r.status !== 'scanning') {
+    r.status = (r.type && r.dim && r.length) ? 'ok' : 'unmatched';
+  }
+  _updateLumberBulkApplyLabel();
+}
+
+function _updateLumberBulkApplyLabel() {
+  const btn = document.getElementById('lumberBulkApplyBtn');
+  if (!btn) return;
+  const ready = _lumberBulkResults.filter(r => r.status === 'ok').length;
+  btn.textContent = 'Apply ' + ready + ' match' + (ready === 1 ? '' : 'es');
+  btn.disabled = ready === 0;
+  btn.style.opacity = ready === 0 ? '0.5' : '1';
+}
+
+function applyLumberBulkResults() {
+  const overwrite = document.getElementById('lumberBulkOverwrite').checked;
+  const addMissing = document.getElementById('lumberBulkAddDims').checked;
+  let applied = 0, skipped = 0, created = 0;
+  const ready = _lumberBulkResults.filter(r => r.status === 'ok' && r.scan);
+  ready.forEach(r => {
+    const lumber = config.materialPricing.lumber[r.type];
+    if (!lumber) { skipped++; return; }
+    // Create dim if missing (operator opted in).
+    if (!lumber[r.dim]) {
+      if (!addMissing) { skipped++; return; }
+      lumber[r.dim] = { widthIn: _stdLumberWidth(r.dim), boards: {}, sources: {} };
+      created++;
+    }
+    // Resolve the slot (active store sub-tab for this type).
+    const slot = _lumberSlot(r.type, r.dim);
+    if (!slot) { skipped++; return; }
+    // If a length column doesn't exist on this dim, addMissing controls it.
+    const existingUrl = slot.sources[r.length] && slot.sources[r.length].url;
+    if (existingUrl && !overwrite) { skipped++; return; }
+    slot.boards[r.length] = Math.round(r.scan.price * 100) / 100;
+    slot.sources[r.length] = {
+      url: r.url,
+      lastScanned: Date.now(),
+      scannedPrice: r.scan.price,
+      basePrice: r.scan.basePrice,
+      taxRate: r.scan.taxRate,
+      manual: false,
+    };
+    applied++;
+  });
+  renderLumberTable('pt');
+  renderLumberTable('cedar');
+  markDirty();
+  closeLumberBulkModal();
+  let msg = 'Bulk import: ' + applied + ' applied';
+  if (created > 0) msg += ', ' + created + ' new dimension' + (created === 1 ? '' : 's');
+  if (skipped > 0) msg += ', ' + skipped + ' skipped';
+  toast(msg + '.', applied > 0 ? 'success' : 'info');
 }
 
 // ═══════ POST LENGTH PRICING ═══════
