@@ -2829,11 +2829,16 @@ function renderLumberTable(type) {
       } else {
         cellIcons = `<button class="lumber-src-add-btn" title="Click to set a product URL for live price scanning" onclick="openLumberSourceModal('${type}','${dim}','${l}')" style="background:transparent;border:1px solid #eee;color:#bbb;width:24px;height:24px;border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1">🔍</button>`;
       }
+      // SKU caption — small monospace under the price.  Comes from the
+      // last scan; gone if the URL is cleared or never scanned.
+      const skuTxt = src && src.sku ? src.sku : '';
+      const skuLine = skuTxt ? `<div style="font-size:9px;color:#999;margin-top:2px;font-family:Menlo,monospace;line-height:1;letter-spacing:0.02em" title="SKU / model number">${escAttr(skuTxt)}</div>` : '';
       html += `<td>
         <div style="display:flex;gap:4px;align-items:center">
           <input type="number" class="lumber-price" data-type="${type}" data-dim="${dim}" data-len="${l}" value="${val}" min="0" step="0.01" oninput="onLumberPriceManualEdit(this)" style="flex:1;min-width:0">
           ${cellIcons}
         </div>
+        ${skuLine}
       </td>`;
     });
     html += '</tr>';
@@ -2879,7 +2884,8 @@ function openLumberSourceModal(type, dim, len) {
   const status = document.getElementById('lumberSourceStatus');
   if (src.lastScanned) {
     const ts = new Date(src.lastScanned).toLocaleString();
-    status.innerHTML = `Last scanned: ${ts} — pulled $${(src.scannedPrice || 0).toFixed(2)}` + (src.manual ? ' <span style="color:var(--accent)">(manually overridden since)</span>' : '');
+    const skuPart = src.sku ? ` · SKU <code style="font-family:Menlo,monospace">${escAttr(src.sku)}</code>` : '';
+    status.innerHTML = `Last scanned: ${ts} — pulled $${(src.scannedPrice || 0).toFixed(2)}${skuPart}` + (src.manual ? ' <span style="color:var(--accent)">(manually overridden since)</span>' : '');
   } else if (src.url) {
     status.textContent = 'URL set — click Test scan to pull a price.';
   } else {
@@ -3445,11 +3451,13 @@ async function scanLumberPrices(type, taskOverride) {
       t.src.scannedPrice = json.price;
       t.src.basePrice = json.basePrice;
       t.src.taxRate = json.taxRate;
+      t.src.sku = json.sku || null;
+      t.src.productId = json.productId || null;
       t.src.manual = false;
       const el = cellEl(t.dim, t.len);
       if (el) {
         el.value = t.slot.boards[t.len];
-        el.title = `Scanned ${result.attempts} attempt${result.attempts === 1 ? '' : 's'} · ${new Date().toLocaleTimeString()}`;
+        el.title = `Scanned ${result.attempts} attempt${result.attempts === 1 ? '' : 's'} · ${new Date().toLocaleTimeString()}` + (json.sku ? ` · SKU ${json.sku}` : '');
       }
       setCellState(t.dim, t.len, 'ok');
       updated++;
@@ -3853,6 +3861,8 @@ function applyLumberBulkResults() {
       scannedPrice: r.scan.price,
       basePrice: r.scan.basePrice,
       taxRate: r.scan.taxRate,
+      sku: r.scan.sku || null,
+      productId: r.scan.productId || null,
       manual: false,
     };
     applied++;
@@ -10986,6 +10996,25 @@ function encodeAdminConfigForIframe() {
   try { if (typeof collectAll === 'function') collectAll(); } catch (e) { console.warn('[encodeAdminConfigForIframe.collectAll]', e); }
   try {
     const cfg = JSON.parse(JSON.stringify(config));
+    // Strip admin-only data that bloats the URL and isn't read by the
+    // customer-facing engine.  Browsers cap URL length around 32–80 KB;
+    // when the admin config blew past that (multi-store byStore slots +
+    // per-cell source metadata), the iframe src got truncated and the
+    // Build & Price tool rendered as a blank page.  Primary-store prices
+    // stay at top-level boards where the engine reads them.
+    if (cfg.scanner) delete cfg.scanner;
+    if (cfg.materialPricing && cfg.materialPricing.lumber) {
+      ['pt', 'cedar'].forEach(t => {
+        const lumber = cfg.materialPricing.lumber[t];
+        if (!lumber || typeof lumber !== 'object') return;
+        Object.keys(lumber).forEach(dim => {
+          const d = lumber[dim];
+          if (!d || typeof d !== 'object') return;
+          delete d.byStore;
+          delete d.sources;
+        });
+      });
+    }
     return btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
   } catch (e) {
     console.warn('[encodeAdminConfigForIframe]', e);

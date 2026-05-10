@@ -681,6 +681,17 @@ async function handleScanPrice(request, env) {
       }
       const taxApplied = Math.round(basePrice * taxRate * 100) / 100;
       const finalPrice = Math.round(basePrice * (1 + taxRate) * 100) / 100;
+      // SKU candidates from HD productsvc: try common field names; fall
+      // back to the productId itself (HD's "Internet #" — the canonical
+      // identifier the operator can hand the lumber yard or HD desk).
+      const skuFromHD = (() => {
+        const candidates = [
+          j.sku, j.code, j.modelNumber, j.modelNo, j.partNumber,
+          j.skus && j.skus[0] && (j.skus[0].code || j.skus[0].sku),
+          j.identifiers && (j.identifiers.sku || j.identifiers.modelNumber),
+        ].filter(s => s && typeof s === 'string');
+        return candidates[0] || productId;
+      })();
       return corsResponse({
         ok: true,
         price: finalPrice,
@@ -691,6 +702,8 @@ async function handleScanPrice(request, env) {
         taxApplied,
         currency: (op.wasprice && op.wasprice.currencyIso) || "CAD",
         productName: j.name || null,
+        productId,
+        sku: skuFromHD,
         source: "hd-productsvc",
         location: { storeId, storeIdSource, storeName: j.aisleBay && j.aisleBay.storeDisplayName, postalCode: url.searchParams.get("postalCode") || null },
         stockLevel: j.storeStock && j.storeStock.stockLevel,
@@ -935,6 +948,24 @@ async function handleScanPrice(request, env) {
     if (title) productName = title[1].trim().slice(0, 160);
   }
 
+  // SKU / model number — try JSON-LD first ("sku":"…"), then microdata
+  // (<meta itemprop="sku">), then generic "Model #" / "Item #" / "SKU"
+  // labels in the HTML, then the JSON-LD productID/mpn fallback.
+  let sku = null;
+  const skuPatterns = [
+    /"sku"\s*:\s*"([^"]+)"/i,
+    /<meta[^>]+itemprop=["']sku["'][^>]+content=["']([^"']+)["']/i,
+    /<meta[^>]+content=["']([^"']+)["'][^>]+itemprop=["']sku["']/i,
+    /(?:Model|Item|SKU|Product Code)\s*(?:Number|No\.|#|:)\s*[:#]?\s*<[^>]+>\s*([\w-]{4,})/i,
+    /(?:Model|Item|SKU|Product Code)\s*(?:Number|No\.|#|:)\s*[:#]?\s*([\w-]{4,})/i,
+    /"productID"\s*:\s*"([^"]+)"/i,
+    /"mpn"\s*:\s*"([^"]+)"/i,
+  ];
+  for (const p of skuPatterns) {
+    const m = html.match(p);
+    if (m && m[1] && m[1].length < 64) { sku = m[1].trim(); break; }
+  }
+
   // Choose: original price wins, sale price falls back. If original ≤ sale
   // (i.e. there was no real sale, or our extractors got crossed), defer to
   // the larger of the two so we never *under*-anchor a quote on a promo.
@@ -944,7 +975,7 @@ async function handleScanPrice(request, env) {
   }
 
   if (!basePrice) {
-    return corsResponse({ ok: false, error: "couldn't extract a price from this page", productName, fetchedAt: new Date().toISOString(), debug: debug ? debugInfo : undefined }, 200);
+    return corsResponse({ ok: false, error: "couldn't extract a price from this page", productName, sku, fetchedAt: new Date().toISOString(), debug: debug ? debugInfo : undefined }, 200);
   }
   const taxApplied = Math.round(basePrice * taxRate * 100) / 100;
   const finalPrice = Math.round(basePrice * (1 + taxRate) * 100) / 100;
@@ -958,6 +989,7 @@ async function handleScanPrice(request, env) {
     taxApplied,
     currency: currency || "CAD",
     productName: productName || null,
+    sku: sku || null,
     source,
     location: { postalCode: postal, storeId },
     fetchedAt: new Date().toISOString(),
