@@ -1068,11 +1068,26 @@ https://www.homedepot.ca/product/cedar-1-x-6-x-6-..."></textarea>
   </div>
 
   <div class="card">
-    <div class="card-title">Post &amp; Legacy Per-Foot Pricing</div>
-    <div class="card-desc">Post cost per post. Legacy per-foot pricing used as fallback when panel prices are $0.</div>
-    <div class="card-row">
-      <div class="field"><label>Post Cost ($)</label><input type="number" id="cfg-vn-postCost" min="0" step="0.01" oninput="markDirty()"></div>
+    <div class="card-title">Cost per Post (by Height &amp; Color)</div>
+    <div class="card-desc">Material cost for one vinyl post at each fence height — multiplied by post count in the customer build &amp; price.  Leave a row blank to fall back to the default below.</div>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead><tr><th>Fence Height</th><th>White ($)</th><th>Tan ($)</th><th>Gray ($)</th></tr></thead>
+        <tbody>
+          <tr><td class="cell-label">4 ft</td><td><input type="number" id="cfg-vn-postH-4-white" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-vn-postH-4-tan" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-vn-postH-4-gray" min="0" step="0.01" oninput="markDirty()"></td></tr>
+          <tr><td class="cell-label">5 ft</td><td><input type="number" id="cfg-vn-postH-5-white" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-vn-postH-5-tan" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-vn-postH-5-gray" min="0" step="0.01" oninput="markDirty()"></td></tr>
+          <tr><td class="cell-label">6 ft</td><td><input type="number" id="cfg-vn-postH-6-white" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-vn-postH-6-tan" min="0" step="0.01" oninput="markDirty()"></td><td><input type="number" id="cfg-vn-postH-6-gray" min="0" step="0.01" oninput="markDirty()"></td></tr>
+        </tbody>
+      </table>
     </div>
+    <div class="card-row" style="margin-top:8px">
+      <div class="field"><label>Default fallback Post Cost ($)</label><input type="number" id="cfg-vn-postCost" min="0" step="0.01" oninput="markDirty()" style="max-width:120px"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Legacy Per-Foot Pricing</div>
+    <div class="card-desc">Used as a fallback when the panel prices above are $0 (legacy / pre-panel projects).</div>
     <div class="table-scroll" style="margin-top:12px">
       <table class="data-table">
         <thead><tr><th>Height (ft)</th><th>Fallback $/ft</th></tr></thead>
@@ -2237,6 +2252,20 @@ function populateAll() {
   if (vn.base) { setVal('cfg-vn-base-4', vn.base['4']); setVal('cfg-vn-base-5', vn.base['5']); setVal('cfg-vn-base-6', vn.base['6']); }
   if (vn.colorMod) { setVal('cfg-vn-color-white', vn.colorMod.white); setVal('cfg-vn-color-tan', vn.colorMod.tan); setVal('cfg-vn-color-gray', vn.colorMod.gray); }
   setVal('cfg-vn-postCost', vn.postCost);
+  // Per-height + per-color post cost matrix.  Empty inputs fall back to
+  // vn.postCost in the customer engine.
+  if (vn.postCostByHeight) {
+    ['4','5','6'].forEach(h => {
+      const row = vn.postCostByHeight[h];
+      if (row && typeof row === 'object') {
+        ['white','tan','gray'].forEach(c => setVal('cfg-vn-postH-' + h + '-' + c, row[c]));
+      } else if (typeof row === 'number') {
+        // Legacy: single number per height — drop into the white column so
+        // the operator sees their old value, can fan out to other colors.
+        setVal('cfg-vn-postH-' + h + '-white', row);
+      }
+    });
+  }
   if (vn.panel) { setVal('cfg-vn-panel-4', vn.panel['4']); setVal('cfg-vn-panel-5', vn.panel['5']); setVal('cfg-vn-panel-6', vn.panel['6']); }
   if (vn.panelColorMod) { setVal('cfg-vn-panelColor-white', vn.panelColorMod.white); setVal('cfg-vn-panelColor-tan', vn.panelColorMod.tan); setVal('cfg-vn-panelColor-gray', vn.panelColorMod.gray); }
   setVal('cfg-vn-panelWidth', vn.panelWidth || 8);
@@ -2556,6 +2585,15 @@ function collectAll() {
   if (!vnc.colorMod) vnc.colorMod = {};
   vnc.colorMod.white = getNum('cfg-vn-color-white'); vnc.colorMod.tan = getNum('cfg-vn-color-tan'); vnc.colorMod.gray = getNum('cfg-vn-color-gray');
   vnc.postCost = getNum('cfg-vn-postCost');
+  // Per-height + per-color post cost matrix.  Empty cells stay 0 so the
+  // customer engine knows to fall back to vnc.postCost.
+  if (!vnc.postCostByHeight) vnc.postCostByHeight = {};
+  ['4','5','6'].forEach(h => {
+    if (!vnc.postCostByHeight[h] || typeof vnc.postCostByHeight[h] !== 'object') vnc.postCostByHeight[h] = {};
+    ['white','tan','gray'].forEach(c => {
+      vnc.postCostByHeight[h][c] = getNum('cfg-vn-postH-' + h + '-' + c);
+    });
+  });
   if (!vnc.panel) vnc.panel = {};
   vnc.panel['4'] = getNum('cfg-vn-panel-4'); vnc.panel['5'] = getNum('cfg-vn-panel-5'); vnc.panel['6'] = getNum('cfg-vn-panel-6');
   if (!vnc.panelColorMod) vnc.panelColorMod = {};

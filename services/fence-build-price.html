@@ -3079,8 +3079,27 @@
                 return postCount * ((wwPrice !== null ? wwPrice : cfgWeldedWire().postCost) + getPostInstallCost('weldedWire', style));
             }
             if (style.fenceType === 'vinyl') {
-                const vnPrice = getPostLengthPrice('vinyl', h, style);
-                return postCount * (vnPrice !== null ? vnPrice : cfgVinyl().postCost);
+                const vn = cfgVinyl();
+                const vnColor = style.vinylColor || 'white';
+                // Priority order:
+                //  1. Admin's per-height + per-color matrix (vinyl card)
+                //  2. Same matrix with a single number per height (legacy)
+                //  3. getPostLengthPrice() — Post Hardware section table
+                //  4. flat vn.postCost fallback
+                let perPost = null;
+                const byH = vn.postCostByHeight || {};
+                const row = byH[h];
+                if (row && typeof row === 'object' && typeof row[vnColor] === 'number' && row[vnColor] > 0) {
+                    perPost = row[vnColor];
+                } else if (typeof row === 'number' && row > 0) {
+                    perPost = row;
+                }
+                if (perPost == null) {
+                    const vnPrice = getPostLengthPrice('vinyl', h, style);
+                    if (typeof vnPrice === 'number' && vnPrice > 0) perPost = vnPrice;
+                }
+                if (perPost == null) perPost = vn.postCost || 0;
+                return postCount * perPost;
             }
             const pt = style.woodPostType || 'postmaster';
             const recipe = cfgWoodBuild();
