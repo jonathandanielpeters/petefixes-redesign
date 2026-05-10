@@ -11002,6 +11002,27 @@ function encodeAdminConfigForIframe() {
     // per-cell source metadata), the iframe src got truncated and the
     // Build & Price tool rendered as a blank page.  Primary-store prices
     // stay at top-level boards where the engine reads them.
+    // Defensive hoist: if the primary store's lumber data wound up in
+    // byStore (e.g., a store reorder moved it there with the new primary
+    // showing as empty), copy byStore[primaryKey] back up to top-level
+    // before stripping byStore.  Otherwise the customer engine would see
+    // empty boards on a dim even though the primary had data.
+    const primaryKey = (config.scanner && Array.isArray(config.scanner.stores) && config.scanner.stores[0] && config.scanner.stores[0].key) || null;
+    if (primaryKey && cfg.materialPricing && cfg.materialPricing.lumber) {
+      ['pt', 'cedar'].forEach(t => {
+        const lumber = cfg.materialPricing.lumber[t];
+        if (!lumber || typeof lumber !== 'object') return;
+        Object.keys(lumber).forEach(dim => {
+          const d = lumber[dim];
+          if (!d || typeof d !== 'object') return;
+          const topHasPrices = d.boards && Object.keys(d.boards).length > 0;
+          if (!topHasPrices && d.byStore && d.byStore[primaryKey]) {
+            d.boards = d.byStore[primaryKey].boards || {};
+            d.sources = d.byStore[primaryKey].sources || {};
+          }
+        });
+      });
+    }
     if (cfg.scanner) delete cfg.scanner;
     if (cfg.materialPricing && cfg.materialPricing.lumber) {
       ['pt', 'cedar'].forEach(t => {
