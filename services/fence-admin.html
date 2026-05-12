@@ -7773,9 +7773,34 @@ function renderCl3PerFoot(recipe) {
         const stickFt = (o.stickLengthFt > 0) ? o.stickLengthFt : (parsedFt || 21);
         const railPerFtG = railG ? railG / stickFt : null;
         const railPerFtB = railB ? railB / stickFt : null;
-        const clampG = cl3PriceFor(o.clampGalv);
-        const clampB = cl3PriceFor(o.clampBlack);
         const cpp = (o.clampsPerPost != null && o.clampsPerPost > 0) ? o.clampsPerPost : 1;
+        const tpp = (o.tiesPerPost != null && o.tiesPerPost > 0) ? o.tiesPerPost : 0;
+        const npp = (o.nbPerPost != null && o.nbPerPost > 0) ? o.nbPerPost : 0;
+        const extras = Array.isArray(o.extras) ? o.extras : [];
+
+        // Sub-row helper: a labelled control pair.  Keeps the grid tidy
+        // across the four data rows (clamp, tie, n&b, extras).
+        const labelCell = (txt) => '<span style="color:var(--gray-500);font-weight:600">' + txt + '</span>';
+        const numCell = (val, field, ph) =>
+          '<input type="number" min="0" step="0.5" value="' + (val || '') + '" placeholder="' + (ph || '') + '" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'' + field + '\',+this.value || 0)" style="width:60px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">';
+
+        // Extras: any pricelist item, billed per-post or per-foot
+        let extrasRows = '';
+        extras.forEach(ex => {
+          extrasRows +=
+            '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 60px 80px 28px;gap:6px;align-items:center;padding:3px 0">' +
+              '<input type="text" value="' + clEscAttr(ex.label || '') + '" placeholder="Label (e.g. Strap)" oninput="updCl3PfRailExtra(\'' + o.id + '\',\'' + ex.id + '\',\'label\',this.value)" style="padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">' +
+              cl3PickerHtml(ex.galv, null, 'galvanized', "updCl3PfRailExtra('" + o.id + "','" + ex.id + "','galv',?)", 'Galv extra — ' + (ex.label || '(unlabeled)')) +
+              cl3PickerHtml(ex.black, null, 'black', "updCl3PfRailExtra('" + o.id + "','" + ex.id + "','black',?)", 'Black extra — ' + (ex.label || '(unlabeled)')) +
+              '<input type="number" min="0" step="0.5" value="' + (ex.qty || 0) + '" oninput="updCl3PfRailExtra(\'' + o.id + '\',\'' + ex.id + '\',\'qty\',+this.value || 0)" style="text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px" title="Quantity per post or per foot (see right-hand selector)">' +
+              '<select onchange="updCl3PfRailExtra(\'' + o.id + '\',\'' + ex.id + '\',\'per\',this.value)" style="padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;background:#fff">' +
+                '<option value="post"' + ((ex.per || 'post') === 'post' ? ' selected' : '') + '>/ post</option>' +
+                '<option value="foot"' + (ex.per === 'foot' ? ' selected' : '') + '>/ foot</option>' +
+              '</select>' +
+              '<button class="btn btn-sm" onclick="removeCl3PfRailExtra(\'' + o.id + '\',\'' + ex.id + '\')" title="Remove this extra">×</button>' +
+            '</div>';
+        });
+
         rows +=
           '<tr style="border-top:2px solid rgba(200,165,90,0.4);background:rgba(200,165,90,0.06)">' +
             '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-pf-' + kind + '" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3PfDefault(\'' + kind + '\',\'' + o.id + '\')"></td>' +
@@ -7793,16 +7818,42 @@ function renderCl3PerFoot(recipe) {
           '</tr>' +
           '<tr style="background:rgba(200,165,90,0.06)">' +
             '<td colspan="6" style="padding:0 8px 8px 8px;border-bottom:1px solid var(--gray-100)">' +
+              // Row A — stick length + boulevard clamps
               '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px">' +
-                '<span style="color:var(--gray-500);font-weight:600">Stick (ft)</span>' +
-                '<input type="number" min="0" step="0.5" value="' + (o.stickLengthFt || '') + '" placeholder="' + (parsedFt || 21) + '" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'stickLengthFt\',+this.value || 0)" style="width:60px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">' +
-                '<span style="color:var(--gray-500);font-weight:600">Clamp galv</span>' +
-                cl3PickerHtml(o.clampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv boulevard clamp — ' + (o.label || '(unlabeled)')) +
-                '<span style="color:var(--gray-500);font-weight:600">Clamp black</span>' +
-                cl3PickerHtml(o.clampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black boulevard clamp — ' + (o.label || '(unlabeled)')) +
-                '<span style="color:var(--gray-500);font-weight:600">Clamps / post</span>' +
-                '<input type="number" min="0" step="0.5" value="' + cpp + '" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'clampsPerPost\',+this.value || 0)" style="width:60px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">' +
-                '<span style="grid-column:3 / span 4;color:var(--gray-500);font-size:9px;text-align:right">Clamps add ' + cl3FmtPrice(clampG) + ' (G) / ' + cl3FmtPrice(clampB) + ' (B) × ' + cpp + ' per post — billed against the project\'s post count, not per linear ft.</span>' +
+                labelCell('Stick (ft)') + numCell(o.stickLengthFt, 'stickLengthFt', parsedFt || 21) +
+                labelCell('Clamp galv') + cl3PickerHtml(o.clampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv boulevard clamp — ' + (o.label || '(unlabeled)')) +
+                labelCell('Clamp black') + cl3PickerHtml(o.clampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black boulevard clamp — ' + (o.label || '(unlabeled)')) +
+                labelCell('Clamps / post') + numCell(cpp, 'clampsPerPost', 1) +
+                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Clamps × clamps/post × (main + line) posts</span>' +
+              '</div>' +
+              // Row B — fence ties
+              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                labelCell('Tie galv') + cl3PickerHtml(o.tieGalv, /Fence Tie/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','tieGalv',?)", 'Galv fence tie — ' + (o.label || '(unlabeled)')) +
+                labelCell('Tie black') + cl3PickerHtml(o.tieBlack, /Fence Tie/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','tieBlack',?)", 'Black fence tie — ' + (o.label || '(unlabeled)')) +
+                labelCell('Ties / post') + numCell(tpp, 'tiesPerPost', 4) +
+                '<span style="grid-column:5 / span 2"></span>' +
+                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Ties × ties/post × (main + line) posts</span>' +
+              '</div>' +
+              // Row C — nuts & bolts
+              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                labelCell('N&amp;B galv') + cl3PickerHtml(o.nbGalv, /Nuts & Bolts/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','nbGalv',?)", 'Galv nuts & bolts — ' + (o.label || '(unlabeled)')) +
+                labelCell('N&amp;B black') + cl3PickerHtml(o.nbBlack, /Nuts & Bolts/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','nbBlack',?)", 'Black nuts & bolts — ' + (o.label || '(unlabeled)')) +
+                labelCell('N&amp;B / post') + numCell(npp, 'nbPerPost', 4) +
+                '<span style="grid-column:5 / span 2"></span>' +
+                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Nuts &amp; bolts × per-post × (main + line) posts</span>' +
+              '</div>' +
+              // Row D — generic extras: any pricelist item, per post or per foot
+              '<div style="padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+                  '<span style="color:var(--gray-500);font-weight:600;font-size:10px">Additional parts</span>' +
+                  '<button class="btn btn-sm" style="font-size:10px;padding:2px 8px" onclick="addCl3PfRailExtra(\'' + o.id + '\')" title="Add any pricelist item — billed per post or per linear foot">+ Add extra part</button>' +
+                '</div>' +
+                (extras.length > 0
+                  ? ('<div style="display:grid;grid-template-columns:1fr 1fr 1fr 60px 80px 28px;gap:6px;padding:0 0 4px 0;font-size:9px;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.05em;font-weight:700">' +
+                      '<span>Label</span><span>Galv pick</span><span>Black pick</span><span style="text-align:right">Qty</span><span>Bill per</span><span></span>' +
+                    '</div>' + extrasRows)
+                  : '<div style="font-size:10px;color:var(--gray-400);font-style:italic">No extras configured. Click <em>+ Add extra part</em> to attach any pricelist material (qty per post or per foot).</div>'
+                ) +
               '</div>' +
             '</td>' +
           '</tr>';
@@ -7904,20 +7955,45 @@ function _cl3PerFootTotalFooter(recipe) {
     }
     if (bw) {
       if (bw.kind === 'railClamps') {
-        // Rail portion is per-foot (unit ÷ stick length); clamps are
-        // billed per-post in the customer engine, not per-foot — so the
-        // footer notes them but doesn't add them to the per-ft total.
+        // Rail portion is per-foot (unit ÷ stick length); clamps + ties +
+        // N&B + per-post extras bill per-post in the customer engine, not
+        // per-foot — so the footer lists them but doesn't add them to the
+        // per-ft total.  Per-foot extras DO get added.
         const railUnit = cl3PriceFor(pick(bw.galv, bw.black)) || 0;
         const m = ensureClMaster();
         const railIt = m.items.find(x => x.itemCode === (bw.galv || bw.black));
         const parsedFt = railIt ? parseFloat((resolveClItemAssignment(railIt).variantSize || '').replace(/'/g, '')) : NaN;
         const stickFt2 = (bw.stickLengthFt > 0) ? bw.stickLengthFt : (parsedFt || 21);
         const railPerFt = stickFt2 > 0 ? railUnit / stickFt2 : 0;
+        rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom rail (÷ ' + stickFt2 + "' stick)</td><td style=\"padding:2px 6px;text-align:right\">" + cl3FmtPrice(railPerFt) + '/ft</td></tr>';
+        total += railPerFt;
         const clampUnit = cl3PriceFor(pick(bw.clampGalv, bw.clampBlack)) || 0;
         const cpp2 = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
-        rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom rail (÷ ' + stickFt2 + "' stick)</td><td style=\"padding:2px 6px;text-align:right\">" + cl3FmtPrice(railPerFt) + '/ft</td></tr>';
-        rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Boulevard clamps</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(clampUnit * cpp2) + '/post</td></tr>';
-        total += railPerFt;
+        if (clampUnit > 0) {
+          rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Boulevard clamps</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(clampUnit * cpp2) + '/post</td></tr>';
+        }
+        const tieUnit = cl3PriceFor(pick(bw.tieGalv, bw.tieBlack)) || 0;
+        const tpp2 = (bw.tiesPerPost != null && bw.tiesPerPost > 0) ? bw.tiesPerPost : 0;
+        if (tieUnit > 0 && tpp2 > 0) {
+          rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Fence ties (×' + tpp2 + ')</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(tieUnit * tpp2) + '/post</td></tr>';
+        }
+        const nbUnit = cl3PriceFor(pick(bw.nbGalv, bw.nbBlack)) || 0;
+        const npp2 = (bw.nbPerPost != null && bw.nbPerPost > 0) ? bw.nbPerPost : 0;
+        if (nbUnit > 0 && npp2 > 0) {
+          rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Nuts &amp; bolts (×' + npp2 + ')</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(nbUnit * npp2) + '/post</td></tr>';
+        }
+        (bw.extras || []).forEach(ex => {
+          const exUnit = cl3PriceFor(pick(ex.galv, ex.black)) || 0;
+          const exQty = ex.qty || 0;
+          if (exUnit <= 0 || exQty <= 0) return;
+          if (ex.per === 'foot') {
+            const perFt = exUnit * exQty;
+            rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ ' + clEscAttr(ex.label || 'Extra') + '</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(perFt) + '/ft</td></tr>';
+            total += perFt;
+          } else {
+            rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ ' + clEscAttr(ex.label || 'Extra') + ' (×' + exQty + ')</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(exUnit * exQty) + '/post</td></tr>';
+          }
+        });
       } else {
         const u = cl3PriceFor(pick(bw.galv, bw.black)) || 0;
         rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom wire</td><td style="padding:2px 6px;text-align:right">' + cl3FmtPrice(u) + '/ft</td></tr>';
@@ -8054,8 +8130,9 @@ function addCl3Pf(kind) {
 }
 function removeCl3Pf(kind, id) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const wasDef = list.find(o => o.id === id)?.isDefault; r.perFoot[kind + 'Options'] = list.filter(o => o.id !== id); if (wasDef && r.perFoot[kind + 'Options'][0]) r.perFoot[kind + 'Options'][0].isDefault = true; markDirty(); renderClRecipesV3(); }
 // Add a new bottom-wire option pre-shaped as a "Rail + Boulevard Clamps"
-// combo.  Pre-picks a 21' Top Rail SKU (galv + black) and a Boulevard
-// Clamp SKU if available so the admin starts from a working baseline.
+// combo.  Pre-picks a 21' Top Rail SKU, a Boulevard Clamp SKU, a Fence
+// Tie SKU and a Nuts & Bolts SKU so the admin starts from a working
+// baseline — they just need to flip the radio to mark it as default.
 function addCl3PfBottomRailClamps() {
   const r = _cl3CurRecipe(); if (!r) return;
   const m = ensureClMaster();
@@ -8068,17 +8145,18 @@ function addCl3PfBottomRailClamps() {
   railCandidatesG.sort((x, y) => {
     const xLen = parseFloat((resolveClItemAssignment(x).variantSize || '').replace(/'/g,'')) || 0;
     const yLen = parseFloat((resolveClItemAssignment(y).variantSize || '').replace(/'/g,'')) || 0;
-    // Prefer 21' first, then 10', then anything else.
     const rank = (n) => n === 21 ? 0 : (n === 10 ? 1 : 2);
     return rank(xLen) - rank(yLen);
   });
   const railG = railCandidatesG[0];
-  // Pick a boulevard clamp SKU (galv + black counterpart).
-  const clampG = m.items.find(it => {
+  const findG = (matMatcher) => m.items.find(it => {
     if (it.showToCustomer === false) return false;
     const a = resolveClItemAssignment(it);
-    return /Boulevard Clamp/.test(a.materialName || '') && a.color === 'galvanized';
+    return matMatcher(a.materialName || '') && a.color === 'galvanized';
   });
+  const clampG = findG(n => /Boulevard Clamp/.test(n));
+  const tieG = findG(n => n === 'Fence Tie');
+  const nbG = findG(n => n === 'Nuts & Bolts');
 
   const o = blankCl3PerFootOpt('bottomWire');
   o.kind = 'railClamps';
@@ -8094,11 +8172,55 @@ function addCl3PfBottomRailClamps() {
     o.clampBlack = _cl3BlackCounterpart(clampG.itemCode);
   }
   o.clampsPerPost = 1;
+  if (tieG) {
+    o.tieGalv = tieG.itemCode;
+    o.tieBlack = _cl3BlackCounterpart(tieG.itemCode);
+  }
+  o.tiesPerPost = 4;
+  if (nbG) {
+    o.nbGalv = nbG.itemCode;
+    o.nbBlack = _cl3BlackCounterpart(nbG.itemCode);
+  }
+  o.nbPerPost = 4;
+  o.extras = [];
+
   if (!r.perFoot.bottomWireOptions) r.perFoot.bottomWireOptions = [];
   if (r.perFoot.bottomWireOptions.length === 0) o.isDefault = true;
   r.perFoot.bottomWireOptions.push(o);
   markDirty();
   renderClRecipesV3();
+}
+
+// ── Generic "extras" on a railClamps bottom-wire option ──
+// Each extra is { id, label, galv, black, qty, per: 'post' | 'foot' }.
+// Any pricelist material can be picked (cl3PickerHtml with null pattern).
+function _findRailClampsOpt(optId) {
+  const r = _cl3CurRecipe(); if (!r) return null;
+  const list = (r.perFoot && r.perFoot.bottomWireOptions) || [];
+  return list.find(o => o.id === optId && o.kind === 'railClamps') || null;
+}
+function addCl3PfRailExtra(optId) {
+  const o = _findRailClampsOpt(optId); if (!o) return;
+  if (!Array.isArray(o.extras)) o.extras = [];
+  o.extras.push({ id: cl3NewId('extra'), label: '', galv: '', black: '', qty: 1, per: 'post' });
+  markDirty();
+  renderClRecipesV3();
+}
+function removeCl3PfRailExtra(optId, extraId) {
+  const o = _findRailClampsOpt(optId); if (!o) return;
+  o.extras = (o.extras || []).filter(x => x.id !== extraId);
+  markDirty();
+  renderClRecipesV3();
+}
+function updCl3PfRailExtra(optId, extraId, field, value) {
+  const o = _findRailClampsOpt(optId); if (!o) return;
+  const ex = (o.extras || []).find(x => x.id === extraId);
+  if (!ex) return;
+  ex[field] = value;
+  markDirty();
+  // 'label' alone doesn't change the price preview, so skip re-render
+  // to avoid losing focus mid-typing.
+  if (field !== 'label') renderClRecipesV3();
 }
 function setCl3PfDefault(kind, id) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[kind + 'Options'].forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
 function updCl3Pf(kind, id, field, value) {

@@ -7895,7 +7895,8 @@
                 const bw = def(pf.bottomWireOptions, 'perFoot.bottomWireOptions');
                 if (bw && groupFt > 0) {
                     if (bw.kind === 'railClamps') {
-                        // Bottom rail (whole sticks) + boulevard clamps per post
+                        const totalPostsInGroup = mainCount + linePostCount;
+                        // Bottom rail (whole sticks)
                         const railCode = pickColor(bw.galv, bw.black, color);
                         const railItem = itemByCode[railCode];
                         if (railItem) {
@@ -7903,10 +7904,30 @@
                             const railStickFt = (bw.stickLengthFt > 0 ? bw.stickLengthFt : parsedRailFt) || 21;
                             add(railCode, Math.ceil(groupFt / railStickFt));
                         }
+                        // Boulevard clamps per post
                         const clampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
-                        const totalPostsInGroup = mainCount + linePostCount;
                         const cppEff = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
                         add(clampCode, cppEff * totalPostsInGroup);
+                        // Fence ties — per post
+                        if (bw.tiesPerPost > 0) {
+                            add(pickColor(bw.tieGalv, bw.tieBlack, color), bw.tiesPerPost * totalPostsInGroup);
+                        }
+                        // Nuts & bolts — per post
+                        if (bw.nbPerPost > 0) {
+                            add(pickColor(bw.nbGalv, bw.nbBlack, color), bw.nbPerPost * totalPostsInGroup);
+                        }
+                        // Generic extras
+                        (bw.extras || []).forEach(function(ex) {
+                            const qty = ex.qty || 0;
+                            if (qty <= 0) return;
+                            const code = pickColor(ex.galv, ex.black, color);
+                            if (!code) return;
+                            if (ex.per === 'foot') {
+                                add(code, Math.ceil(qty * groupFt));
+                            } else {
+                                add(code, qty * totalPostsInGroup);
+                            }
+                        });
                     } else {
                         add(pickColor(bw.galv, bw.black, color), groupFt);
                     }
@@ -8222,6 +8243,7 @@
                 const bw = def(pf.bottomWireOptions, 'perFoot.bottomWireOptions');
                 if (bw && groupFt > 0) {
                     if (bw.kind === 'railClamps') {
+                        const totalPostsInGroup = (mainCount || 0) + (linePostCount || 0);
                         // Bottom rail (per-stick: ceil(ft ÷ stickLength) × unit)
                         const railCode = pickColor(bw.galv, bw.black, color);
                         const railItem = itemByCode[railCode];
@@ -8231,13 +8253,32 @@
                             const railSticks = railStickFt > 0 ? Math.ceil(groupFt / railStickFt) : 0;
                             materialCost += railSticks * (railItem.priceAfterTax || 0);
                         }
-                        // Boulevard clamps land on every post in the group
-                        // (main posts + line posts).  clampsPerPost defaults
-                        // to 1 if absent/zero.
+                        // Boulevard clamps on every post.  clampsPerPost defaults to 1.
                         const clampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
-                        const totalPostsInGroup = (mainCount || 0) + (linePostCount || 0);
                         const cppEff = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
                         materialCost += priceOf(clampCode) * cppEff * totalPostsInGroup;
+                        // Fence ties — per post
+                        if (bw.tiesPerPost > 0) {
+                            const tieCode = pickColor(bw.tieGalv, bw.tieBlack, color);
+                            materialCost += priceOf(tieCode) * bw.tiesPerPost * totalPostsInGroup;
+                        }
+                        // Nuts & bolts — per post
+                        if (bw.nbPerPost > 0) {
+                            const nbCode = pickColor(bw.nbGalv, bw.nbBlack, color);
+                            materialCost += priceOf(nbCode) * bw.nbPerPost * totalPostsInGroup;
+                        }
+                        // Generic extras — per post or per linear foot
+                        (bw.extras || []).forEach(function(ex) {
+                            const exCode = pickColor(ex.galv, ex.black, color);
+                            const unit = priceOf(exCode);
+                            const qty = ex.qty || 0;
+                            if (unit <= 0 || qty <= 0) return;
+                            if (ex.per === 'foot') {
+                                materialCost += unit * qty * groupFt;
+                            } else {
+                                materialCost += unit * qty * totalPostsInGroup;
+                            }
+                        });
                     } else {
                         materialCost += priceOf(pickColor(bw.galv, bw.black, color)) * groupFt;
                     }
