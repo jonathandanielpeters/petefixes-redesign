@@ -7901,7 +7901,12 @@ function renderCl3PerFoot(recipe) {
         const stickFt = (o.stickLengthFt > 0) ? o.stickLengthFt : (parsedFt || 21);
         const railPerFtG = railG ? railG / stickFt : null;
         const railPerFtB = railB ? railB / stickFt : null;
+        // Line clamps (intermediate posts) — keeps the original .clamp* fields.
         const cpp = (o.clampsPerPost != null && o.clampsPerPost > 0) ? o.clampsPerPost : 1;
+        // Main clamps (end + corner posts) — typically a different / larger
+        // size.  Falls back to the line clamp pick if the operator hasn't
+        // split them out yet (back-compat with the old single-clamp data).
+        const mainCpp = (o.mainClampsPerPost != null && o.mainClampsPerPost > 0) ? o.mainClampsPerPost : cpp;
         const tpp = (o.tiesPerPost != null && o.tiesPerPost > 0) ? o.tiesPerPost : 0;
         const npp = (o.nbPerPost != null && o.nbPerPost > 0) ? o.nbPerPost : 0;
         const extras = Array.isArray(o.extras) ? o.extras : [];
@@ -7946,13 +7951,24 @@ function renderCl3PerFoot(recipe) {
           '</tr>' +
           '<tr style="background:rgba(200,165,90,0.06)">' +
             '<td colspan="6" style="padding:0 8px 8px 8px;border-bottom:1px solid var(--gray-100)">' +
-              // Row A — stick length + boulevard clamps
+              // Row A — stick length, then line-post boulevard clamps
               '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px">' +
                 labelCell('Stick (ft)') + numCell(o.stickLengthFt, 'stickLengthFt', parsedFt || 21) +
-                labelCell('Clamp galv') + cl3PickerHtml(o.clampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv boulevard clamp — ' + (o.label || '(unlabeled)')) +
-                labelCell('Clamp black') + cl3PickerHtml(o.clampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black boulevard clamp — ' + (o.label || '(unlabeled)')) +
-                labelCell('Clamps / post') + numCell(cpp, 'clampsPerPost', 1) +
-                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Clamps × clamps/post × (main + line) posts</span>' +
+                '<span style="grid-column:3 / span 4"></span>' +
+              '</div>' +
+              // Row A2 — line-post clamp (intermediate posts along the run)
+              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                labelCell('Line clamp G') + cl3PickerHtml(o.clampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv line-post boulevard clamp — ' + (o.label || '(unlabeled)')) +
+                labelCell('Line clamp B') + cl3PickerHtml(o.clampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black line-post boulevard clamp — ' + (o.label || '(unlabeled)')) +
+                labelCell('Per line post') + numCell(cpp, 'clampsPerPost', 1) +
+                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Line clamp × per-line-post × line-post count</span>' +
+              '</div>' +
+              // Row A3 — main-post clamp (end + corner posts; usually a bigger size)
+              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                labelCell('Main clamp G') + cl3PickerHtml(o.mainClampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','mainClampGalv',?)", 'Galv main-post boulevard clamp (end + corner) — ' + (o.label || '(unlabeled)')) +
+                labelCell('Main clamp B') + cl3PickerHtml(o.mainClampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','mainClampBlack',?)", 'Black main-post boulevard clamp (end + corner) — ' + (o.label || '(unlabeled)')) +
+                labelCell('Per main post') + numCell(o.mainClampsPerPost, 'mainClampsPerPost', cpp) +
+                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Larger clamp typically used at end / corner posts. Falls back to the line clamp pick if left blank.</span>' +
               '</div>' +
               // Row B — fence ties
               '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
@@ -8095,10 +8111,20 @@ function _cl3PerFootTotalFooter(recipe) {
         const railPerFt = stickFt2 > 0 ? railUnit / stickFt2 : 0;
         rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom rail (÷ ' + stickFt2 + "' stick)</td><td style=\"padding:2px 6px;text-align:right\">" + cl3FmtPrice(railPerFt) + '/ft</td></tr>';
         total += railPerFt;
-        const clampUnit = cl3PriceFor(pick(bw.clampGalv, bw.clampBlack)) || 0;
+        // Line-post clamps + main-post clamps (separate sizes).  Footer
+        // lists each so the operator can sanity-check per-post costs.
+        const lineClampUnit = cl3PriceFor(pick(bw.clampGalv, bw.clampBlack)) || 0;
         const cpp2 = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
-        if (clampUnit > 0) {
-          rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Boulevard clamps</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(clampUnit * cpp2) + '/post</td></tr>';
+        if (lineClampUnit > 0) {
+          rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Line-post clamps (×' + cpp2 + ')</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(lineClampUnit * cpp2) + '/line post</td></tr>';
+        }
+        const mainClampCodeG = bw.mainClampGalv || bw.clampGalv;
+        const mainClampCodeB = bw.mainClampBlack || bw.clampBlack;
+        const mainClampUnit = cl3PriceFor(pick(mainClampCodeG, mainClampCodeB)) || 0;
+        const mcpp2 = (bw.mainClampsPerPost != null && bw.mainClampsPerPost > 0) ? bw.mainClampsPerPost : cpp2;
+        if (mainClampUnit > 0) {
+          const mainFallback = !bw.mainClampGalv && !bw.mainClampBlack;
+          rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Main-post clamps (×' + mcpp2 + ')' + (mainFallback ? ' <span style="color:var(--gray-400)">[same as line]</span>' : '') + '</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(mainClampUnit * mcpp2) + '/main post</td></tr>';
         }
         const tieUnit = cl3PriceFor(pick(bw.tieGalv, bw.tieBlack)) || 0;
         const tpp2 = (bw.tiesPerPost != null && bw.tiesPerPost > 0) ? bw.tiesPerPost : 0;
@@ -8298,8 +8324,14 @@ function addCl3PfBottomRailClamps() {
   if (clampG) {
     o.clampGalv = clampG.itemCode;
     o.clampBlack = _cl3BlackCounterpart(clampG.itemCode);
+    // Seed main-post clamps with the same SKU as a sensible starting
+    // point — operator changes the main pick to the larger end/corner
+    // size after-the-fact via the picker.
+    o.mainClampGalv = clampG.itemCode;
+    o.mainClampBlack = _cl3BlackCounterpart(clampG.itemCode);
   }
   o.clampsPerPost = 1;
+  o.mainClampsPerPost = 1;
   if (tieG) {
     o.tieGalv = tieG.itemCode;
     o.tieBlack = _cl3BlackCounterpart(tieG.itemCode);

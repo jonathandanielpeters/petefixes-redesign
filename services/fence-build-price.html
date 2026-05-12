@@ -7904,10 +7904,16 @@
                             const railStickFt = (bw.stickLengthFt > 0 ? bw.stickLengthFt : parsedRailFt) || 21;
                             add(railCode, Math.ceil(groupFt / railStickFt));
                         }
-                        // Boulevard clamps per post
-                        const clampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
-                        const cppEff = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
-                        add(clampCode, cppEff * totalPostsInGroup);
+                        // Boulevard clamps split by post type — see cost calc.
+                        const lineCpp = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
+                        if (linePostCount > 0) {
+                            add(pickColor(bw.clampGalv, bw.clampBlack, color), lineCpp * linePostCount);
+                        }
+                        if (mainCount > 0) {
+                            const mainClampCode = pickColor(bw.mainClampGalv || bw.clampGalv, bw.mainClampBlack || bw.clampBlack, color);
+                            const mainCpp = (bw.mainClampsPerPost != null && bw.mainClampsPerPost > 0) ? bw.mainClampsPerPost : lineCpp;
+                            add(mainClampCode, mainCpp * mainCount);
+                        }
                         // Fence ties — per post
                         if (bw.tiesPerPost > 0) {
                             add(pickColor(bw.tieGalv, bw.tieBlack, color), bw.tiesPerPost * totalPostsInGroup);
@@ -8253,10 +8259,20 @@
                             const railSticks = railStickFt > 0 ? Math.ceil(groupFt / railStickFt) : 0;
                             materialCost += railSticks * (railItem.priceAfterTax || 0);
                         }
-                        // Boulevard clamps on every post.  clampsPerPost defaults to 1.
-                        const clampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
-                        const cppEff = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
-                        materialCost += priceOf(clampCode) * cppEff * totalPostsInGroup;
+                        // Boulevard clamps split by post type: line posts use
+                        // the original clamp pick; main posts (end + corner)
+                        // typically use a bigger size — falls back to the line
+                        // clamp pick for back-compat with older recipe data.
+                        const lineCpp = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
+                        if (linePostCount > 0) {
+                            const lineClampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
+                            materialCost += priceOf(lineClampCode) * lineCpp * linePostCount;
+                        }
+                        if (mainCount > 0) {
+                            const mainClampCode = pickColor(bw.mainClampGalv || bw.clampGalv, bw.mainClampBlack || bw.clampBlack, color);
+                            const mainCpp = (bw.mainClampsPerPost != null && bw.mainClampsPerPost > 0) ? bw.mainClampsPerPost : lineCpp;
+                            materialCost += priceOf(mainClampCode) * mainCpp * mainCount;
+                        }
                         // Fence ties — per post
                         if (bw.tiesPerPost > 0) {
                             const tieCode = pickColor(bw.tieGalv, bw.tieBlack, color);
