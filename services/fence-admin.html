@@ -6994,7 +6994,10 @@ function cl3PickerItems(materialPattern, color) {
     if (color && a.color !== color) return false;
     if (typeof materialPattern === 'string') return a.materialName === materialPattern;
     if (materialPattern instanceof RegExp) return materialPattern.test(a.materialName);
-    if (typeof materialPattern === 'function') return materialPattern(a.materialName);
+    // Function callbacks receive (materialName, item, assignment) so they
+    // can filter on variantSize / diameter / anything else on the record
+    // — useful for matching e.g. a Boulevard Clamp to a post diameter.
+    if (typeof materialPattern === 'function') return materialPattern(a.materialName, it, a);
     return true;
   });
   out.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
@@ -7882,6 +7885,24 @@ function updCl3Line(id, field, value) { const r = _cl3CurRecipe(); if (!r) retur
 // (item.priceAfterTax / stickLengthFt) × totalFt for proportional per-ft
 // cost, instead of the old whole-stick ceil math.
 function renderCl3PerFoot(recipe) {
+  // Resolve the recipe's default main and line post diameters so the
+  // boulevard-clamp pickers can be constrained to clamps of that size.
+  // A clamp variant size is keyed off the same diameter string the post
+  // tubing uses (e.g. '2-3/8"'), so an exact-string match is enough.
+  const _cl3PostDiameter = (opt) => {
+    if (!opt) return null;
+    const code = opt.galv || opt.black;
+    if (!code) return null;
+    const m = ensureClMaster();
+    const it = m.items.find(x => x.itemCode === code);
+    if (!it) return null;
+    const a = resolveClItemAssignment(it);
+    return a.variantSize || null;
+  };
+  const _defPost = (list) => (list || []).find(o => o.isDefault) || (list || [])[0];
+  const _mainPostDiameter = _cl3PostDiameter(_defPost(recipe.mainAssembly && recipe.mainAssembly.postOptions));
+  const _linePostDiameter = _cl3PostDiameter(_defPost(recipe.linePostAssembly && recipe.linePostAssembly.postOptions));
+
   function renderOptList(kind, opts, materialPattern, label, descr) {
     const isTopRail = kind === 'topRail';
     const isBottomWire = kind === 'bottomWire';
@@ -7956,20 +7977,43 @@ function renderCl3PerFoot(recipe) {
                 labelCell('Stick (ft)') + numCell(o.stickLengthFt, 'stickLengthFt', parsedFt || 21) +
                 '<span style="grid-column:3 / span 4"></span>' +
               '</div>' +
-              // Row A2 — line-post clamp (intermediate posts along the run)
-              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
-                labelCell('Line clamp G') + cl3PickerHtml(o.clampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv line-post boulevard clamp — ' + (o.label || '(unlabeled)')) +
-                labelCell('Line clamp B') + cl3PickerHtml(o.clampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black line-post boulevard clamp — ' + (o.label || '(unlabeled)')) +
-                labelCell('Per line post') + numCell(cpp, 'clampsPerPost', 1) +
-                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Line clamp × per-line-post × line-post count</span>' +
-              '</div>' +
-              // Row A3 — main-post clamp (end + corner posts; usually a bigger size)
-              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
-                labelCell('Main clamp G') + cl3PickerHtml(o.mainClampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','mainClampGalv',?)", 'Galv main-post boulevard clamp (end + corner) — ' + (o.label || '(unlabeled)')) +
-                labelCell('Main clamp B') + cl3PickerHtml(o.mainClampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','mainClampBlack',?)", 'Black main-post boulevard clamp (end + corner) — ' + (o.label || '(unlabeled)')) +
-                labelCell('Per main post') + numCell(o.mainClampsPerPost, 'mainClampsPerPost', cpp) +
-                '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Larger clamp typically used at end / corner posts. Falls back to the line clamp pick if left blank.</span>' +
-              '</div>' +
+              // Row A2 — line-post clamp (intermediate posts along the run).
+              // The Recommended view of each picker is constrained to clamps
+              // whose variant size matches the default line-post diameter.
+              (function() {
+                const targetSize = _linePostDiameter;
+                const lineClampFilter = targetSize
+                  ? (mat, it, asn) => mat === 'Boulevard Clamp' && (asn.variantSize || '') === targetSize
+                  : /Boulevard Clamp/;
+                const sizeHint = targetSize
+                  ? ' <span style="color:var(--accent);font-size:9px;font-weight:700;margin-left:4px" title="Filtered to clamps matching the default line-post diameter — switch the picker to All A→Z to see other sizes.">↳ ' + clEscHtml(targetSize) + '</span>'
+                  : '';
+                return '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                  labelCell('Line clamp G' + sizeHint) + cl3PickerHtml(o.clampGalv, lineClampFilter, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv line-post boulevard clamp' + (targetSize ? ' (' + targetSize + ')' : '') + ' — ' + (o.label || '(unlabeled)')) +
+                  labelCell('Line clamp B') + cl3PickerHtml(o.clampBlack, lineClampFilter, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black line-post boulevard clamp' + (targetSize ? ' (' + targetSize + ')' : '') + ' — ' + (o.label || '(unlabeled)')) +
+                  labelCell('Per line post') + numCell(cpp, 'clampsPerPost', 1) +
+                  '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">Line clamp × per-line-post × line-post count' + (targetSize ? ' — recommended size locked to the default line-post diameter (' + clEscHtml(targetSize) + ')' : '') + '</span>' +
+                '</div>';
+              })() +
+              // Row A3 — main-post clamp (end + corner posts; usually a bigger
+              // size).  Recommended view locked to the default main-post diameter.
+              (function() {
+                const targetSize = _mainPostDiameter;
+                const mainClampFilter = targetSize
+                  ? (mat, it, asn) => mat === 'Boulevard Clamp' && (asn.variantSize || '') === targetSize
+                  : /Boulevard Clamp/;
+                const sizeHint = targetSize
+                  ? ' <span style="color:var(--accent);font-size:9px;font-weight:700;margin-left:4px" title="Filtered to clamps matching the default main-post diameter — switch the picker to All A→Z to see other sizes.">↳ ' + clEscHtml(targetSize) + '</span>'
+                  : '';
+                return '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
+                  labelCell('Main clamp G' + sizeHint) + cl3PickerHtml(o.mainClampGalv, mainClampFilter, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','mainClampGalv',?)", 'Galv main-post boulevard clamp' + (targetSize ? ' (' + targetSize + ')' : '') + ' — ' + (o.label || '(unlabeled)')) +
+                  labelCell('Main clamp B') + cl3PickerHtml(o.mainClampBlack, mainClampFilter, 'black', "updCl3Pf('" + kind + "','" + o.id + "','mainClampBlack',?)", 'Black main-post boulevard clamp' + (targetSize ? ' (' + targetSize + ')' : '') + ' — ' + (o.label || '(unlabeled)')) +
+                  labelCell('Per main post') + numCell(o.mainClampsPerPost, 'mainClampsPerPost', cpp) +
+                  '<span style="grid-column:1 / span 6;color:var(--gray-500);font-size:9px;text-align:right;margin-top:-2px">' +
+                  (targetSize ? 'Recommended size locked to the default main-post diameter (' + clEscHtml(targetSize) + '). ' : '') +
+                  'Falls back to the line clamp pick if left blank.</span>' +
+                '</div>';
+              })() +
               // Row B — fence ties
               '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px;border-top:1px dashed var(--gray-100);margin-top:6px">' +
                 labelCell('Tie galv') + cl3PickerHtml(o.tieGalv, /Fence Tie/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','tieGalv',?)", 'Galv fence tie — ' + (o.label || '(unlabeled)')) +
