@@ -7893,7 +7893,24 @@
                 const fab = def(pf.fabricOptions, 'perFoot.fabricOptions');
                 if (fab && groupFt > 0) add(pickColor(fab.galv, fab.black, color), groupFt);
                 const bw = def(pf.bottomWireOptions, 'perFoot.bottomWireOptions');
-                if (bw && groupFt > 0) add(pickColor(bw.galv, bw.black, color), groupFt);
+                if (bw && groupFt > 0) {
+                    if (bw.kind === 'railClamps') {
+                        // Bottom rail (whole sticks) + boulevard clamps per post
+                        const railCode = pickColor(bw.galv, bw.black, color);
+                        const railItem = itemByCode[railCode];
+                        if (railItem) {
+                            const parsedRailFt = parseFloat((railItem.variantSize || '').replace(/'/g, ''));
+                            const railStickFt = (bw.stickLengthFt > 0 ? bw.stickLengthFt : parsedRailFt) || 21;
+                            add(railCode, Math.ceil(groupFt / railStickFt));
+                        }
+                        const clampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
+                        const totalPostsInGroup = mainCount + linePostCount;
+                        const cppEff = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
+                        add(clampCode, cppEff * totalPostsInGroup);
+                    } else {
+                        add(pickColor(bw.galv, bw.black, color), groupFt);
+                    }
+                }
                 const tr = def(pf.topRailOptions, 'perFoot.topRailOptions');
                 if (tr && groupFt > 0) {
                     const code = pickColor(tr.galv, tr.black, color);
@@ -8204,7 +8221,26 @@
                 }
                 const bw = def(pf.bottomWireOptions, 'perFoot.bottomWireOptions');
                 if (bw && groupFt > 0) {
-                    materialCost += priceOf(pickColor(bw.galv, bw.black, color)) * groupFt;
+                    if (bw.kind === 'railClamps') {
+                        // Bottom rail (per-stick: ceil(ft ÷ stickLength) × unit)
+                        const railCode = pickColor(bw.galv, bw.black, color);
+                        const railItem = itemByCode[railCode];
+                        if (railItem) {
+                            const parsedRailFt = parseFloat((railItem.variantSize || '').replace(/'/g, ''));
+                            const railStickFt = (bw.stickLengthFt > 0 ? bw.stickLengthFt : parsedRailFt) || 21;
+                            const railSticks = railStickFt > 0 ? Math.ceil(groupFt / railStickFt) : 0;
+                            materialCost += railSticks * (railItem.priceAfterTax || 0);
+                        }
+                        // Boulevard clamps land on every post in the group
+                        // (main posts + line posts).  clampsPerPost defaults
+                        // to 1 if absent/zero.
+                        const clampCode = pickColor(bw.clampGalv, bw.clampBlack, color);
+                        const totalPostsInGroup = (mainCount || 0) + (linePostCount || 0);
+                        const cppEff = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
+                        materialCost += priceOf(clampCode) * cppEff * totalPostsInGroup;
+                    } else {
+                        materialCost += priceOf(pickColor(bw.galv, bw.black, color)) * groupFt;
+                    }
                 }
                 const tr = def(pf.topRailOptions, 'perFoot.topRailOptions');
                 if (tr && groupFt > 0) {

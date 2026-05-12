@@ -7756,8 +7756,58 @@ function updCl3Line(id, field, value) { const r = _cl3CurRecipe(); if (!r) retur
 function renderCl3PerFoot(recipe) {
   function renderOptList(kind, opts, materialPattern, label, descr) {
     const isTopRail = kind === 'topRail';
+    const isBottomWire = kind === 'bottomWire';
     let rows = '';
     opts.forEach(o => {
+      // Bottom-wire "Rail + Boulevard Clamps" combo: a single bottom-wire
+      // option that bills as a horizontal pipe (per-foot, divided by stick
+      // length like top rail) PLUS boulevard clamps on each post.  Rendered
+      // as a 2-row block so all the extra fields fit without breaking the
+      // outer table's grid.
+      if (isBottomWire && o.kind === 'railClamps') {
+        const railG = cl3PriceFor(o.galv);
+        const railB = cl3PriceFor(o.black);
+        const m = ensureClMaster();
+        const railItem = m.items.find(x => x.itemCode === (o.galv || o.black));
+        const parsedFt = railItem ? parseFloat((resolveClItemAssignment(railItem).variantSize || '').replace(/'/g, '')) : NaN;
+        const stickFt = (o.stickLengthFt > 0) ? o.stickLengthFt : (parsedFt || 21);
+        const railPerFtG = railG ? railG / stickFt : null;
+        const railPerFtB = railB ? railB / stickFt : null;
+        const clampG = cl3PriceFor(o.clampGalv);
+        const clampB = cl3PriceFor(o.clampBlack);
+        const cpp = (o.clampsPerPost != null && o.clampsPerPost > 0) ? o.clampsPerPost : 1;
+        rows +=
+          '<tr style="border-top:2px solid rgba(200,165,90,0.4);background:rgba(200,165,90,0.06)">' +
+            '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-pf-' + kind + '" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3PfDefault(\'' + kind + '\',\'' + o.id + '\')"></td>' +
+            '<td style="padding:6px 8px">' +
+              '<input type="text" value="' + clEscAttr(o.label) + '" placeholder="Bottom rail + boulevard clamps" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">' +
+              '<div style="font-size:9px;color:#8a6e26;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;margin-top:2px">Rail + Boulevard Clamps</div>' +
+            '</td>' +
+            '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /^Top Rail/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','galv',?)", 'Galv bottom rail (uses Top Rail SKU) — ' + (o.label || '(unlabeled)')) + '</td>' +
+            '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /^Top Rail/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','black',?)", 'Black bottom rail (uses Top Rail SKU) — ' + (o.label || '(unlabeled)')) + '</td>' +
+            '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap">' +
+              '<div title="Rail unit ÷ stick length">G: ' + cl3FmtPrice(railPerFtG) + '/ft</div>' +
+              '<div>B: ' + cl3FmtPrice(railPerFtB) + '/ft</div>' +
+            '</td>' +
+            '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3Pf(\'' + kind + '\',\'' + o.id + '\')" title="Remove this option">×</button></td>' +
+          '</tr>' +
+          '<tr style="background:rgba(200,165,90,0.06)">' +
+            '<td colspan="6" style="padding:0 8px 8px 8px;border-bottom:1px solid var(--gray-100)">' +
+              '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px;padding:6px 4px 0 4px">' +
+                '<span style="color:var(--gray-500);font-weight:600">Stick (ft)</span>' +
+                '<input type="number" min="0" step="0.5" value="' + (o.stickLengthFt || '') + '" placeholder="' + (parsedFt || 21) + '" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'stickLengthFt\',+this.value || 0)" style="width:60px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">' +
+                '<span style="color:var(--gray-500);font-weight:600">Clamp galv</span>' +
+                cl3PickerHtml(o.clampGalv, /Boulevard Clamp/, 'galvanized', "updCl3Pf('" + kind + "','" + o.id + "','clampGalv',?)", 'Galv boulevard clamp — ' + (o.label || '(unlabeled)')) +
+                '<span style="color:var(--gray-500);font-weight:600">Clamp black</span>' +
+                cl3PickerHtml(o.clampBlack, /Boulevard Clamp/, 'black', "updCl3Pf('" + kind + "','" + o.id + "','clampBlack',?)", 'Black boulevard clamp — ' + (o.label || '(unlabeled)')) +
+                '<span style="color:var(--gray-500);font-weight:600">Clamps / post</span>' +
+                '<input type="number" min="0" step="0.5" value="' + cpp + '" oninput="updCl3Pf(\'' + kind + '\',\'' + o.id + '\',\'clampsPerPost\',+this.value || 0)" style="width:60px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px">' +
+                '<span style="grid-column:3 / span 4;color:var(--gray-500);font-size:9px;text-align:right">Clamps add ' + cl3FmtPrice(clampG) + ' (G) / ' + cl3FmtPrice(clampB) + ' (B) × ' + cpp + ' per post — billed against the project\'s post count, not per linear ft.</span>' +
+              '</div>' +
+            '</td>' +
+          '</tr>';
+        return;
+      }
       // Compute the effective stick length for top rail: admin override > parsed variantSize > 21
       let stickHelper = '';
       if (isTopRail) {
@@ -7800,6 +7850,7 @@ function renderCl3PerFoot(recipe) {
       '<colgroup>' + colWidths + '</colgroup>' +
       '<thead><tr style="background:var(--gray-50);text-align:left">' + headers + '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
       '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3Pf(\'' + kind + '\')">+ Add ' + label.toLowerCase().replace(/\(.*?\)/g, '').trim() + ' option</button>' +
+      (isBottomWire ? '<button class="btn btn-sm" style="margin-top:6px;margin-left:6px" onclick="addCl3PfBottomRailClamps()" title="Bills as a horizontal bottom rail (per-foot, divided by stick) plus boulevard clamps on every post (clamp price × clamps-per-post × post count).">+ Add bottom rail + boulevard clamps</button>' : '') +
       '</div>';
   }
   return '<div class="card">' +
@@ -7852,9 +7903,26 @@ function _cl3PerFootTotalFooter(recipe) {
       total += u;
     }
     if (bw) {
-      const u = cl3PriceFor(pick(bw.galv, bw.black)) || 0;
-      rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom wire</td><td style="padding:2px 6px;text-align:right">' + cl3FmtPrice(u) + '/ft</td></tr>';
-      total += u;
+      if (bw.kind === 'railClamps') {
+        // Rail portion is per-foot (unit ÷ stick length); clamps are
+        // billed per-post in the customer engine, not per-foot — so the
+        // footer notes them but doesn't add them to the per-ft total.
+        const railUnit = cl3PriceFor(pick(bw.galv, bw.black)) || 0;
+        const m = ensureClMaster();
+        const railIt = m.items.find(x => x.itemCode === (bw.galv || bw.black));
+        const parsedFt = railIt ? parseFloat((resolveClItemAssignment(railIt).variantSize || '').replace(/'/g, '')) : NaN;
+        const stickFt2 = (bw.stickLengthFt > 0) ? bw.stickLengthFt : (parsedFt || 21);
+        const railPerFt = stickFt2 > 0 ? railUnit / stickFt2 : 0;
+        const clampUnit = cl3PriceFor(pick(bw.clampGalv, bw.clampBlack)) || 0;
+        const cpp2 = (bw.clampsPerPost != null && bw.clampsPerPost > 0) ? bw.clampsPerPost : 1;
+        rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom rail (÷ ' + stickFt2 + "' stick)</td><td style=\"padding:2px 6px;text-align:right\">" + cl3FmtPrice(railPerFt) + '/ft</td></tr>';
+        rows += '<tr><td style="padding:2px 6px;color:var(--gray-500);font-size:9px;font-style:italic">+ Boulevard clamps</td><td style="padding:2px 6px;text-align:right;font-size:9px;font-style:italic">' + cl3FmtPrice(clampUnit * cpp2) + '/post</td></tr>';
+        total += railPerFt;
+      } else {
+        const u = cl3PriceFor(pick(bw.galv, bw.black)) || 0;
+        rows += '<tr><td style="padding:2px 6px;color:var(--gray-500)">Bottom wire</td><td style="padding:2px 6px;text-align:right">' + cl3FmtPrice(u) + '/ft</td></tr>';
+        total += u;
+      }
     }
     if (tr) {
       const u = cl3PriceFor(pick(tr.galv, tr.black)) || 0;
@@ -7985,6 +8053,53 @@ function addCl3Pf(kind) {
   renderClRecipesV3();
 }
 function removeCl3Pf(kind, id) { const r = _cl3CurRecipe(); if (!r) return; const list = r.perFoot[kind + 'Options']; const wasDef = list.find(o => o.id === id)?.isDefault; r.perFoot[kind + 'Options'] = list.filter(o => o.id !== id); if (wasDef && r.perFoot[kind + 'Options'][0]) r.perFoot[kind + 'Options'][0].isDefault = true; markDirty(); renderClRecipesV3(); }
+// Add a new bottom-wire option pre-shaped as a "Rail + Boulevard Clamps"
+// combo.  Pre-picks a 21' Top Rail SKU (galv + black) and a Boulevard
+// Clamp SKU if available so the admin starts from a working baseline.
+function addCl3PfBottomRailClamps() {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const m = ensureClMaster();
+  // Pick a top-rail SKU as the bottom-rail material.  Prefer 21' variants.
+  const railCandidatesG = m.items.filter(it => {
+    if (it.showToCustomer === false) return false;
+    const a = resolveClItemAssignment(it);
+    return /^Top Rail/.test(a.materialName || '') && a.color === 'galvanized';
+  });
+  railCandidatesG.sort((x, y) => {
+    const xLen = parseFloat((resolveClItemAssignment(x).variantSize || '').replace(/'/g,'')) || 0;
+    const yLen = parseFloat((resolveClItemAssignment(y).variantSize || '').replace(/'/g,'')) || 0;
+    // Prefer 21' first, then 10', then anything else.
+    const rank = (n) => n === 21 ? 0 : (n === 10 ? 1 : 2);
+    return rank(xLen) - rank(yLen);
+  });
+  const railG = railCandidatesG[0];
+  // Pick a boulevard clamp SKU (galv + black counterpart).
+  const clampG = m.items.find(it => {
+    if (it.showToCustomer === false) return false;
+    const a = resolveClItemAssignment(it);
+    return /Boulevard Clamp/.test(a.materialName || '') && a.color === 'galvanized';
+  });
+
+  const o = blankCl3PerFootOpt('bottomWire');
+  o.kind = 'railClamps';
+  o.label = 'Bottom rail + boulevard clamps';
+  if (railG) {
+    o.galv = railG.itemCode;
+    o.black = _cl3BlackCounterpart(railG.itemCode);
+    const parsed = parseFloat((resolveClItemAssignment(railG).variantSize || '').replace(/'/g,'')) || 21;
+    o.stickLengthFt = parsed;
+  }
+  if (clampG) {
+    o.clampGalv = clampG.itemCode;
+    o.clampBlack = _cl3BlackCounterpart(clampG.itemCode);
+  }
+  o.clampsPerPost = 1;
+  if (!r.perFoot.bottomWireOptions) r.perFoot.bottomWireOptions = [];
+  if (r.perFoot.bottomWireOptions.length === 0) o.isDefault = true;
+  r.perFoot.bottomWireOptions.push(o);
+  markDirty();
+  renderClRecipesV3();
+}
 function setCl3PfDefault(kind, id) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[kind + 'Options'].forEach(o => o.isDefault = (o.id === id)); markDirty(); renderClRecipesV3(); }
 function updCl3Pf(kind, id, field, value) {
   const r = _cl3CurRecipe(); if (!r) return;
