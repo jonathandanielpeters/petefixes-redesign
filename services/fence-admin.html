@@ -770,6 +770,14 @@ https://www.homedepot.ca/product/cedar-1-x-6-x-6-..."></textarea>
 <div id="cl3-picker-popup" style="display:none;position:absolute;z-index:10000;background:#fff;border:1.5px solid var(--gray-300);border-radius:6px;box-shadow:0 6px 20px rgba(0,0,0,0.18);min-width:340px;max-width:520px;font-size:11px">
   <div id="cl3-picker-header" style="display:none;padding:8px 14px;background:var(--accent-light);border-bottom:1.5px solid var(--accent);border-radius:6px 6px 0 0;font-size:11px;font-weight:600;color:var(--gray-700);line-height:1.3"></div>
   <input id="cl3-picker-search" type="text" placeholder="Search code, description, material, size…" oninput="cl3RenderPickerList(this.value)" onkeydown="cl3PickerKeydown(event)" style="width:100%;padding:10px 14px;border:none;border-bottom:1.5px solid var(--gray-200);font-size:12px;outline:none;box-sizing:border-box">
+  <!-- Sort toggle — "Recommended" filters to the slot's expected material;
+       "All A→Z" opens up the entire pricelist sorted by description. -->
+  <div id="cl3-picker-sort" style="display:flex;gap:4px;padding:6px 10px;background:var(--gray-50);border-bottom:1px solid var(--gray-100);font-size:10px;align-items:center">
+    <span style="color:var(--gray-500);font-weight:600;letter-spacing:0.03em">Show:</span>
+    <button type="button" id="cl3-picker-sort-rec" onclick="cl3SetPickerSort('recommended')" style="padding:3px 8px;font-size:10px;border:1px solid var(--gray-200);background:#fff;border-radius:3px;cursor:pointer;font-family:inherit">★ Recommended</button>
+    <button type="button" id="cl3-picker-sort-alpha" onclick="cl3SetPickerSort('allAlpha')" style="padding:3px 8px;font-size:10px;border:1px solid var(--gray-200);background:#fff;border-radius:3px;cursor:pointer;font-family:inherit">A↓ All parts</button>
+    <span id="cl3-picker-sort-hint" style="margin-left:auto;color:var(--gray-400);font-size:9px;font-style:italic"></span>
+  </div>
   <div id="cl3-picker-count" style="padding:6px 14px;font-size:10px;color:var(--gray-500);background:var(--gray-50);border-bottom:1px solid var(--gray-100)"></div>
   <div id="cl3-picker-list" style="max-height:340px;overflow-y:auto"></div>
 </div>
@@ -7012,21 +7020,51 @@ let _cl3PickerHighlightIdx = -1;
 function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, slotLabel) {
   const id = 'cl3p' + (_cl3PickerNextId++);
   const items = cl3PickerItems(materialPattern, color);
-  _cl3PickerRegistry[id] = { items, currentCode, callbackTemplate, slotLabel: slotLabel || '' };
+  // Store BOTH the slot's recommended items AND enough info to compute the
+  // "all parts (A→Z)" view on demand.  Default sortMode is 'recommended'
+  // unless the slot didn't pass a material pattern at all (e.g. the
+  // bottom-rail extras), in which case there's no recommendation concept
+  // and we default to alpha-sorted everything.
+  const hasRecommendation = !!materialPattern;
+  _cl3PickerRegistry[id] = {
+    items,                 // currently-displayed items (swapped on sort change)
+    recommendedItems: items,
+    materialPattern,
+    color: color || null,
+    hasRecommendation,
+    sortMode: hasRecommendation ? 'recommended' : 'allAlpha',
+    currentCode,
+    callbackTemplate,
+    slotLabel: slotLabel || '',
+  };
 
-  // Find the current pick to display, even if it's outside the current filter
+  // Find the current pick to display.  Look in the recommended (filtered)
+  // set first; fall back to the full master pricelist so non-recommended
+  // picks (made via "All A→Z" mode) display normally without a ⚠ warning.
+  // The ⚠ stays for truly-missing codes only (renamed/removed items).
   let cur = items.find(it => it.itemCode === currentCode);
   let label;
   let titleAttr = '';
+  let nonRecommended = false;
+  let truly_missing = false;
   if (cur) {
     label = cur.itemCode + ' · $' + (cur.priceAfterTax || 0).toFixed(2);
     titleAttr = clEscAttr(cur.description);
   } else if (currentCode) {
-    // Saved but not in the filter — could be a renamed/removed item
     const m = ensureClMaster();
     const fallback = m.items.find(it => it.itemCode === currentCode);
-    label = '⚠ ' + currentCode;
-    titleAttr = fallback ? clEscAttr('Saved code "' + currentCode + '" — ' + fallback.description + ' — not in this filter (still pricing correctly)') : clEscAttr('Saved code "' + currentCode + '" not found in pricelist');
+    if (fallback) {
+      // Exists in master but outside the recommended filter — operator
+      // picked it via "All A→Z" mode.  Show normally with a subtle star
+      // and tooltip noting it's outside the typical recommendation.
+      label = '★ ' + fallback.itemCode + ' · $' + (fallback.priceAfterTax || 0).toFixed(2);
+      titleAttr = clEscAttr('Custom pick — ' + fallback.description + ' (outside this slot\'s recommended materials)');
+      nonRecommended = true;
+    } else {
+      label = '⚠ ' + currentCode;
+      titleAttr = clEscAttr('Saved code "' + currentCode + '" not found in pricelist');
+      truly_missing = true;
+    }
   } else {
     label = '— pick —';
     titleAttr = items.length === 0 ? 'No items in this category — import the pricelist first' : 'Click to pick from ' + items.length + ' items';
@@ -7035,7 +7073,7 @@ function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, sl
   // Disabled-look button when nothing's available
   const isEmpty = items.length === 0;
   const baseStyle = 'width:100%;padding:4px 8px;font-size:10px;text-align:left;background:#fff;border:1px solid var(--gray-200);border-radius:3px;cursor:' + (isEmpty ? 'help' : 'pointer') + ';font-family:inherit;line-height:1.3;display:flex;align-items:center;gap:4px';
-  const labelStyle = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (isEmpty || !cur ? 'color:var(--gray-400)' : '') + (currentCode && !cur ? ';color:#b42c2c;font-weight:600' : '');
+  const labelStyle = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (isEmpty || (!cur && !nonRecommended) ? 'color:var(--gray-400)' : '') + (truly_missing ? ';color:#b42c2c;font-weight:600' : '');
   return '<button type="button" data-cl3-picker-id="' + id + '" onclick="cl3OpenPicker(\'' + id + '\', this, event)" title="' + titleAttr + '" style="' + baseStyle + '">' +
     '<span style="' + labelStyle + '">' + clEscHtml(label) + '</span>' +
     '<span style="color:var(--gray-400);font-size:9px;flex-shrink:0">▾</span>' +
@@ -7077,8 +7115,90 @@ function cl3OpenPicker(id, btnEl, ev) {
   }
 
   document.getElementById('cl3-picker-search').value = '';
+  // Reset to recommended view on each open (if the slot has one).  When
+  // no material pattern was given, the picker starts in All-A→Z mode
+  // with the cached alpha-sorted master list.
+  reg.sortMode = reg.hasRecommendation ? 'recommended' : 'allAlpha';
+  reg.items = (reg.sortMode === 'allAlpha') ? _cl3GetAllAlphaItems(reg) : reg.recommendedItems;
+  _cl3SyncPickerSortToolbar();
   cl3RenderPickerList('');
   setTimeout(() => document.getElementById('cl3-picker-search').focus(), 30);
+}
+
+// Build/cache the "all parts" list for the active picker, color-filtered
+// and alphabetically sorted by description.  Cached on the registry so
+// subsequent toggles are instant.
+function _cl3GetAllAlphaItems(reg) {
+  if (reg._allAlphaItems) return reg._allAlphaItems;
+  const m = ensureClMaster();
+  const out = m.items.filter(it => {
+    if (it.showToCustomer === false) return false;
+    if (reg.color) {
+      const a = resolveClItemAssignment(it);
+      if (a.color !== reg.color) return false;
+    }
+    return true;
+  });
+  out.sort((x, y) => {
+    const xd = (x.description || '').toLowerCase();
+    const yd = (y.description || '').toLowerCase();
+    if (xd < yd) return -1;
+    if (xd > yd) return 1;
+    return 0;
+  });
+  reg._allAlphaItems = out;
+  // Set of recommended itemCodes for the ★ badge in alpha mode.
+  reg._recommendedSet = new Set((reg.recommendedItems || []).map(it => it.itemCode));
+  return out;
+}
+
+// Toggle the picker between Recommended and All-A→Z modes.  Re-renders
+// the list and updates the toolbar.
+function cl3SetPickerSort(mode) {
+  if (!_cl3ActivePicker) return;
+  const reg = _cl3ActivePicker.reg;
+  if (mode === 'recommended' && !reg.hasRecommendation) mode = 'allAlpha';
+  reg.sortMode = mode;
+  reg.items = (mode === 'allAlpha') ? _cl3GetAllAlphaItems(reg) : reg.recommendedItems;
+  _cl3SyncPickerSortToolbar();
+  cl3RenderPickerList(document.getElementById('cl3-picker-search').value || '');
+  // Keep keyboard focus on the search input after the click.
+  setTimeout(() => { const s = document.getElementById('cl3-picker-search'); if (s) s.focus(); }, 0);
+}
+
+// Visually mark the active sort button + show the appropriate hint.
+function _cl3SyncPickerSortToolbar() {
+  if (!_cl3ActivePicker) return;
+  const reg = _cl3ActivePicker.reg;
+  const rec = document.getElementById('cl3-picker-sort-rec');
+  const alpha = document.getElementById('cl3-picker-sort-alpha');
+  const hint = document.getElementById('cl3-picker-sort-hint');
+  if (!rec || !alpha) return;
+  const active = 'background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700';
+  const idle = 'padding:3px 8px;font-size:10px;border:1px solid var(--gray-200);background:#fff;border-radius:3px;cursor:pointer;font-family:inherit';
+  const recStyle = 'padding:3px 8px;font-size:10px;border-radius:3px;cursor:pointer;font-family:inherit;' + (reg.sortMode === 'recommended' ? active : 'border:1px solid var(--gray-200);background:#fff');
+  const alphaStyle = 'padding:3px 8px;font-size:10px;border-radius:3px;cursor:pointer;font-family:inherit;' + (reg.sortMode === 'allAlpha' ? active : 'border:1px solid var(--gray-200);background:#fff');
+  rec.setAttribute('style', recStyle);
+  alpha.setAttribute('style', alphaStyle);
+  // Grey out the "Recommended" button when the slot has no recommendation.
+  if (!reg.hasRecommendation) {
+    rec.disabled = true;
+    rec.style.opacity = '0.45';
+    rec.style.cursor = 'not-allowed';
+    rec.title = 'This slot accepts any pricelist item — no specific recommendation.';
+  } else {
+    rec.disabled = false;
+    rec.style.opacity = '1';
+    rec.style.cursor = 'pointer';
+    rec.title = 'Show only items typically used in this slot';
+  }
+  if (hint) {
+    if (reg.sortMode === 'allAlpha' && reg.hasRecommendation) {
+      hint.textContent = '★ marks items typical for this slot';
+    } else {
+      hint.textContent = '';
+    }
+  }
 }
 
 function cl3RenderPickerList(query) {
@@ -7122,6 +7242,11 @@ function cl3RenderPickerList(query) {
   if (!reg.multi) {
     html += '<div onclick="cl3PickItem(\'\')" style="padding:6px 14px;cursor:pointer;color:var(--gray-400);font-style:italic;border-bottom:1px solid var(--gray-100);font-size:11px">— clear selection —</div>';
   }
+  // When the user has switched to All-A→Z mode, mark items that ARE in the
+  // slot's recommendation set with a small ★ so they can spot the
+  // typical-for-this-slot picks at a glance.
+  const showRecBadge = (reg.sortMode === 'allAlpha' && reg.hasRecommendation);
+  const recSet = showRecBadge ? (reg._recommendedSet || new Set()) : null;
   displayed.forEach((it, idx) => {
     const sel = reg.multi ? (reg.selected && reg.selected.has(it.itemCode)) : (it.itemCode === reg.currentCode);
     const a = resolveClItemAssignment(it);
@@ -7130,11 +7255,14 @@ function cl3RenderPickerList(query) {
       ? '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onclick="event.stopPropagation();cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" style="width:14px;height:14px;flex-shrink:0;margin-right:8px;cursor:pointer">'
       : '';
     const checkMark = (!reg.multi && sel) ? ' ✓' : '';
+    const recBadge = (showRecBadge && recSet.has(it.itemCode))
+      ? '<span title="Recommended for this slot" style="color:var(--accent);font-size:10px;margin-left:5px">★</span>'
+      : '';
     html += '<div data-pick-idx="' + idx + '" onclick="cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" onmouseover="cl3PickerHover(' + idx + ')" style="padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);display:flex;gap:0;align-items:flex-start;' + bg + '">' +
       checkbox +
       '<div style="flex:1;min-width:0">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">' +
-      '<b style="font-family:monospace;font-size:11px">' + clEscHtml(it.itemCode) + checkMark + '</b>' +
+      '<b style="font-family:monospace;font-size:11px">' + clEscHtml(it.itemCode) + checkMark + recBadge + '</b>' +
       '<span style="color:#3c8a1d;font-weight:700;font-size:11px;white-space:nowrap">$' + (it.priceAfterTax || 0).toFixed(2) + ' <span style="color:var(--gray-400);font-weight:400">' + clEscHtml(it.pricingUnit || '') + '</span></span>' +
       '</div>' +
       '<div style="color:var(--gray-600);font-size:10px;margin-top:3px;line-height:1.35">' + clEscHtml(it.description) + '</div>' +
