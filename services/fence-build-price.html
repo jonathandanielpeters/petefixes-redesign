@@ -7823,7 +7823,13 @@
                 usage[code].qty += qty;
             }
 
-            // Group lines by height (mirrors calculateV3Project)
+            // Group lines by height + styleIdx + color (mirrors calculateV3Project).
+            // Keying off styleIdx is critical: two lines at the same height but
+            // bound to different fence styles will have different cl3Picks
+            // (alternate post / fabric / etc. selections); grouping them under
+            // the same bucket would silently apply the first style's picks to
+            // every line in the bucket.  Each (height, style, color) trio gets
+            // its own group with its own picks.
             const linesByHeight = {};
             clLines.forEach(l => {
                 const s = getStyleForLine(l);
@@ -7834,11 +7840,13 @@
                     const avail = Array.isArray(recipe.colorsAvailable) ? recipe.colorsAvailable.filter(Boolean) : ['galvanized', 'black'];
                     if (avail.length > 0 && avail.indexOf(color) === -1) color = avail[0];
                 }
-                if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color, style: s };
-                linesByHeight[heightKey].lines.push(l);
+                const groupKey = heightKey + '|s' + (l.styleIdx || 0) + '|' + color;
+                if (!linesByHeight[groupKey]) linesByHeight[groupKey] = { heightKey, lines: [], color, style: s };
+                linesByHeight[groupKey].lines.push(l);
             });
 
-            Object.entries(linesByHeight).forEach(([heightKey, group]) => {
+            Object.entries(linesByHeight).forEach(([groupKey, group]) => {
+                const heightKey = group.heightKey;
                 const recipe = cl3[tier][heightKey];
                 if (!recipe) return;
                 const color = group.color;
@@ -8143,18 +8151,14 @@
             const priceOf = (code) => (code && itemByCode[code]) ? (itemByCode[code].priceAfterTax || 0) : 0;
             const pickColor = (galvCode, blackCode, color) => color === 'black' ? blackCode : galvCode;
 
-            // Group lines by height + style so each group uses the right recipe
-            // and inherits its style's cl3Picks (per-line option overrides).
+            // Group lines by (height, styleIdx, color) so each bucket carries
+            // the right recipe AND the right cl3Picks for its style.  Bucket
+            // key includes styleIdx to keep alternate post / fabric / etc.
+            // picks from leaking across styles that happen to share a height.
             const linesByHeight = {};
             clLines.forEach(l => {
                 const s = getStyleForLine(l);
                 const heightKey = s.height + 'ft';
-                // Resolve color, respecting recipe.colorsAvailable: if a customer's
-                // color is no longer offered for this height, fall back to the
-                // first available color from the recipe AND sync that back onto
-                // the style so the color pills stop showing a phantom selection
-                // (the customer was being silently downgraded from black to galv
-                // without any UI feedback).
                 let color = s.chainlinkColor || 'galvanized';
                 const recipe = cl3[tier] && cl3[tier][heightKey];
                 if (recipe) {
@@ -8164,14 +8168,15 @@
                         if (s.chainlinkColor !== color) s.chainlinkColor = color;
                     }
                 }
-                if (!linesByHeight[heightKey]) linesByHeight[heightKey] = { lines: [], color, style: s };
-                linesByHeight[heightKey].lines.push(l);
+                const groupKey = heightKey + '|s' + (l.styleIdx || 0) + '|' + color;
+                if (!linesByHeight[groupKey]) linesByHeight[groupKey] = { heightKey, lines: [], color, style: s };
+                linesByHeight[groupKey].lines.push(l);
             });
 
-            // Bail if any line's height has no V3 recipe defined for this tier — drop
+            // Bail if any group's height has no V3 recipe defined for this tier — drop
             // to V2/legacy so the customer doesn't see a $0 quote.
-            for (const heightKey of Object.keys(linesByHeight)) {
-                if (!cl3[tier][heightKey]) return null;
+            for (const k of Object.keys(linesByHeight)) {
+                if (!cl3[tier][linesByHeight[k].heightKey]) return null;
             }
 
             let materialCost = 0;
@@ -8180,7 +8185,8 @@
             let totalCornerPosts = 0;
             let totalLinePosts = 0;
 
-            Object.entries(linesByHeight).forEach(([heightKey, group]) => {
+            Object.entries(linesByHeight).forEach(([groupKey, group]) => {
+                const heightKey = group.heightKey;
                 const recipe = cl3[tier][heightKey];
                 const color = group.color;
 
