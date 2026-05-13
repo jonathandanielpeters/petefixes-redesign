@@ -7732,6 +7732,24 @@
                     '<div class="config-pills">' + pills + '</div>';
             });
 
+            // Barb wire add-on — always rendered as Off + each available option
+            // (no minimum-options threshold, since the "Off" pill is what
+            // makes it a real toggle).  Honors style.cl3Picks['barbWire.options']
+            // — empty/missing means barb wire is off.
+            const bwOpts = (recipe.barbWire && Array.isArray(recipe.barbWire.options)) ? recipe.barbWire.options : [];
+            if (bwOpts.length > 0) {
+                const bwKey = 'barbWire.options';
+                const curBwId = (style.cl3Picks && style.cl3Picks[bwKey]) || '';
+                const offActive = !curBwId;
+                let bwPills = '<div class="config-pill' + (offActive ? ' active' : '') + '" data-cl3pick="' + bwKey + '" data-cl3id="" onclick="setCl3Pick(\'' + bwKey + '\',\'\')">Off</div>';
+                bwOpts.forEach(o => {
+                    const active = curBwId === o.id;
+                    bwPills += '<div class="config-pill' + (active ? ' active' : '') + '" data-cl3pick="' + bwKey + '" data-cl3id="' + o.id + '" onclick="setCl3Pick(\'' + bwKey + '\',\'' + o.id + '\')">' + (o.label || 'Barb wire') + '</div>';
+                });
+                html += '<label class="config-label" style="margin-top:8px">Barb Wire</label>' +
+                    '<div class="config-pills">' + bwPills + '</div>';
+            }
+
             if (!html) { hideHost(); return; }
             // Show — class-driven (matches the .config-section[data-show-for].visible CSS rule)
             host.classList.add('visible');
@@ -7845,6 +7863,15 @@
                 linesByHeight[groupKey].lines.push(l);
             });
 
+            // Project-wide dedup of main-post endpoints.  Without this, a corner
+            // shared between two lines in different style groups would get
+            // counted twice — once in each group's local endIds/cornerIds set.
+            // First style group to see a given point "owns" it; later groups
+            // skip it.  Missing posts in the parts list traced back here on
+            // commercial recipes where end/corner posts were never being
+            // tallied at all because their group bucket lost the race.
+            const _seenMainPoints = new Set();
+
             Object.entries(linesByHeight).forEach(([groupKey, group]) => {
                 const heightKey = group.heightKey;
                 const recipe = cl3[tier][heightKey];
@@ -7862,7 +7889,9 @@
                     return arr.find(o => o.isDefault) || arr[0];
                 };
 
-                // Tally posts/feet for this group
+                // Tally posts/feet for this group.  Endpoint sets are
+                // de-duplicated against the project-wide _seenMainPoints
+                // so a corner shared between two groups is billed once.
                 const endIds = new Set(), cornerIds = new Set();
                 let linePostCount = 0, groupFt = 0;
                 group.lines.forEach(line => {
@@ -7872,6 +7901,8 @@
                     groupFt += getLineLengthFt(p1, p2);
                     linePostCount += Math.max(0, calculatePostsForLine(p1, p2, line).length - 2);
                     [p1, p2].forEach(p => {
+                        if (_seenMainPoints.has(p.id)) return;
+                        _seenMainPoints.add(p.id);
                         if (isCornerPost(p.id)) cornerIds.add(p.id);
                         else endIds.add(p.id);
                     });
@@ -7879,11 +7910,27 @@
                 const mainCount = endIds.size + cornerIds.size;
                 const hookupCount = group.lines.length * 2;
 
-                // Main posts + caps
+                // Barb wire add-on — resolve picked option + corner-post upgrade
+                const bwOptsList = (recipe.barbWire && Array.isArray(recipe.barbWire.options)) ? recipe.barbWire.options : [];
+                const bwPickId = picks['barbWire.options'];
+                const bwOpt = (bwPickId && bwOptsList.find(o => o.id === bwPickId)) || null;
+                const bwUpg = (recipe.barbWire && recipe.barbWire.cornerPostUpgrade) || {};
+                const bwUpgActive = !!(bwOpt && (bwUpg.galv || bwUpg.black));
+
+                // Main posts + caps (swap to upgraded SKUs when barb wire is on)
                 const mainOpt = def(recipe.mainAssembly && recipe.mainAssembly.postOptions, 'mainAssembly.postOptions');
                 if (mainOpt && mainCount > 0) {
-                    add(pickColor(mainOpt.galv, mainOpt.black, color), mainCount);
-                    add(pickColor(mainOpt.capGalv, mainOpt.capBlack, color), mainCount);
+                    const postCodeG = bwUpgActive && bwUpg.galv ? bwUpg.galv : mainOpt.galv;
+                    const postCodeB = bwUpgActive && bwUpg.black ? bwUpg.black : mainOpt.black;
+                    const capCodeG = bwUpgActive && bwUpg.capGalv ? bwUpg.capGalv : mainOpt.capGalv;
+                    const capCodeB = bwUpgActive && bwUpg.capBlack ? bwUpg.capBlack : mainOpt.capBlack;
+                    add(pickColor(postCodeG, postCodeB, color), mainCount);
+                    add(pickColor(capCodeG, capCodeB, color), mainCount);
+                }
+                // Barb wire material qty = strands × footage
+                if (bwOpt && groupFt > 0) {
+                    const strands = (bwOpt.strandsPerLine > 0) ? bwOpt.strandsPerLine : 3;
+                    add(pickColor(bwOpt.galv, bwOpt.black, color), strands * groupFt);
                 }
                 // Line posts + caps + ties (+ optional barb arms)
                 const lineOpt = def(recipe.linePostAssembly && recipe.linePostAssembly.postOptions, 'linePostAssembly.postOptions');
@@ -8185,12 +8232,17 @@
             let totalCornerPosts = 0;
             let totalLinePosts = 0;
 
+            // Project-wide dedup of main-post endpoints — see parts-list
+            // path for rationale.  Each point is billed once, by whichever
+            // group iterates it first.
+            const _seenMainPointsCost = new Set();
+
             Object.entries(linesByHeight).forEach(([groupKey, group]) => {
                 const heightKey = group.heightKey;
                 const recipe = cl3[tier][heightKey];
                 const color = group.color;
 
-                // Tally posts in this group
+                // Tally posts in this group, deduped project-wide.
                 const endIds = new Set(), cornerIds = new Set();
                 let linePostCount = 0, groupFt = 0;
                 group.lines.forEach(line => {
@@ -8200,6 +8252,8 @@
                     groupFt += getLineLengthFt(p1, p2);
                     linePostCount += Math.max(0, calculatePostsForLine(p1, p2, line).length - 2);
                     [p1, p2].forEach(p => {
+                        if (_seenMainPointsCost.has(p.id)) return;
+                        _seenMainPointsCost.add(p.id);
                         if (isCornerPost(p.id)) cornerIds.add(p.id);
                         else endIds.add(p.id);
                     });
@@ -8228,11 +8282,34 @@
                     return arr.find(o => o.isDefault) || arr[0];
                 };
 
-                // Main posts (end + corner) + caps
+                // Barb wire add-on: resolves to the picked option (or null
+                // if customer chose Off / hasn't picked).  When set with an
+                // end/corner post upgrade, the main-post SKU below is swapped
+                // for the taller upgraded post.
+                const bwOptsList = (recipe.barbWire && Array.isArray(recipe.barbWire.options)) ? recipe.barbWire.options : [];
+                const bwPickId = picks['barbWire.options'];
+                const bwOpt = (bwPickId && bwOptsList.find(o => o.id === bwPickId)) || null;
+                const bwUpg = (recipe.barbWire && recipe.barbWire.cornerPostUpgrade) || {};
+                const bwUpgActive = !!(bwOpt && (bwUpg.galv || bwUpg.black));
+
+                // Main posts (end + corner) + caps.  When barb wire is on
+                // with an upgrade SKU, swap the SKU pair for end + corner
+                // posts only — line posts stay on their own list.
                 const mainOpt = def(recipe.mainAssembly && recipe.mainAssembly.postOptions, 'mainAssembly.postOptions');
                 if (mainOpt && mainCount > 0) {
-                    materialCost += priceOf(pickColor(mainOpt.galv, mainOpt.black, color)) * mainCount;
-                    materialCost += priceOf(pickColor(mainOpt.capGalv, mainOpt.capBlack, color)) * mainCount;
+                    const postCodeG = bwUpgActive && bwUpg.galv ? bwUpg.galv : mainOpt.galv;
+                    const postCodeB = bwUpgActive && bwUpg.black ? bwUpg.black : mainOpt.black;
+                    const capCodeG = bwUpgActive && bwUpg.capGalv ? bwUpg.capGalv : mainOpt.capGalv;
+                    const capCodeB = bwUpgActive && bwUpg.capBlack ? bwUpg.capBlack : mainOpt.capBlack;
+                    materialCost += priceOf(pickColor(postCodeG, postCodeB, color)) * mainCount;
+                    materialCost += priceOf(pickColor(capCodeG, capCodeB, color)) * mainCount;
+                }
+                // Barb wire material (per strand × per foot) + per-foot labour.
+                if (bwOpt && groupFt > 0) {
+                    const strands = (bwOpt.strandsPerLine > 0) ? bwOpt.strandsPerLine : 3;
+                    materialCost += priceOf(pickColor(bwOpt.galv, bwOpt.black, color)) * strands * groupFt;
+                    const lpf = (recipe.barbWire && recipe.barbWire.labourPerFoot) || 0;
+                    if (lpf > 0) materialCost += lpf * groupFt;
                 }
                 // Line posts + caps + ties
                 const lineOpt = def(recipe.linePostAssembly && recipe.linePostAssembly.postOptions, 'linePostAssembly.postOptions');

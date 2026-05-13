@@ -7476,6 +7476,7 @@ function renderClRecipesV3() {
     renderCl3MainAssembly(recipe) +
     renderCl3LinePostAssembly(recipe, cl3._uiTier) +
     renderCl3PerFoot(recipe) +
+    renderCl3BarbWire(recipe) +
     renderCl3Connections(recipe) +
     renderCl3Gates(recipe) +
     renderCl3Summary();
@@ -8468,6 +8469,146 @@ function updCl3Pf(kind, id, field, value) {
   if (field !== 'label') renderClRecipesV3();
 }
 function updCl3PfMeta(field, value) { const r = _cl3CurRecipe(); if (!r) return; r.perFoot[field] = value; markDirty(); }
+
+// ═══════ BARB WIRE ADD-ON (per linear foot, optional toggle) ═══════
+// Each recipe can expose one or more barb wire options.  A customer picks
+// one via the "Barb Wire" pill set in Material Options (or "Off" to skip).
+//   • Material: option's galv/black SKU × strandsPerLine × group footage
+//   • Corner-post upgrade (optional): a taller end/corner post SKU that
+//     replaces the recipe's mainAssembly post for the end + corner count
+//     when barb wire is enabled.  The barb arm needs a few extra inches
+//     above the fabric, so the corner posts get swapped out.
+//   • Labour: $/ft installation surcharge added to the project material
+//     total when barb wire is enabled (kept inside material cost so it
+//     flows into the quote without rewriting the labour subsystem).
+function renderCl3BarbWire(recipe) {
+  if (!recipe.barbWire) recipe.barbWire = { options: [], cornerPostUpgrade: {}, labourPerFoot: 0 };
+  const bw = recipe.barbWire;
+  if (!Array.isArray(bw.options)) bw.options = [];
+  if (!bw.cornerPostUpgrade || typeof bw.cornerPostUpgrade !== 'object') bw.cornerPostUpgrade = {};
+  const upg = bw.cornerPostUpgrade;
+
+  // Per-option rows table
+  let rows = '';
+  bw.options.forEach(o => {
+    const strands = (o.strandsPerLine != null && o.strandsPerLine > 0) ? o.strandsPerLine : 3;
+    const pG = cl3PriceFor(o.galv); const pB = cl3PriceFor(o.black);
+    const perFtG = pG ? (pG * strands) : null;
+    const perFtB = pB ? (pB * strands) : null;
+    rows += '<tr style="border-top:1px solid var(--gray-100)">' +
+      '<td style="padding:6px 8px;text-align:center"><input type="radio" name="cl3-bw-def" ' + (o.isDefault ? 'checked' : '') + ' onchange="setCl3BarbWireDefault(\'' + o.id + '\')"></td>' +
+      '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(o.label) + '" placeholder="e.g. 3-strand 12.5ga" oninput="updCl3BarbWireOpt(\'' + o.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.galv, /Barbed Wire/, 'galvanized', "updCl3BarbWireOpt('" + o.id + "','galv',?)", 'Galv barbed wire — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(o.black, /Barbed Wire/, 'black', "updCl3BarbWireOpt('" + o.id + "','black',?)", 'Black barbed wire — ' + (o.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px;text-align:center"><input type="number" min="1" step="1" value="' + strands + '" oninput="updCl3BarbWireOpt(\'' + o.id + '\',\'strandsPerLine\',+this.value || 0)" style="width:50px;text-align:center;padding:3px 4px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap"><div>G: ' + cl3FmtPrice(perFtG) + '/ft</div><div>B: ' + cl3FmtPrice(perFtB) + '/ft</div></td>' +
+      '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3BarbWireOpt(\'' + o.id + '\')">×</button></td>' +
+      '</tr>';
+  });
+
+  const upgHasAny = !!(upg.galv || upg.black || upg.capGalv || upg.capBlack);
+
+  return '<div class="card">' +
+    '<div class="card-title">Barb Wire Add-on <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— customer toggle in Material Options</span></div>' +
+    '<div class="card-desc">Optional barbed wire across the top.  Customers turn it on via a Material Options pill; the quote then adds the wire material (per strand × per foot), swaps the end / corner posts for an upgraded SKU if you set one, and tacks a per-foot install labour charge onto the material total.</div>' +
+    // Options list
+    '<div style="margin-top:10px">' +
+      '<h4 style="margin:0 0 4px;font-size:13px;color:var(--gray-600)">Wire options</h4>' +
+      '<div style="font-size:11px;color:var(--gray-500);margin-bottom:6px;line-height:1.4">Pick a barbed-wire SKU (galv + black counterpart) and how many strands run along each line.  Customer sees the labelled options as pills, with an Off pill to disable.</div>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:720px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+        '<colgroup><col style="width:60px"><col style="width:140px"><col><col><col style="width:80px"><col style="width:90px"><col style="width:40px"></colgroup>' +
+        '<thead><tr style="background:var(--gray-50);text-align:left">' +
+          '<th style="padding:6px 8px;text-align:center">Default</th>' +
+          '<th style="padding:6px 8px">Label</th>' +
+          '<th style="padding:6px 8px">Galv</th>' +
+          '<th style="padding:6px 8px">Black</th>' +
+          '<th style="padding:6px 8px;text-align:center" title="Strands of wire that run along each linear foot of fence">Strands</th>' +
+          '<th style="padding:6px 8px;text-align:right">Per ft</th>' +
+          '<th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<button class="btn btn-sm" style="margin-top:6px" onclick="addCl3BarbWireOpt()">+ Add barb wire option</button>' +
+    '</div>' +
+    // Corner / end post upgrade
+    '<div style="margin-top:14px;padding:10px 12px;background:var(--gray-50);border-radius:6px">' +
+      '<div style="font-size:11px;font-weight:700;color:var(--gray-600);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">End / Corner Post Upgrade</div>' +
+      '<div style="font-size:11px;color:var(--gray-500);line-height:1.4;margin-bottom:8px">Leave blank to keep the recipe\'s main-assembly post.  Otherwise, when barb wire is on the quote uses these (taller) SKUs in place of the main-assembly post + cap for every end + corner post.</div>' +
+      '<div style="display:grid;grid-template-columns:auto 1fr auto 1fr;gap:6px 10px;align-items:center;font-size:10px">' +
+        '<span style="color:var(--gray-500);font-weight:600">Galv post</span>' + cl3PickerHtml(upg.galv, /^Post Tubing/, 'galvanized', "updCl3BarbWireUpgrade('galv',?)", 'Galv upgraded end/corner post (barb wire)') +
+        '<span style="color:var(--gray-500);font-weight:600">Black post</span>' + cl3PickerHtml(upg.black, /^Post Tubing/, 'black', "updCl3BarbWireUpgrade('black',?)", 'Black upgraded end/corner post (barb wire)') +
+        '<span style="color:var(--gray-500);font-weight:600">Galv cap</span>' + cl3PickerHtml(upg.capGalv, 'Post Cap', 'galvanized', "updCl3BarbWireUpgrade('capGalv',?)", 'Galv upgraded cap (barb wire)') +
+        '<span style="color:var(--gray-500);font-weight:600">Black cap</span>' + cl3PickerHtml(upg.capBlack, 'Post Cap', 'black', "updCl3BarbWireUpgrade('capBlack',?)", 'Black upgraded cap (barb wire)') +
+      '</div>' +
+      (upgHasAny ? '' : '<div style="font-size:10px;color:var(--gray-400);font-style:italic;margin-top:6px">No upgrade set — end/corner posts stay as the recipe default when barb wire is on.</div>') +
+    '</div>' +
+    // Labour
+    '<div style="margin-top:14px;padding:10px 12px;background:var(--gray-50);border-radius:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+      '<label style="font-size:12px;color:var(--gray-600);font-weight:600">Install labour $/ft:</label>' +
+      '<input type="number" min="0" step="0.01" value="' + (bw.labourPerFoot || 0) + '" oninput="updCl3BarbWireMeta(\'labourPerFoot\',+this.value || 0)" style="width:80px;padding:4px 6px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px">' +
+      '<span style="font-size:11px;color:var(--gray-500)">added to the material total per linear foot of fence when barb wire is on (rolled into the project cost so labour math stays put)</span>' +
+    '</div>' +
+    '</div>';
+}
+function _cl3CurBarbWire() {
+  const r = _cl3CurRecipe();
+  if (!r) return null;
+  if (!r.barbWire) r.barbWire = { options: [], cornerPostUpgrade: {}, labourPerFoot: 0 };
+  if (!Array.isArray(r.barbWire.options)) r.barbWire.options = [];
+  if (!r.barbWire.cornerPostUpgrade || typeof r.barbWire.cornerPostUpgrade !== 'object') r.barbWire.cornerPostUpgrade = {};
+  return r.barbWire;
+}
+function addCl3BarbWireOpt() {
+  const bw = _cl3CurBarbWire(); if (!bw) return;
+  // Seed with the cheapest Barbed Wire SKU + black counterpart for a working
+  // baseline so the operator only has to flip the default radio.
+  const m = ensureClMaster();
+  const wireG = m.items.find(it => {
+    if (it.showToCustomer === false) return false;
+    const a = resolveClItemAssignment(it);
+    return /Barbed Wire/.test(a.materialName || '') && a.color === 'galvanized';
+  });
+  const o = { id: cl3NewId('bw'), label: '3-strand 12.5ga', galv: '', black: '', strandsPerLine: 3, isDefault: false };
+  if (wireG) {
+    o.galv = wireG.itemCode;
+    o.black = _cl3BlackCounterpart(wireG.itemCode);
+  }
+  if (bw.options.length === 0) o.isDefault = true;
+  bw.options.push(o);
+  markDirty();
+  renderClRecipesV3();
+}
+function removeCl3BarbWireOpt(id) {
+  const bw = _cl3CurBarbWire(); if (!bw) return;
+  const wasDef = bw.options.find(o => o.id === id)?.isDefault;
+  bw.options = bw.options.filter(o => o.id !== id);
+  if (wasDef && bw.options[0]) bw.options[0].isDefault = true;
+  markDirty();
+  renderClRecipesV3();
+}
+function setCl3BarbWireDefault(id) {
+  const bw = _cl3CurBarbWire(); if (!bw) return;
+  bw.options.forEach(o => o.isDefault = (o.id === id));
+  markDirty();
+  renderClRecipesV3();
+}
+function updCl3BarbWireOpt(id, field, value) {
+  const bw = _cl3CurBarbWire(); if (!bw) return;
+  const o = bw.options.find(x => x.id === id);
+  if (!o) return;
+  o[field] = value;
+  markDirty();
+  if (field !== 'label') renderClRecipesV3();
+}
+function updCl3BarbWireUpgrade(field, value) {
+  const bw = _cl3CurBarbWire(); if (!bw) return;
+  bw.cornerPostUpgrade[field] = value;
+  markDirty();
+  renderClRecipesV3();
+}
+function updCl3BarbWireMeta(field, value) {
+  const bw = _cl3CurBarbWire(); if (!bw) return;
+  bw[field] = value;
+  markDirty();
+}
 
 // ═══════ Card 4 of 5: CONNECTIONS (paired to each main post option) ═══════
 function renderCl3Connections(recipe) {
