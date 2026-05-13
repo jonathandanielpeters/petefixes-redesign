@@ -6736,7 +6736,7 @@ function renderClMasterList() {
         '<td style="padding:4px 8px"><input type="text" list="cl-master-materials-list" value="' + clEscAttr(matDisplay) + '" placeholder="' + clEscAttr(matPlaceholder) + '" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'materialName\',this.value)" style="width:100%;padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;' + matStyle + '"></td>' +
         '<td style="padding:4px 8px"><input type="text" value="' + clEscAttr(variantDisplay) + '" placeholder="' + clEscAttr(variantPlaceholder) + '" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'variantSize\',this.value)" style="width:100%;padding:2px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px;' + variantStyle + '"></td>' +
         '<td style="padding:4px 8px;text-align:right"><input type="number" value="' + (it.cost || 0) + '" step="0.01" min="0" oninput="updateClMasterField(\'' + clEscAttr(it.id) + '\',\'cost\',this.value)" style="width:100%;text-align:right;padding:2px 4px;font-size:11px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
-        '<td style="padding:4px 8px;text-align:right;color:var(--gray-500)">$' + (it.priceAfterTax || 0).toFixed(2) + '</td>' +
+        '<td data-cl-master-aftertax="' + clEscAttr(it.id) + '" style="padding:4px 8px;text-align:right;color:var(--gray-500)">$' + (it.priceAfterTax || 0).toFixed(2) + '</td>' +
         '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + clEscHtml(it.pricingUnit) + '</td>' +
         '<td style="padding:4px 8px"><span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:' + useColor + '15;color:' + useColor + ';white-space:nowrap">' + clEscHtml(it.use) + '</span></td>' +
         '<td style="padding:4px 8px;color:var(--gray-500);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + clEscHtml(it.color) + '</td>' +
@@ -6841,6 +6841,25 @@ function updateClMasterField(id, field, value) {
     it.cost = parseFloat(value) || 0;
     // Re-derive after-tax with the same 12% multiplier the source data uses
     it.priceAfterTax = +(it.cost * 1.12).toFixed(4);
+    // Live-refresh the after-tax cell in the same row so the operator sees
+    // the new price the moment they finish typing.  Updating the cell's
+    // textContent (not innerHTML, not a full re-render) keeps focus on the
+    // cost input — they can tab to the next row without their selection
+    // jumping.
+    try {
+      const cellSel = '[data-cl-master-aftertax="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]';
+      const cell = document.querySelector(cellSel);
+      if (cell) cell.textContent = '$' + (it.priceAfterTax || 0).toFixed(2);
+    } catch (e) { /* selector escape edge cases — fall through */ }
+    // Downstream views (chainlink recipes section, sample iframe preview)
+    // need a re-render so any per-foot totals / cell previews / iframe
+    // numbers pick up the new cost.  Debounced so rapid typing doesn't
+    // thrash the heavy recipe re-render.
+    clearTimeout(window._clMasterDownstreamTimer);
+    window._clMasterDownstreamTimer = setTimeout(function() {
+      try { if (typeof renderClRecipesV3 === 'function') renderClRecipesV3(); } catch (e) { console.warn('[recipes-refresh]', e); }
+      try { if (typeof refreshSamplePrices === 'function') refreshSamplePrices(); } catch (e) { console.warn('[sample-refresh]', e); }
+    }, 500);
   } else if (field === 'showToCustomer') {
     it.showToCustomer = !!value;
   } else if (field === 'materialName' || field === 'variantSize') {
