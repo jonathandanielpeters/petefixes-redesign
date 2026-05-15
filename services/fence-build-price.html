@@ -7966,7 +7966,12 @@
                     add(pickColor(lineOpt.capGalv, lineOpt.capBlack, color), linePostCount);
                     const ties = lineOpt.fenceTiesPerPost || 0;
                     add(pickColor(lineOpt.fenceTieGalv, lineOpt.fenceTieBlack, color), ties * linePostCount);
-                    if (tier === 'commercial' && lineOpt.barbArmGalv) {
+                    // Line-post barb arm — added when:
+                    //  (a) the customer toggled on the barb wire option, OR
+                    //  (b) we're on a commercial recipe (legacy: arms have
+                    //      always been included on every commercial line post),
+                    //  AND the line-post option actually has a barb arm SKU.
+                    if ((bwOpt || tier === 'commercial') && lineOpt.barbArmGalv) {
                         add(pickColor(lineOpt.barbArmGalv, lineOpt.barbArmBlack, color), linePostCount);
                     }
                 }
@@ -8345,7 +8350,8 @@
                     materialCost += priceOf(pickColor(lineOpt.capGalv, lineOpt.capBlack, color)) * linePostCount;
                     const ties = lineOpt.fenceTiesPerPost || 0;
                     materialCost += priceOf(pickColor(lineOpt.fenceTieGalv, lineOpt.fenceTieBlack, color)) * ties * linePostCount;
-                    if (tier === 'commercial' && lineOpt.barbArmGalv) {
+                    // Line-post barb arm — see parts-list path for rationale.
+                    if ((bwOpt || tier === 'commercial') && lineOpt.barbArmGalv) {
                         materialCost += priceOf(pickColor(lineOpt.barbArmGalv, lineOpt.barbArmBlack, color)) * linePostCount;
                     }
                 }
