@@ -7845,8 +7845,38 @@
             const enabledGates = state.gates.filter(g => isGateEnabled(g) && getStyleForLine(g).fenceType === 'chainlink');
             if (clLines.length === 0 && enabledGates.length === 0) return null;
 
-            const itemByCode = {};
-            masterItems.forEach(it => { itemByCode[it.itemCode] = it; });
+            // Index master items by code.  The supplier pricelist sometimes
+            // lists the SAME itemCode twice — once as a whole-piece (e.g.
+            // "2 7/8" X .116 WALL X 10.5 FT HD GALV - SPEC OFFER PIPE",
+            // $82.44 in POSTS) and again as a /ft "spec offer" entry (same
+            // code, "PER FT." in the description, $7.85 in EXTRAS 2026).
+            // Naïve last-write-wins would overwrite the whole post with the
+            // per-foot rate and a "switch to 2 7/8" main post" choice would
+            // bill ~$7 × postCount instead of ~$82 × postCount.
+            //
+            // Resolution rules, in order:
+            //   1. A whole-piece row beats a per-foot row.
+            //   2. Among same-kind duplicates, the higher-priced row wins
+            //      (longer / heavier-wall variant is the canonical pick).
+            const _isPerFtRow = (it) => {
+                const d = (it && it.description) || '';
+                const u = (it && it.pricingUnit) || '';
+                return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
+            };
+            const itemByCode = Object.create(null);
+            masterItems.forEach(it => {
+                const code = it.itemCode;
+                if (!code) return;
+                const existing = itemByCode[code];
+                if (!existing) { itemByCode[code] = it; return; }
+                const newPF = _isPerFtRow(it), oldPF = _isPerFtRow(existing);
+                if (oldPF && !newPF) { itemByCode[code] = it; return; }
+                if (!oldPF && newPF) return;
+                // Same kind — prefer the higher-priced (canonical) row.
+                if ((it.priceAfterTax || 0) > (existing.priceAfterTax || 0)) {
+                    itemByCode[code] = it;
+                }
+            });
             const pickColor = (g, b, color) => color === 'black' ? b : g;
 
             // Tally: code → { code, description, category, subcategory, qty, unitPrice }
@@ -8224,9 +8254,30 @@
             const enabledGates = state.gates.filter(g => isGateEnabled(g) && getStyleForLine(g).fenceType === 'chainlink');
             if (clLines.length === 0 && enabledGates.length === 0) return null;
 
-            // Index master items by code for O(1) price lookups
+            // Index master items by code for O(1) price lookups.  Supplier
+            // pricelist sometimes lists the same code twice (whole-piece
+            // POSTS row + "PER FT." spec-offer EXTRAS row); we prefer the
+            // whole-piece (non-per-foot) row, and among same-kind dupes
+            // the higher-priced canonical variant.  See parts-list path
+            // for the long-form rationale.
+            const _isPerFtRow = (it) => {
+                const d = (it && it.description) || '';
+                const u = (it && it.pricingUnit) || '';
+                return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
+            };
             const itemByCode = Object.create(null);
-            masterItems.forEach(it => { itemByCode[it.itemCode] = it; });
+            masterItems.forEach(it => {
+                const code = it.itemCode;
+                if (!code) return;
+                const existing = itemByCode[code];
+                if (!existing) { itemByCode[code] = it; return; }
+                const newPF = _isPerFtRow(it), oldPF = _isPerFtRow(existing);
+                if (oldPF && !newPF) { itemByCode[code] = it; return; }
+                if (!oldPF && newPF) return;
+                if ((it.priceAfterTax || 0) > (existing.priceAfterTax || 0)) {
+                    itemByCode[code] = it;
+                }
+            });
             const priceOf = (code) => (code && itemByCode[code]) ? (itemByCode[code].priceAfterTax || 0) : 0;
             const pickColor = (galvCode, blackCode, color) => color === 'black' ? blackCode : galvCode;
 

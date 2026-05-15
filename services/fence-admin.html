@@ -7007,18 +7007,42 @@ function blankCl3GateHardware(kind) {
 // AND a color, sorted by priceAfterTax ascending. Used to populate the picker dropdowns.
 function cl3PickerItems(materialPattern, color) {
   const m = ensureClMaster();
-  const out = m.items.filter(it => {
+  const all = m.items.filter(it => {
     if (it.showToCustomer === false) return false;
     const a = resolveClItemAssignment(it);
     if (color && a.color !== color) return false;
     if (typeof materialPattern === 'string') return a.materialName === materialPattern;
     if (materialPattern instanceof RegExp) return materialPattern.test(a.materialName);
     // Function callbacks receive (materialName, item, assignment) so they
-    // can filter on variantSize / diameter / anything else on the record
-    // — useful for matching e.g. a Boulevard Clamp to a post diameter.
+    // can filter on variantSize / diameter / anything else on the record.
     if (typeof materialPattern === 'function') return materialPattern(a.materialName, it, a);
     return true;
   });
+  // Dedupe duplicate itemCodes the supplier pricelist sometimes emits — the
+  // same code may appear as both a whole-piece row (e.g. "2 7/8" × .116
+  // wall × 10.5 ft HD galv - SPEC OFFER PIPE", $82.44 in POSTS) and a
+  // per-foot row ("2 7/8" × PER FT. .116 wall HD galv - SPEC OFFER PIPE",
+  // $7.85 in EXTRAS 2026).  We keep the whole-piece (non-per-foot) row,
+  // and within same-kind duplicates the higher-priced canonical variant.
+  // Without this, the picker showed a $7.85 "post" that priced 10× too
+  // low when the operator hit "switch to 3 1/2" / 2 7/8"".
+  const _isPerFtRow = (it) => {
+    const d = (it && it.description) || '';
+    const u = (it && it.pricingUnit) || '';
+    return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
+  };
+  const byCode = Object.create(null);
+  all.forEach(it => {
+    const code = it.itemCode;
+    if (!code) return;
+    const existing = byCode[code];
+    if (!existing) { byCode[code] = it; return; }
+    const newPF = _isPerFtRow(it), oldPF = _isPerFtRow(existing);
+    if (oldPF && !newPF) { byCode[code] = it; return; }
+    if (!oldPF && newPF) return;
+    if ((it.priceAfterTax || 0) > (existing.priceAfterTax || 0)) byCode[code] = it;
+  });
+  const out = Object.values(byCode);
   out.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
   return out;
 }
