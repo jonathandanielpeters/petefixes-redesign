@@ -7611,11 +7611,33 @@
             }
             return list.find(o => o.isDefault) || list[0];
         }
-        // Look up the live priceAfterTax for an itemCode from the master pricelist.
+        // Look up the live priceAfterTax for an itemCode from the master
+        // pricelist.  The supplier sometimes emits the same code twice — a
+        // whole-piece POSTS row (e.g. 2712FTX, $82.44, 10.5 ft) AND a per-
+        // foot EXTRAS 2026 row (same code, "PER FT.", $7.85).  A naïve
+        // .find() returns whichever happens to be first in the array, so
+        // we walk all rows and prefer (a) non-per-foot rows, then (b) the
+        // higher-priced canonical variant — matches itemByCode dedup used
+        // in the cost calc + parts list.
         function _cl3PriceFor(code) {
             const items = (PCFG.chainlinkMaster && PCFG.chainlinkMaster.items) || [];
-            const it = items.find(x => x.itemCode === code);
-            return it ? (it.priceAfterTax || 0) : 0;
+            if (!code) return 0;
+            const isPF = (it) => {
+                const d = (it && it.description) || '';
+                const u = (it && it.pricingUnit) || '';
+                return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
+            };
+            let best = null;
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (it.itemCode !== code) continue;
+                if (!best) { best = it; continue; }
+                const bestPF = isPF(best), itPF = isPF(it);
+                if (bestPF && !itPF) { best = it; continue; }
+                if (!bestPF && itPF) continue;
+                if ((it.priceAfterTax || 0) > (best.priceAfterTax || 0)) best = it;
+            }
+            return best ? (best.priceAfterTax || 0) : 0;
         }
         // Snap a single fence style to the currently-active tier's V3 recipe set.
         // Adjusts height to the closest available, swaps color to a supported one,

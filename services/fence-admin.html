@@ -7628,11 +7628,32 @@ function removeCl3Height() {
 }
 
 // ── Helper for live-pricing summary (after-tax sum of selected variants) ──
+// Same dedup as the customer engine: when an itemCode is duplicated in
+// the master, prefer the whole-piece (non-per-foot) row and, within
+// same-kind dupes, the higher-priced canonical row.  Without this the
+// admin per-foot footer + picker labels for 2 7/8" / 3 1/2" main posts
+// showed the $7.85/ft "PER FT." spec-offer price instead of the ~$82
+// whole-post price.
 function cl3PriceFor(code) {
   if (!code) return null;
   const m = ensureClMaster();
-  const it = m.items.find(i => i.itemCode === code);
-  return it ? it.priceAfterTax : null;
+  const items = m.items;
+  const isPF = (it) => {
+    const d = (it && it.description) || '';
+    const u = (it && it.pricingUnit) || '';
+    return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
+  };
+  let best = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.itemCode !== code) continue;
+    if (!best) { best = it; continue; }
+    const bestPF = isPF(best), itPF = isPF(it);
+    if (bestPF && !itPF) { best = it; continue; }
+    if (!bestPF && itPF) continue;
+    if ((it.priceAfterTax || 0) > (best.priceAfterTax || 0)) best = it;
+  }
+  return best ? best.priceAfterTax : null;
 }
 function cl3FmtPrice(n) { return n == null ? '<span style="color:#b42c2c">?</span>' : '$' + (+n).toFixed(2); }
 
