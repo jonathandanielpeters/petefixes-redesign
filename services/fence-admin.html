@@ -7018,31 +7018,21 @@ function cl3PickerItems(materialPattern, color) {
     if (typeof materialPattern === 'function') return materialPattern(a.materialName, it, a);
     return true;
   });
-  // Dedupe duplicate itemCodes the supplier pricelist sometimes emits — the
-  // same code may appear as both a whole-piece row (e.g. "2 7/8" × .116
-  // wall × 10.5 ft HD galv - SPEC OFFER PIPE", $82.44 in POSTS) and a
-  // per-foot row ("2 7/8" × PER FT. .116 wall HD galv - SPEC OFFER PIPE",
-  // $7.85 in EXTRAS 2026).  We keep the whole-piece (non-per-foot) row,
-  // and within same-kind duplicates the higher-priced canonical variant.
-  // Without this, the picker showed a $7.85 "post" that priced 10× too
-  // low when the operator hit "switch to 3 1/2" / 2 7/8"".
+  // Filter OUT per-foot "spec offer" rows that share an itemCode with a
+  // whole-piece row — those are misleading in a post slot (a $7.85/ft
+  // row that looks like a $7.85 post).  Whole-piece variants that share
+  // an itemCode (e.g. 3112FTX is both a 10.5 FT row AND a 12 FT row)
+  // now ALL show — the picker saves the row id, so each variant is
+  // independently selectable.  This lets the operator pick the 10.5 FT
+  // for the default main post AND the 12 FT for the barb-wire upgrade
+  // without the engine collapsing them into a single dedup'd row.
   const _isPerFtRow = (it) => {
     const d = (it && it.description) || '';
     const u = (it && it.pricingUnit) || '';
     return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
   };
-  const byCode = Object.create(null);
-  all.forEach(it => {
-    const code = it.itemCode;
-    if (!code) return;
-    const existing = byCode[code];
-    if (!existing) { byCode[code] = it; return; }
-    const newPF = _isPerFtRow(it), oldPF = _isPerFtRow(existing);
-    if (oldPF && !newPF) { byCode[code] = it; return; }
-    if (!oldPF && newPF) return;
-    if ((it.priceAfterTax || 0) > (existing.priceAfterTax || 0)) byCode[code] = it;
-  });
-  const out = Object.values(byCode);
+  const wholePieceCodes = new Set(all.filter(it => !_isPerFtRow(it)).map(it => it.itemCode));
+  const out = all.filter(it => !(wholePieceCodes.has(it.itemCode) && _isPerFtRow(it)));
   out.sort((x, y) => (x.priceAfterTax || 0) - (y.priceAfterTax || 0));
   return out;
 }
@@ -7088,7 +7078,9 @@ function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, sl
   // set first; fall back to the full master pricelist so non-recommended
   // picks (made via "All A→Z" mode) display normally without a ⚠ warning.
   // The ⚠ stays for truly-missing codes only (renamed/removed items).
-  let cur = items.find(it => it.itemCode === currentCode);
+  // currentCode may be a row id (new format — unambiguous) or a legacy
+  // itemCode (pre-id-switch).  Match either.
+  let cur = items.find(it => it.id === currentCode || it.itemCode === currentCode);
   let label;
   let titleAttr = '';
   let nonRecommended = false;
@@ -7097,8 +7089,7 @@ function cl3PickerHtml(currentCode, materialPattern, color, callbackTemplate, sl
     label = cur.itemCode + ' · $' + (cur.priceAfterTax || 0).toFixed(2);
     titleAttr = clEscAttr(cur.description);
   } else if (currentCode) {
-    const m = ensureClMaster();
-    const fallback = m.items.find(it => it.itemCode === currentCode);
+    const fallback = cl3ItemForKey(currentCode);
     if (fallback) {
       // Exists in master but outside the recommended filter — operator
       // picked it via "All A→Z" mode.  Show normally with a subtle star
@@ -7288,23 +7279,31 @@ function cl3RenderPickerList(query) {
   if (!reg.multi) {
     html += '<div onclick="cl3PickItem(\'\')" style="padding:6px 14px;cursor:pointer;color:var(--gray-400);font-style:italic;border-bottom:1px solid var(--gray-100);font-size:11px">— clear selection —</div>';
   }
-  // When the user has switched to All-A→Z mode, mark items that ARE in the
-  // slot's recommendation set with a small ★ so they can spot the
-  // typical-for-this-slot picks at a glance.
+  // Click handlers now save the master row's unique `id` rather than
+  // its `itemCode`.  Supplier data sometimes lists the SAME itemCode on
+  // multiple rows of different lengths / wall-thickness (e.g. 3112FTX is
+  // both a 10.5 ft post @ $99.49 AND a 12 ft post @ $113.70) — picking
+  // by itemCode was ambiguous and pulled whichever the dedup heuristic
+  // happened to prefer (highest-priced, i.e. always the longer post).
+  // Saving the id resolves the ambiguity: each (length, wall) variant
+  // becomes its own pick.  Legacy recipes that already stored itemCode
+  // still resolve via itemByCode fallback in the engine.
   const showRecBadge = (reg.sortMode === 'allAlpha' && reg.hasRecommendation);
   const recSet = showRecBadge ? (reg._recommendedSet || new Set()) : null;
   displayed.forEach((it, idx) => {
-    const sel = reg.multi ? (reg.selected && reg.selected.has(it.itemCode)) : (it.itemCode === reg.currentCode);
+    const sel = reg.multi
+      ? (reg.selected && (reg.selected.has(it.id) || reg.selected.has(it.itemCode)))
+      : (it.id === reg.currentCode || it.itemCode === reg.currentCode);
     const a = resolveClItemAssignment(it);
     const bg = sel ? 'background:var(--accent-light)' : '';
     const checkbox = reg.multi
-      ? '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onclick="event.stopPropagation();cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" style="width:14px;height:14px;flex-shrink:0;margin-right:8px;cursor:pointer">'
+      ? '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onclick="event.stopPropagation();cl3PickItem(\'' + clEscAttr(it.id) + '\')" style="width:14px;height:14px;flex-shrink:0;margin-right:8px;cursor:pointer">'
       : '';
     const checkMark = (!reg.multi && sel) ? ' ✓' : '';
-    const recBadge = (showRecBadge && recSet.has(it.itemCode))
+    const recBadge = (showRecBadge && (recSet.has(it.itemCode) || recSet.has(it.id)))
       ? '<span title="Recommended for this slot" style="color:var(--accent);font-size:10px;margin-left:5px">★</span>'
       : '';
-    html += '<div data-pick-idx="' + idx + '" onclick="cl3PickItem(\'' + clEscAttr(it.itemCode) + '\')" onmouseover="cl3PickerHover(' + idx + ')" style="padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);display:flex;gap:0;align-items:flex-start;' + bg + '">' +
+    html += '<div data-pick-idx="' + idx + '" onclick="cl3PickItem(\'' + clEscAttr(it.id) + '\')" onmouseover="cl3PickerHover(' + idx + ')" style="padding:8px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);display:flex;gap:0;align-items:flex-start;' + bg + '">' +
       checkbox +
       '<div style="flex:1;min-width:0">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">' +
@@ -7352,16 +7351,16 @@ function cl3PickerKeydown(ev) {
         el.scrollIntoView({ block: 'nearest' });
       } else {
         const it = filtered[i];
-        el.style.background = (it && it.itemCode === _cl3ActivePicker.reg.currentCode) ? 'var(--accent-light)' : '';
+        const cur = _cl3ActivePicker.reg.currentCode;
+        el.style.background = (it && (it.id === cur || it.itemCode === cur)) ? 'var(--accent-light)' : '';
       }
     });
   } else if (ev.key === 'Enter') {
     ev.preventDefault();
     if (_cl3PickerHighlightIdx >= 0 && filtered[_cl3PickerHighlightIdx]) {
-      cl3PickItem(filtered[_cl3PickerHighlightIdx].itemCode);
+      cl3PickItem(filtered[_cl3PickerHighlightIdx].id);
     } else if (filtered.length > 0) {
-      // No keyboard highlight — pick the first match
-      cl3PickItem(filtered[0].itemCode);
+      cl3PickItem(filtered[0].id);
     }
   }
 }
@@ -7629,16 +7628,20 @@ function removeCl3Height() {
 }
 
 // ── Helper for live-pricing summary (after-tax sum of selected variants) ──
-// Same dedup as the customer engine: when an itemCode is duplicated in
-// the master, prefer the whole-piece (non-per-foot) row and, within
-// same-kind dupes, the higher-priced canonical row.  Without this the
-// admin per-foot footer + picker labels for 2 7/8" / 3 1/2" main posts
-// showed the $7.85/ft "PER FT." spec-offer price instead of the ~$82
-// whole-post price.
-function cl3PriceFor(code) {
-  if (!code) return null;
+// Picker slots now save the master row's unique `id` (e.g. "3112ftx-
+// galv-ea-1") rather than the itemCode, so each (length, wall) variant
+// is independently selectable.  Look up by id first (unambiguous); fall
+// back to itemCode with whole-piece-wins dedup for recipes saved before
+// the id switch.
+function cl3PriceFor(key) {
+  if (!key) return null;
   const m = ensureClMaster();
   const items = m.items;
+  // 1. Exact-id match wins — unambiguous.
+  const byId = items.find(it => it.id === key);
+  if (byId) return byId.priceAfterTax || 0;
+  // 2. Legacy itemCode lookup with dedup: prefer whole-piece (non-per-
+  // foot) rows; among same-kind dupes, the higher-priced canonical row.
   const isPF = (it) => {
     const d = (it && it.description) || '';
     const u = (it && it.pricingUnit) || '';
@@ -7647,7 +7650,7 @@ function cl3PriceFor(code) {
   let best = null;
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    if (it.itemCode !== code) continue;
+    if (it.itemCode !== key) continue;
     if (!best) { best = it; continue; }
     const bestPF = isPF(best), itPF = isPF(it);
     if (bestPF && !itPF) { best = it; continue; }
@@ -7655,6 +7658,30 @@ function cl3PriceFor(code) {
     if ((it.priceAfterTax || 0) > (best.priceAfterTax || 0)) best = it;
   }
   return best ? best.priceAfterTax : null;
+}
+// Resolve a saved picker key (id or legacy itemCode) → master item row.
+function cl3ItemForKey(key) {
+  if (!key) return null;
+  const m = ensureClMaster();
+  const items = m.items;
+  const byId = items.find(it => it.id === key);
+  if (byId) return byId;
+  const isPF = (it) => {
+    const d = (it && it.description) || '';
+    const u = (it && it.pricingUnit) || '';
+    return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
+  };
+  let best = null;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (it.itemCode !== key) continue;
+    if (!best) { best = it; continue; }
+    const bestPF = isPF(best), itPF = isPF(it);
+    if (bestPF && !itPF) { best = it; continue; }
+    if (!bestPF && itPF) continue;
+    if ((it.priceAfterTax || 0) > (best.priceAfterTax || 0)) best = it;
+  }
+  return best;
 }
 function cl3FmtPrice(n) { return n == null ? '<span style="color:#b42c2c">?</span>' : '$' + (+n).toFixed(2); }
 

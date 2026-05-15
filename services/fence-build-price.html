@@ -7633,17 +7633,16 @@
             }
             return (gateRec && gateRec.hardware) || [];
         }
-        // Look up the live priceAfterTax for an itemCode from the master
-        // pricelist.  The supplier sometimes emits the same code twice — a
-        // whole-piece POSTS row (e.g. 2712FTX, $82.44, 10.5 ft) AND a per-
-        // foot EXTRAS 2026 row (same code, "PER FT.", $7.85).  A naïve
-        // .find() returns whichever happens to be first in the array, so
-        // we walk all rows and prefer (a) non-per-foot rows, then (b) the
-        // higher-priced canonical variant — matches itemByCode dedup used
-        // in the cost calc + parts list.
-        function _cl3PriceFor(code) {
+        // Resolve a saved picker key (row id OR legacy itemCode) → price.
+        // 1. Try exact row-id match — picker now saves the unique id so
+        //    each (length, wall) variant resolves to its own row.
+        // 2. Fall back to itemCode lookup with whole-piece-wins dedup so
+        //    recipes saved before the id switch still work.
+        function _cl3PriceFor(key) {
             const items = (PCFG.chainlinkMaster && PCFG.chainlinkMaster.items) || [];
-            if (!code) return 0;
+            if (!key) return 0;
+            const byId = items.find(x => x.id === key);
+            if (byId) return byId.priceAfterTax || 0;
             const isPF = (it) => {
                 const d = (it && it.description) || '';
                 const u = (it && it.pricingUnit) || '';
@@ -7652,7 +7651,7 @@
             let best = null;
             for (let i = 0; i < items.length; i++) {
                 const it = items[i];
-                if (it.itemCode !== code) continue;
+                if (it.itemCode !== key) continue;
                 if (!best) { best = it; continue; }
                 const bestPF = isPF(best), itPF = isPF(it);
                 if (bestPF && !itPF) { best = it; continue; }
@@ -8315,11 +8314,22 @@
                 return /per\s*ft\.?/i.test(d) || /(^|\W)\/?\s*ft\.?(\W|$)/i.test(u);
             };
             const itemByCode = Object.create(null);
+            // First pass: index by row id (unique).  Picker now saves the
+            // row id, so saved values resolve unambiguously to the exact
+            // (length, wall) variant the operator picked.
+            masterItems.forEach(it => {
+                if (it.id) itemByCode[it.id] = it;
+            });
+            // Second pass: also index by itemCode with whole-piece dedup so
+            // legacy recipes that stored the bare itemCode still resolve to
+            // a sensible row.  itemCode keys don't collide with id keys
+            // (ids carry a "-galv-ea" suffix).
             masterItems.forEach(it => {
                 const code = it.itemCode;
                 if (!code) return;
                 const existing = itemByCode[code];
                 if (!existing) { itemByCode[code] = it; return; }
+                // Already had something for this code — apply dedup.
                 const newPF = _isPerFtRow(it), oldPF = _isPerFtRow(existing);
                 if (oldPF && !newPF) { itemByCode[code] = it; return; }
                 if (!oldPF && newPF) return;
