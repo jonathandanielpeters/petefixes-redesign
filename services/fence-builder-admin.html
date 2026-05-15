@@ -1403,12 +1403,21 @@ function renderPartsListPane() {
     const addBtn = host.querySelector('#addSkuBtn');
     const searchWrap = host.querySelector('#addSkuSearchWrap');
     const searchInput = host.querySelector('#addSkuSearchInput');
+    // Open state + last query are kept on state so the 1.5s pollPartsList
+    // re-render (which destroys this whole subtree) can restore the panel
+    // instead of slamming it shut while the operator is browsing.
+    const setPanelOpen = (open) => {
+        state._addSkuPanelOpen = !!open;
+        if (!open) state._addSkuQuery = '';
+        if (searchWrap) searchWrap.style.display = open ? '' : 'none';
+    };
     if (addBtn && searchWrap) {
         addBtn.addEventListener('click', () => {
-            const open = searchWrap.style.display === 'none';
-            searchWrap.style.display = open ? '' : 'none';
+            const open = !state._addSkuPanelOpen;
+            setPanelOpen(open);
             if (open && searchInput) {
                 searchInput.value = '';
+                state._addSkuPanelFocused = true;
                 renderAddSkuResults('');
                 setTimeout(() => searchInput.focus(), 30);
             }
@@ -1417,9 +1426,13 @@ function renderPartsListPane() {
     if (searchInput) {
         let _t = null;
         searchInput.addEventListener('input', () => {
+            // Persist so re-renders don't blow the query away mid-type.
+            state._addSkuQuery = searchInput.value;
             clearTimeout(_t);
             _t = setTimeout(() => renderAddSkuResults(searchInput.value), 100);
         });
+        searchInput.addEventListener('focus', () => { state._addSkuPanelFocused = true; });
+        searchInput.addEventListener('blur',  () => { state._addSkuPanelFocused = false; });
         searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && state._lastAddSkuHits && state._lastAddSkuHits.length > 0) {
                 e.preventDefault();
@@ -1430,9 +1443,9 @@ function renderPartsListPane() {
                     qty: 1,
                     unitPrice: Number(it.priceAfterTax || it.price || it.cost || 0)
                 });
-                if (searchWrap) searchWrap.style.display = 'none';
+                setPanelOpen(false);
             } else if (e.key === 'Escape') {
-                if (searchWrap) searchWrap.style.display = 'none';
+                setPanelOpen(false);
             }
         });
     }
@@ -1440,14 +1453,33 @@ function renderPartsListPane() {
     if (manualBtn) {
         manualBtn.addEventListener('click', () => {
             pushCustomSku();
-            if (searchWrap) searchWrap.style.display = 'none';
+            setPanelOpen(false);
         });
     }
     const cancelBtn = host.querySelector('#addSkuCancelBtn');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
-            if (searchWrap) searchWrap.style.display = 'none';
+            setPanelOpen(false);
         });
+    }
+    // Restore the Add SKU panel's open state + query after re-render so
+    // the polled refresh can't yank it away from the operator.
+    if (state._addSkuPanelOpen && searchWrap) {
+        searchWrap.style.display = '';
+        if (searchInput) {
+            searchInput.value = state._addSkuQuery || '';
+            renderAddSkuResults(searchInput.value);
+            if (state._addSkuPanelFocused) {
+                setTimeout(() => {
+                    if (document.activeElement !== searchInput) {
+                        searchInput.focus();
+                        // Caret to end so the operator can keep typing.
+                        const v = searchInput.value;
+                        try { searchInput.setSelectionRange(v.length, v.length); } catch (e) {}
+                    }
+                }, 0);
+            }
+        }
     }
 }
 
