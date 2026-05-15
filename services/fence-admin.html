@@ -7502,6 +7502,7 @@ function renderClRecipesV3() {
     renderCl3PerFoot(recipe) +
     renderCl3BarbWire(recipe) +
     renderCl3Connections(recipe) +
+    renderCl3GateHardware(recipe) +
     renderCl3Gates(recipe) +
     renderCl3Summary();
 }
@@ -8799,6 +8800,180 @@ function updCl3ConnExtra(mainId, extraId, field, value) {
 }
 
 // ═══════ Card 5 of 5: GATES ═══════
+// ═══════ CENTRAL GATE HARDWARE (by swing type) ═══════
+// Hardware (hinges, latches, drop bolts, …) is identical across every
+// gate of the same swing type — it's only the frame / leaf SKU that
+// changes with width.  Defining it ONCE per swing type (single / double)
+// and inheriting onto every per-gate row eliminates the per-width data-
+// entry chore.  Each gate still keeps its own hardware[] array as a
+// legacy fallback for back-compat; the customer engine prefers central.
+function _ensureCl3GateHardware(recipe) {
+  if (!recipe.gateHardware || typeof recipe.gateHardware !== 'object') recipe.gateHardware = {};
+  ['single', 'double'].forEach(k => {
+    if (!recipe.gateHardware[k] || typeof recipe.gateHardware[k] !== 'object') recipe.gateHardware[k] = {};
+    if (!Array.isArray(recipe.gateHardware[k].hardware)) recipe.gateHardware[k].hardware = [];
+  });
+  if (recipe.gateHardware._uiTab !== 'single' && recipe.gateHardware._uiTab !== 'double') {
+    recipe.gateHardware._uiTab = 'single';
+  }
+  return recipe.gateHardware;
+}
+// Detect swing type from a gate's frame SKU description / materialName.
+// Falls back to 'single' when nothing in the catalogue matches.
+function _cl3SwingTypeForGate(gate) {
+  const code = (gate && (gate.gateGalv || gate.gateBlack)) || '';
+  if (!code) return 'single';
+  const m = ensureClMaster();
+  const it = m.items.find(x => x.itemCode === code);
+  if (!it) return 'single';
+  const text = ((it.description || '') + ' ' + ((it.materialName || '') || (resolveClItemAssignment(it).materialName || ''))).toLowerCase();
+  return /d(?:ou)?ble|dble/.test(text) ? 'double' : 'single';
+}
+// Count of gates on this recipe matching each swing type — surfaced in
+// the central card as a "applies to N gates" badge so the operator sees
+// the reach of their edits at a glance.
+function _cl3GateSwingCounts(recipe) {
+  const out = { single: 0, double: 0 };
+  (recipe.gates || []).forEach(g => { out[_cl3SwingTypeForGate(g)]++; });
+  return out;
+}
+function renderCl3GateHardware(recipe) {
+  const gh = _ensureCl3GateHardware(recipe);
+  const activeTab = gh._uiTab;
+  const counts = _cl3GateSwingCounts(recipe);
+
+  // Tab strip — single / double.
+  const tabPill = (key, label) => {
+    const active = activeTab === key;
+    return '<button class="btn btn-sm" onclick="setCl3GateHwTab(\'' + key + '\')" style="' +
+      'padding:5px 12px;font-size:11px;border-radius:6px 6px 0 0;font-weight:' + (active ? '700' : '500') + ';' +
+      (active ? 'background:#fff;border:1px solid var(--gray-200);border-bottom:1px solid #fff;color:var(--admin,#222);margin-bottom:-1px'
+              : 'background:transparent;border:1px solid transparent;color:var(--gray-500)') +
+      '">' + label + ' <span style="font-weight:400;color:var(--gray-400);margin-left:4px">' + counts[key] + ' gate' + (counts[key] === 1 ? '' : 's') + '</span></button>';
+  };
+
+  // Active swing-type's hardware rows.
+  const block = gh[activeTab];
+  let hwRows = '';
+  (block.hardware || []).forEach(hw => {
+    hwRows += '<tr style="border-top:1px solid var(--gray-100)">' +
+      '<td style="padding:6px 8px"><input type="text" value="' + clEscAttr(hw.label || '') + '" placeholder="e.g. Hinge set" oninput="updCl3CentralGateHw(\'' + activeTab + '\',\'' + hw.id + '\',\'label\',this.value)" style="width:100%;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(hw.galv, null, 'galvanized', "updCl3CentralGateHw('" + activeTab + "','" + hw.id + "','galv',?)", 'Galv ' + activeTab + '-swing hardware — ' + (hw.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px">' + cl3PickerHtml(hw.black, null, 'black', "updCl3CentralGateHw('" + activeTab + "','" + hw.id + "','black',?)", 'Black ' + activeTab + '-swing hardware — ' + (hw.label || '(unlabeled)')) + '</td>' +
+      '<td style="padding:6px 8px;text-align:right"><input type="number" min="0" step="1" value="' + (hw.qty || 0) + '" oninput="updCl3CentralGateHw(\'' + activeTab + '\',\'' + hw.id + '\',\'qty\',+this.value || 0)" style="width:50px;text-align:right;padding:3px 5px;font-size:10px;border:1px solid var(--gray-200);border-radius:3px"></td>' +
+      '<td style="padding:6px 8px;text-align:right;font-size:10px;color:var(--gray-500);white-space:nowrap" title="Subtotal for this row (qty × unit)"><div>G: ' + cl3FmtPrice((cl3PriceFor(hw.galv) || 0) * (hw.qty || 0) || null) + '</div><div>B: ' + cl3FmtPrice((cl3PriceFor(hw.black) || 0) * (hw.qty || 0) || null) + '</div></td>' +
+      '<td style="padding:6px 8px;text-align:center"><button class="btn btn-sm" onclick="removeCl3CentralGateHw(\'' + activeTab + '\',\'' + hw.id + '\')">×</button></td>' +
+      '</tr>';
+  });
+
+  // Per-swing-type totals (sum of qty × unit) so the operator can sanity-check.
+  const totG = (block.hardware || []).reduce((s, h) => s + (cl3PriceFor(h.galv) || 0) * (h.qty || 0), 0);
+  const totB = (block.hardware || []).reduce((s, h) => s + (cl3PriceFor(h.black) || 0) * (h.qty || 0), 0);
+
+  // Helper: any gate has its own per-gate hardware? If so, offer to import.
+  const legacyGates = (recipe.gates || []).filter(g => _cl3SwingTypeForGate(g) === activeTab && Array.isArray(g.hardware) && g.hardware.length > 0);
+  const importBtn = (block.hardware.length === 0 && legacyGates.length > 0)
+    ? '<button class="btn btn-sm" style="margin-left:6px" onclick="importCl3CentralGateHwFromGate(\'' + activeTab + '\',\'' + legacyGates[0].id + '\')" title="Copy the hardware list from an existing gate of this swing type">⇣ Import from "' + clEscAttr(legacyGates[0].label || 'gate') + '"</button>'
+    : '';
+
+  return '<div class="card">' +
+    '<div class="card-title">Gate Hardware <span style="font-size:10px;font-weight:600;color:var(--gray-400)">— set once per swing type, applies to every gate of that type</span></div>' +
+    '<div class="card-desc">Hardware (hinges, latches, drop bolts, fork latches, …) is the same on every gate of a given swing type — only the frame / leaf SKU changes with width.  Configure each set here once; every <em>Single Swing</em> gate (and every <em>Double Swing</em> gate) below will use these items × its own width/height frame.  Per-gate hardware lists below are kept as an override fallback for legacy recipes.</div>' +
+    '<div style="display:flex;gap:4px;margin-top:10px;border-bottom:1px solid var(--gray-200,#e5e5e8)">' + tabPill('single', 'Single Swing') + tabPill('double', 'Double Swing') + '</div>' +
+    '<div style="padding:12px 0">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:6px">' +
+        '<span style="color:var(--gray-500)">' + (activeTab === 'single' ? 'Single Swing' : 'Double Swing') + ' hardware — applied to <strong>' + counts[activeTab] + '</strong> gate' + (counts[activeTab] === 1 ? '' : 's') + ' on this recipe.</span>' +
+        '<span style="color:var(--gray-500)">Total / gate: <strong style="color:#3c8a1d">G: ' + cl3FmtPrice(totG || null) + '</strong> · <strong>B: ' + cl3FmtPrice(totB || null) + '</strong></span>' +
+      '</div>' +
+      '<div style="overflow:auto"><table style="width:100%;min-width:780px;border-collapse:collapse;font-size:11px;table-layout:fixed">' +
+        '<colgroup><col style="width:160px"><col><col><col style="width:54px"><col style="width:90px"><col style="width:40px"></colgroup>' +
+        '<thead><tr style="background:var(--gray-50);text-align:left"><th style="padding:6px 8px">Label</th><th style="padding:6px 8px">Galv</th><th style="padding:6px 8px">Black</th><th style="padding:6px 8px;text-align:right">Qty</th><th style="padding:6px 8px;text-align:right">Subtotal</th><th></th></tr></thead><tbody>' + (hwRows || '<tr><td colspan="6" style="padding:14px 10px;color:var(--gray-400);font-style:italic;font-size:11px;text-align:center">No ' + activeTab + '-swing hardware set yet.  Add a row below or import from an existing per-gate list.</td></tr>') + '</tbody></table></div>' +
+      '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">' +
+        '<button class="btn btn-sm" onclick="addCl3CentralGateHw(\'' + activeTab + '\')">+ Add hardware row</button>' +
+        '<button class="btn btn-sm" onclick="openCl3CentralHwMultiPicker(\'' + activeTab + '\', this)" title="Pick multiple master pricelist items at once">+ Add multiple from pricelist…</button>' +
+        importBtn +
+      '</div>' +
+    '</div>' +
+    '</div>';
+}
+function _cl3CurGateHwBlock(swing) {
+  const r = _cl3CurRecipe(); if (!r) return null;
+  const gh = _ensureCl3GateHardware(r);
+  return gh[swing];
+}
+function setCl3GateHwTab(swing) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  _ensureCl3GateHardware(r)._uiTab = swing;
+  renderClRecipesV3();
+}
+function addCl3CentralGateHw(swing) {
+  const blk = _cl3CurGateHwBlock(swing); if (!blk) return;
+  blk.hardware.push({ id: cl3NewId('hw'), label: '', galv: '', black: '', qty: 1 });
+  markDirty();
+  renderClRecipesV3();
+}
+function removeCl3CentralGateHw(swing, hwId) {
+  const blk = _cl3CurGateHwBlock(swing); if (!blk) return;
+  blk.hardware = (blk.hardware || []).filter(h => h.id !== hwId);
+  markDirty();
+  renderClRecipesV3();
+}
+function updCl3CentralGateHw(swing, hwId, field, value) {
+  const blk = _cl3CurGateHwBlock(swing); if (!blk) return;
+  const hw = (blk.hardware || []).find(h => h.id === hwId);
+  if (!hw) return;
+  hw[field] = value;
+  markDirty();
+  // Skip re-render while the operator is mid-edit on a label field —
+  // label changes don't affect pricing.
+  if (field !== 'label') renderClRecipesV3();
+}
+function importCl3CentralGateHwFromGate(swing, gateId) {
+  const r = _cl3CurRecipe(); if (!r) return;
+  const g = (r.gates || []).find(x => x.id === gateId);
+  if (!g) return;
+  const blk = _cl3CurGateHwBlock(swing); if (!blk) return;
+  // Deep-copy with fresh ids so future edits stay independent of the
+  // per-gate row this came from.
+  blk.hardware = (g.hardware || []).map(h => ({ id: cl3NewId('hw'), label: h.label || '', galv: h.galv || '', black: h.black || '', qty: h.qty || 0 }));
+  toast('Imported ' + blk.hardware.length + ' ' + swing + '-swing hardware items from "' + (g.label || 'gate') + '".', 'success');
+  markDirty();
+  renderClRecipesV3();
+}
+// Stub for the multi-picker (opens the existing chainlink master picker
+// in multi-select mode and appends each pick as a new central hw row).
+function openCl3CentralHwMultiPicker(swing, btnEl) {
+  const blk = _cl3CurGateHwBlock(swing); if (!blk) return;
+  // Reuse cl3PickerHtml's underlying registry, but in multi-select mode.
+  const id = 'cl3p' + (_cl3PickerNextId++);
+  _cl3PickerRegistry[id] = {
+    items: cl3PickerItems(null, 'galvanized'),
+    recommendedItems: cl3PickerItems(null, 'galvanized'),
+    materialPattern: null, color: 'galvanized', hasRecommendation: false,
+    sortMode: 'allAlpha',
+    currentCode: '', callbackTemplate: '',
+    slotLabel: 'Pick multiple gate hardware items (' + swing + '-swing)',
+    multi: true, selected: new Set(),
+    onCommit: function(codes) {
+      codes.forEach(code => {
+        const m = ensureClMaster();
+        const it = m.items.find(x => x.itemCode === code);
+        const a = it ? resolveClItemAssignment(it) : null;
+        blk.hardware.push({
+          id: cl3NewId('hw'),
+          label: (a && a.materialName) || (it && it.description) || '',
+          galv: code,
+          black: _cl3BlackCounterpart(code),
+          qty: 1
+        });
+      });
+      markDirty();
+      renderClRecipesV3();
+    }
+  };
+  cl3OpenPicker(id, btnEl, null);
+}
+
 function renderCl3Gates(recipe) {
   const gates = recipe.gates;
   let blocks = '';

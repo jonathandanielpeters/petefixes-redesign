@@ -7611,6 +7611,28 @@
             }
             return list.find(o => o.isDefault) || list[0];
         }
+        // Resolve effective gate hardware list.  Central recipe.gateHardware
+        // (single / double) wins when configured — hardware is identical
+        // across every gate of a given swing type, only the frame SKU
+        // varies with width.  Falls back to the per-gate .hardware[] for
+        // recipes saved before the central model existed.
+        //
+        // Swing type comes from the frame SKU's description / materialName
+        // (look for "double" or "dble"); defaults to single otherwise.
+        function _resolveGateHwForCustomer(recipe, gateRec, itemByCode) {
+            const gh = recipe && recipe.gateHardware;
+            if (gh) {
+                const code = (gateRec && (gateRec.gateGalv || gateRec.gateBlack)) || '';
+                const it = code ? itemByCode[code] : null;
+                const text = ((it && it.description) || '') + ' ' + ((it && it.materialName) || '');
+                const swing = /d(?:ou)?ble|dble/i.test(text) ? 'double' : 'single';
+                const block = gh[swing];
+                if (block && Array.isArray(block.hardware) && block.hardware.length > 0) {
+                    return block.hardware;
+                }
+            }
+            return (gateRec && gateRec.hardware) || [];
+        }
         // Look up the live priceAfterTax for an itemCode from the master
         // pricelist.  The supplier sometimes emits the same code twice — a
         // whole-piece POSTS row (e.g. 2712FTX, $82.44, 10.5 ft) AND a per-
@@ -8152,7 +8174,12 @@
                             }
                         });
                         add(pickColor(best.gateGalv, best.gateBlack, color), 1);
-                        (best.hardware || []).forEach(hw => {
+                        // Resolve effective hardware: central gateHardware
+                        // (keyed by swing type detected from the frame SKU)
+                        // wins when populated; falls back to the per-gate
+                        // hardware[] for legacy recipes.
+                        const hwList = _resolveGateHwForCustomer(gateRecipe, best, itemByCode);
+                        hwList.forEach(hw => {
                             add(pickColor(hw.galv, hw.black, color), hw.qty || 0);
                         });
                         if (best.wheelEnabled) {
@@ -8589,7 +8616,12 @@
                             }
                         });
                         materialCost += priceOf(pickColor(best.gateGalv, best.gateBlack, color));
-                        (best.hardware || []).forEach(function(hw) {
+                        // Central gateHardware (keyed by detected swing
+                        // type) wins; per-gate hardware[] is a legacy
+                        // fallback for recipes saved before the central
+                        // model existed.
+                        const hwList = _resolveGateHwForCustomer(gateRecipe, best, itemByCode);
+                        hwList.forEach(function(hw) {
                             materialCost += priceOf(pickColor(hw.galv, hw.black, color)) * (hw.qty || 0);
                         });
                         // Optional wheel — only billed when admin enabled it on the recipe gate
