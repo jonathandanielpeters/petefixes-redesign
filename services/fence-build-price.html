@@ -697,17 +697,17 @@
                recenters the cluster on the chosen point. */
             transform: translate(-50%, -50%);
             background: transparent; border: none; box-shadow: none; padding: 0;
-            pointer-events: none;          /* clicks pass through the empty middle */
-            width: 124px; height: 124px;   /* room for the four arrow icons */
+            pointer-events: none;        /* clicks pass through the empty middle */
+            width: 92px; height: 92px;   /* compact — arrows hug the point */
         }
         .sel-post-dpad.visible { display: block; }
         .sel-post-dpad .dpad-row { display: contents; }
         /* Each arrow re-enables pointer events on itself so it stays tappable. */
         .dpad-btn {
             position: absolute;
-            width: 38px; height: 38px;
+            width: 26px; height: 26px;
             border: none;
-            background: rgba(255,255,255,0.92);
+            background: rgba(255,255,255,0.94);
             color: var(--black);
             border-radius: 50%;
             cursor: pointer;
@@ -715,9 +715,10 @@
             transition: background 0.12s ease, color 0.12s ease, transform 0.1s ease;
             touch-action: manipulation;
             -webkit-user-select: none; user-select: none;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.18), 0 0 0 1px var(--gray-200);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2), 0 0 0 1px var(--gray-200);
             pointer-events: auto;
         }
+        .dpad-btn svg { width: 14px; height: 14px; }
         .dpad-btn.dpad-up    { top: 0;        left: 50%; transform: translateX(-50%); }
         .dpad-btn.dpad-down  { bottom: 0;     left: 50%; transform: translateX(-50%); }
         .dpad-btn.dpad-left  { left: 0;       top: 50%;  transform: translateY(-50%); }
@@ -725,14 +726,16 @@
         .dpad-btn:hover { background: #fff; color: var(--black); }
         .dpad-btn:active, .dpad-btn.pressed {
             background: var(--accent); color: #fff;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.22), 0 0 0 1px var(--accent);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.24), 0 0 0 1px var(--accent);
         }
         /* The center "1 ft" label takes up space in the cluster but it's not
            interactive — hide it entirely now that there's no box. */
         .dpad-center { display: none; }
         @media (max-width: 768px) {
-            .sel-post-dpad { width: 140px; height: 140px; }
-            .dpad-btn { width: 44px; height: 44px; }
+            /* Touch targets a touch larger on phones, but still tight. */
+            .sel-post-dpad { width: 104px; height: 104px; }
+            .dpad-btn { width: 32px; height: 32px; }
+            .dpad-btn svg { width: 16px; height: 16px; }
         }
 
         @media (max-width: 768px) {
@@ -9945,13 +9948,24 @@
             // Selection is now handled by the floating overlay buttons, not by clicking points
 
             // If a post is currently selected (the on-grid arrow cluster is
-            // showing) and this tap is NOT on the same post, treat the tap
-            // as a request to DISMISS the arrows instead of placing a new
-            // point on the grid.  The next tap behaves normally.
+            // showing) and this tap is NOT on the same post, the tap acts
+            // like a "Done" button: it dismisses the arrows and does NOT
+            // place a point.  The just-moved post stays the active draw
+            // anchor (pendingPoint) so the *next* tap continues the fence
+            // line from it — matching the natural "nudge a corner, then
+            // keep drawing" flow.
             if (state.selectedPointId !== null
                 && !(nearby && nearby.id === state.selectedPointId)) {
+                const movedId = state.selectedPointId;
                 state.selectedPointId = null;
+                // Only re-arm the fence anchor in draw mode and only when
+                // we're not already mid-line — otherwise just deselect.
+                if (state.activeTool === 'draw' && state.pendingPoint === null
+                    && state.points.some(p => p.id === movedId)) {
+                    state.pendingPoint = movedId;
+                }
                 if (typeof updateDeletePointBtn === 'function') updateDeletePointBtn();
+                if (typeof updateHint === 'function') updateHint();
                 drawCanvas();
                 return;
             }
