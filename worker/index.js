@@ -101,6 +101,169 @@ async function squareRequest(env, method, path, body) {
   return data;
 }
 
+// ── Square: push a saved quote into Square as an invoice ────────────
+//
+// When a customer hits Save Estimate in Build & Price, the existing
+// /api/quotes POST path stores the quote in KV and the customer-side JS
+// fires the EmailJS HTML estimate.  This helper additionally pushes the
+// same quote into Square: creates a Customer, an Order with one line
+// item per breakdown row, applies 5% GST as an ORDER-scoped additive
+// tax, then creates + publishes an Invoice so Square emails the
+// customer the hosted quote page.
+//
+// Best-effort: every Square call is wrapped, and the helper returns
+// `{ ok: false, error }` instead of throwing so the KV save can never
+// be blocked by a Square outage.  Caller folds the result into the
+// /api/quotes response under `square: {…}`.
+//
+// Phone normalisation: Square wants E.164 ideally.  We strip non-digits
+// and prefix +1 when the result is a 10-digit NANP number; otherwise
+// pass through.
+function _e164Phone(raw) {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (digits.length === 10) return "+1" + digits;
+  if (digits.length === 11 && digits[0] === "1") return "+" + digits;
+  return raw ? String(raw) : null;
+}
+
+// Cache the location lookup per request: the worker does 1 round trip
+// on the first quote push and reuses the value across the rest of the
+// pushQuoteToSquare calls in the same invocation.
+let _squareLocationIdCache = null;
+async function _getSquareLocationId(env) {
+  if (_squareLocationIdCache) return _squareLocationIdCache;
+  const data = await squareRequest(env, "GET", "/v2/locations");
+  const loc = (data.locations || []).find(l => l.status === "ACTIVE") || (data.locations || [])[0];
+  if (!loc || !loc.id) throw new Error("No Square location available");
+  _squareLocationIdCache = loc.id;
+  return loc.id;
+}
+
+// Build Square line items from the saved-quote breakdown rows.  Each
+// breakdown row already includes material + labour + markup + addons
+// scaled to the project total, so 1 row = 1 invoice line item.
+function _quoteRowsToSquareLineItems(quote) {
+  const rows = (quote && quote.estimate && Array.isArray(quote.estimate.rows)) ? quote.estimate.rows : [];
+  return rows
+    .filter(r => r && (r.cost > 0))
+    .map(r => {
+      // Compose a readable line name: "<label>" or "<label> — <desc>".
+      const label = String(r.label || "Fence line").slice(0, 250);
+      const desc  = r.desc ? " — " + String(r.desc).slice(0, 150) : "";
+      const lengthHint = r.length ? "  (" + r.length + ")" : "";
+      // Square requires amount in the smallest currency unit (cents).
+      const amountCents = Math.max(0, Math.round(Number(r.cost) * 100));
+      return {
+        name: (label + desc + lengthHint).slice(0, 500),
+        quantity: "1",
+        base_price_money: { amount: amountCents, currency: "CAD" },
+        note: r.type === "gate" ? "Gate" : "Fence section",
+      };
+    });
+}
+
+async function pushQuoteToSquare(env, quote) {
+  if (!env.SQUARE_ACCESS_TOKEN) return { ok: false, error: "Square not configured" };
+  const cust = (quote && quote.customer) || {};
+  const est  = (quote && quote.estimate) || {};
+  if (!cust.email && !cust.phone) {
+    return { ok: false, error: "Quote has no customer email or phone" };
+  }
+  const lineItems = _quoteRowsToSquareLineItems(quote);
+  if (lineItems.length === 0) {
+    return { ok: false, error: "Quote has no line-item rows to invoice" };
+  }
+  const idemBase = (quote.id || crypto.randomUUID());
+  try {
+    const locationId = await _getSquareLocationId(env);
+
+    // 1. Customer (Square doesn't auto-dedupe by email; we just create.
+    //    Future enhancement: search-by-email first).
+    const customerRes = await squareRequest(env, "POST", "/v2/customers", {
+      idempotency_key: idemBase + ":cust",
+      given_name:  cust.firstName || (cust.name ? String(cust.name).split(/\s+/)[0]  : "Customer"),
+      family_name: cust.lastName  || (cust.name ? String(cust.name).split(/\s+/).slice(1).join(" ") : ""),
+      email_address: cust.email || undefined,
+      phone_number:  _e164Phone(cust.phone) || undefined,
+      address: cust.address ? { address_line_1: String(cust.address).slice(0, 500) } : undefined,
+      note: ("From Build & Price quote " + (quote.id || "") +
+             (cust.notes ? "  Customer notes: " + String(cust.notes).slice(0, 240) : "")).slice(0, 500),
+      reference_id: quote.id || undefined,
+    });
+    const customerId = customerRes.customer && customerRes.customer.id;
+    if (!customerId) throw new Error("Customer create returned no id");
+
+    // 2. Order — line items + 5% GST as an ORDER-scoped additive tax.
+    //    "ADDITIVE" tax is added on top of the subtotal, matching how a
+    //    Canadian invoice shows GST as a separate line.
+    const orderRes = await squareRequest(env, "POST", "/v2/orders", {
+      idempotency_key: idemBase + ":order",
+      order: {
+        location_id: locationId,
+        customer_id: customerId,
+        line_items: lineItems,
+        taxes: [{
+          name: "GST",
+          percentage: "5",
+          scope: "ORDER",
+          type: "ADDITIVE",
+        }],
+      },
+    });
+    const orderId = orderRes.order && orderRes.order.id;
+    if (!orderId) throw new Error("Order create returned no id");
+
+    // 3. Invoice attached to that order, delivery via email.
+    //    payment_requests[0].request_type=BALANCE means "the full
+    //    invoice balance is due"; we don't auto-charge — the customer
+    //    can pay later from the hosted page or save it as a quote.
+    const titleSuffix = est.title ? " — " + String(est.title).slice(0, 80) : "";
+    const invoiceRes = await squareRequest(env, "POST", "/v2/invoices", {
+      idempotency_key: idemBase + ":inv",
+      invoice: {
+        location_id: locationId,
+        order_id: orderId,
+        primary_recipient: { customer_id: customerId },
+        delivery_method: "EMAIL",
+        title: ("Fence Estimate" + titleSuffix).slice(0, 250),
+        description: ("Estimate generated from Build & Price." +
+                      (quote.id ? "  Ref: " + quote.id : "")).slice(0, 500),
+        accepted_payment_methods: {
+          card: true,
+          square_gift_card: false,
+          bank_account: false,
+          buy_now_pay_later: false,
+        },
+        payment_requests: [{
+          request_type: "BALANCE",
+          automatic_payment_source: "NONE",
+        }],
+        sale_or_service_date: new Date().toISOString().slice(0, 10),
+      },
+    });
+    const invoice = invoiceRes.invoice;
+    if (!invoice || !invoice.id) throw new Error("Invoice create returned no id");
+
+    // 4. Publish — this is what triggers Square to send the email.
+    const publishRes = await squareRequest(env, "POST", `/v2/invoices/${invoice.id}/publish`, {
+      version: invoice.version || 0,
+      idempotency_key: idemBase + ":pub",
+    });
+    const published = publishRes.invoice || invoice;
+
+    return {
+      ok: true,
+      invoiceId: published.id,
+      publicUrl: published.public_url || null,
+      customerId,
+      orderId,
+      status: published.status,  // typically "UNPAID" right after publish
+    };
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
 // ── Book Installation handler ───────────────────────────────────────
 async function handleBookInstallation(request, env) {
   if (request.method === "OPTIONS") {
@@ -508,7 +671,51 @@ async function handleQuotes(request, env, idFromPath) {
         deploymentId: record.deploymentId,
       },
     });
-    return corsResponse({ ok: true, id, createdAt: record.createdAt });
+
+    // Push to Square as an invoice (creates customer + order + 5% GST
+    // invoice and publishes it so Square emails the customer).  Best-
+    // effort: the KV save above is the source of truth — if Square is
+    // misconfigured, rate-limited, or just slow, we still return ok so
+    // the customer's submission completes.  Failure detail goes back
+    // in `square: { error }` for the admin dashboard / logs.
+    const squareResult = await pushQuoteToSquare(env, record);
+    if (squareResult && squareResult.ok) {
+      // Patch the saved quote with the Square invoice references so
+      // the admin dashboard can deep-link to the hosted invoice page.
+      record.square = {
+        invoiceId: squareResult.invoiceId,
+        publicUrl: squareResult.publicUrl,
+        customerId: squareResult.customerId,
+        orderId: squareResult.orderId,
+        status: squareResult.status,
+        sentAt: new Date().toISOString(),
+      };
+      try {
+        await env.CONFIG_KV.put("quote:" + id, JSON.stringify(record), {
+          metadata: {
+            createdAt: record.createdAt,
+            customerName: ((record.customer.firstName || "") + " " + (record.customer.lastName || "")).trim(),
+            customerEmail: record.customer.email || "",
+            customerPhone: record.customer.phone || "",
+            address: record.customer.address || "",
+            total: record.estimate.total || 0,
+            title: record.estimate.title || "",
+            status: record.status,
+            deploymentId: record.deploymentId,
+            squareInvoiceId: squareResult.invoiceId,
+          },
+        });
+      } catch (e) { /* keep going — Square already accepted the invoice */ }
+    } else {
+      console.warn("[quote-to-square]", squareResult && squareResult.error);
+    }
+
+    return corsResponse({
+      ok: true,
+      id,
+      createdAt: record.createdAt,
+      square: squareResult,
+    });
   }
 
   // Auth required for every other operation.
